@@ -13,12 +13,18 @@ public partial class MainWindow : Window
     private readonly ObservableCollection<VmessProfile> _profiles = [];
     private AppSettings _settings = new();
     private VmessProfile? _selectedProfile;
+    private CancellationTokenSource? _latencyTestCancellation;
 
     public MainWindow()
     {
         InitializeComponent();
         LoadSettings();
-        Closed += (_, _) => _coreService.Stop();
+        Closed += (_, _) =>
+        {
+            _latencyTestCancellation?.Cancel();
+            _latencyTestCancellation?.Dispose();
+            _coreService.Stop();
+        };
     }
 
     private void LoadSettings()
@@ -79,6 +85,7 @@ public partial class MainWindow : Window
             else
             {
                 CopyProfile(profile, existing);
+                existing.ResetLatency();
             }
 
             SaveProfiles(profile.Id);
@@ -184,6 +191,179 @@ public partial class MainWindow : Window
         {
             ShowError(ex);
         }
+    }
+
+    private async void TestTcpLatencyButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (ProfilesGrid.SelectedItem is not VmessProfile profile)
+        {
+            UpdateStatus("Select a profile to test TCP latency");
+            return;
+        }
+
+        await RunTcpLatencyTestsAsync([profile], parallel: true);
+    }
+
+    private async void TestRealLatencyButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (ProfilesGrid.SelectedItem is not VmessProfile profile)
+        {
+            UpdateStatus("Select a profile to test real latency");
+            return;
+        }
+
+        try
+        {
+            ApplyRuntimeSettingsFromForm();
+            await RunRealLatencyTestsAsync([profile]);
+        }
+        catch (Exception ex)
+        {
+            ShowError(ex);
+        }
+    }
+
+    private async void TestAllTcpLatencyButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_profiles.Count == 0)
+        {
+            UpdateStatus("No profiles to test");
+            return;
+        }
+
+        await RunTcpLatencyTestsAsync(_profiles.ToList(), parallel: true);
+    }
+
+    private async void TestAllRealLatencyButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_profiles.Count == 0)
+        {
+            UpdateStatus("No profiles to test");
+            return;
+        }
+
+        try
+        {
+            ApplyRuntimeSettingsFromForm();
+            await RunRealLatencyTestsAsync(_profiles.ToList());
+        }
+        catch (Exception ex)
+        {
+            ShowError(ex);
+        }
+    }
+
+    private async Task RunTcpLatencyTestsAsync(IReadOnlyList<VmessProfile> profiles, bool parallel)
+    {
+        _latencyTestCancellation?.Cancel();
+        _latencyTestCancellation?.Dispose();
+        _latencyTestCancellation = new CancellationTokenSource();
+        var cancellationToken = _latencyTestCancellation.Token;
+
+        SetLatencyTestingEnabled(false);
+        UpdateStatus($"Testing TCP latency for {profiles.Count} profile(s)...");
+
+        try
+        {
+            if (parallel)
+            {
+                var tasks = profiles.Select(profile => TestTcpLatencyAsync(profile, cancellationToken));
+                await Task.WhenAll(tasks);
+            }
+            else
+            {
+                foreach (var profile in profiles)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    await TestTcpLatencyAsync(profile, cancellationToken);
+                }
+            }
+
+            if (!cancellationToken.IsCancellationRequested)
+            {
+                UpdateStatus("TCP latency test finished");
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            UpdateStatus("TCP latency test cancelled");
+        }
+        catch (Exception ex)
+        {
+            ShowError(ex);
+        }
+        finally
+        {
+            SetLatencyTestingEnabled(true);
+        }
+    }
+
+    private async Task RunRealLatencyTestsAsync(IReadOnlyList<VmessProfile> profiles)
+    {
+        _latencyTestCancellation?.Cancel();
+        _latencyTestCancellation?.Dispose();
+        _latencyTestCancellation = new CancellationTokenSource();
+        var cancellationToken = _latencyTestCancellation.Token;
+
+        SetLatencyTestingEnabled(false);
+        UpdateStatus($"Testing real latency for {profiles.Count} profile(s)...");
+
+        try
+        {
+            foreach (var profile in profiles)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                await TestRealLatencyAsync(profile, cancellationToken);
+            }
+
+            if (!cancellationToken.IsCancellationRequested)
+            {
+                UpdateStatus("Real latency test finished");
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            UpdateStatus("Real latency test cancelled");
+        }
+        catch (Exception ex)
+        {
+            ShowError(ex);
+        }
+        finally
+        {
+            SetLatencyTestingEnabled(true);
+        }
+    }
+
+    private static async Task TestTcpLatencyAsync(VmessProfile profile, CancellationToken cancellationToken)
+    {
+        profile.BeginTcpLatencyTest();
+
+        var latency = await LatencyTestService.MeasureTcpAsync(profile.Address, profile.Port, cancellationToken: cancellationToken);
+        if (!cancellationToken.IsCancellationRequested)
+        {
+            profile.CompleteTcpLatencyTest(latency);
+        }
+    }
+
+    private async Task TestRealLatencyAsync(VmessProfile profile, CancellationToken cancellationToken)
+    {
+        profile.BeginRealLatencyTest();
+
+        var latency = await ProxyLatencyTestService.MeasureRealAsync(_settings, profile, cancellationToken);
+        if (!cancellationToken.IsCancellationRequested)
+        {
+            profile.CompleteRealLatencyTest(latency);
+        }
+    }
+
+    private void SetLatencyTestingEnabled(bool enabled)
+    {
+        TestTcpLatencyButton.IsEnabled = enabled;
+        TestRealLatencyButton.IsEnabled = enabled;
+        TestAllTcpLatencyButton.IsEnabled = enabled;
+        TestAllRealLatencyButton.IsEnabled = enabled;
+        StartButton.IsEnabled = enabled;
     }
 
     private void LoadProfileToForm(VmessProfile profile)

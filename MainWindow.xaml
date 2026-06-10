@@ -29,7 +29,7 @@
 
         <Grid Grid.Row="1">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="360"/>
+                <ColumnDefinition Width="440"/>
                 <ColumnDefinition Width="16"/>
                 <ColumnDefinition Width="*"/>
             </Grid.ColumnDefinitions>
@@ -48,13 +48,53 @@
                               HeadersVisibility="Column" GridLinesVisibility="Horizontal">
                         <DataGrid.Columns>
                             <DataGridTextColumn Header="Name" Binding="{Binding DisplayName}" Width="*"/>
-                            <DataGridTextColumn Header="Endpoint" Binding="{Binding Endpoint}" Width="145"/>
+                            <DataGridTextColumn Header="TCP" Binding="{Binding TcpLatencyDisplay}" Width="64">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="HorizontalAlignment" Value="Right"/>
+                                        <Setter Property="Foreground" Value="#6B7280"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsTcpLatencyTesting}" Value="True">
+                                                <Setter Property="Foreground" Value="#2563EB"/>
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding TcpLatencyDisplay}" Value="Timeout">
+                                                <Setter Property="Foreground" Value="#DC2626"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </DataGridTextColumn.ElementStyle>
+                            </DataGridTextColumn>
+                            <DataGridTextColumn Header="Real" Binding="{Binding RealLatencyDisplay}" Width="64">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="HorizontalAlignment" Value="Right"/>
+                                        <Setter Property="Foreground" Value="#6B7280"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsRealLatencyTesting}" Value="True">
+                                                <Setter Property="Foreground" Value="#2563EB"/>
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding RealLatencyDisplay}" Value="Timeout">
+                                                <Setter Property="Foreground" Value="#DC2626"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </DataGridTextColumn.ElementStyle>
+                            </DataGridTextColumn>
+                            <DataGridTextColumn Header="Endpoint" Binding="{Binding Endpoint}" Width="120"/>
                         </DataGrid.Columns>
                     </DataGrid>
-                    <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,10,0,0">
-                        <Button Content="New" Width="76" Height="30" Margin="0,0,8,0" Click="NewButton_Click"/>
-                        <Button Content="Save" Width="76" Height="30" Margin="0,0,8,0" Click="SaveButton_Click"/>
-                        <Button Content="Delete" Width="76" Height="30" Click="DeleteButton_Click"/>
+                    <StackPanel Grid.Row="2" Margin="0,10,0,0">
+                        <StackPanel Orientation="Horizontal">
+                            <Button Content="New" Width="68" Height="30" Margin="0,0,6,0" Click="NewButton_Click"/>
+                            <Button Content="Save" Width="68" Height="30" Margin="0,0,6,0" Click="SaveButton_Click"/>
+                            <Button Content="Delete" Width="68" Height="30" Click="DeleteButton_Click"/>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                            <Button x:Name="TestTcpLatencyButton" Content="TCP" Width="68" Height="30" Margin="0,0,6,0" Click="TestTcpLatencyButton_Click"/>
+                            <Button x:Name="TestRealLatencyButton" Content="Real" Width="68" Height="30" Margin="0,0,6,0" Click="TestRealLatencyButton_Click"/>
+                            <Button x:Name="TestAllTcpLatencyButton" Content="All TCP" Width="72" Height="30" Margin="0,0,6,0" Click="TestAllTcpLatencyButton_Click"/>
+                            <Button x:Name="TestAllRealLatencyButton" Content="All Real" Width="72" Height="30" Click="TestAllRealLatencyButton_Click"/>
+                        </StackPanel>
                     </StackPanel>
                 </Grid>
             </Border>
