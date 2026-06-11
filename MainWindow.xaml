@@ -4,211 +4,571 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
-        Title="NaiwaProxy" Height="720" Width="1100" MinHeight="640" MinWidth="980"
-        Icon="assets/app-icon.ico"
-        Background="#F4F6F8">
-    <Grid Margin="18">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="*"/>
-            <RowDefinition Height="Auto"/>
-        </Grid.RowDefinitions>
+        Title="NaiwaProxy" Height="760" Width="1240" MinHeight="700" MinWidth="1120"
+        Icon="/assets/app-icon.ico"
+        Background="#F4F6FA"
+        FontFamily="Segoe UI, Microsoft YaHei UI">
+    <Window.Resources>
+        <SolidColorBrush x:Key="BgBrush" Color="#F4F6FA"/>
+        <SolidColorBrush x:Key="PanelBrush" Color="#FFFFFF"/>
+        <SolidColorBrush x:Key="Panel2Brush" Color="#F8FAFC"/>
+        <SolidColorBrush x:Key="Panel3Brush" Color="#FFFFFF"/>
+        <SolidColorBrush x:Key="LineBrush" Color="#E2E8F0"/>
+        <SolidColorBrush x:Key="TextBrush" Color="#0F172A"/>
+        <SolidColorBrush x:Key="MutedBrush" Color="#64748B"/>
+        <SolidColorBrush x:Key="AccentTextBrush" Color="#B45309"/>
+        <SolidColorBrush x:Key="GreenBrush" Color="#16A34A"/>
+        <SolidColorBrush x:Key="RedBrush" Color="#DC2626"/>
+        <SolidColorBrush x:Key="YellowBrush" Color="#CA8A04"/>
 
-        <DockPanel Grid.Row="0" LastChildFill="True" Margin="0,0,0,14">
-            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
-                <Button x:Name="StartButton" Content="Start" Width="92" Height="34" Margin="0,0,8,0" Click="StartButton_Click"/>
-                <Button x:Name="StopButton" Content="Stop" Width="92" Height="34" Margin="0,0,8,0" Click="StopButton_Click"/>
-                <Button x:Name="EnableProxyButton" Content="Proxy On" Width="100" Height="34" Margin="0,0,8,0" Click="EnableProxyButton_Click"/>
-                <Button x:Name="DisableProxyButton" Content="Proxy Off" Width="100" Height="34" Click="DisableProxyButton_Click"/>
-            </StackPanel>
-            <StackPanel>
-                <TextBlock Text="NaiwaProxy" FontSize="26" FontWeight="SemiBold" Foreground="#111827"/>
-                <TextBlock x:Name="StatusText" Text="Idle" FontSize="13" Foreground="#4B5563" Margin="0,4,0,0"/>
-            </StackPanel>
-        </DockPanel>
+        <LinearGradientBrush x:Key="AccentGradientBrush" StartPoint="0,0" EndPoint="1,1">
+            <GradientStop Color="#FACC15" Offset="0"/>
+            <GradientStop Color="#F59E0B" Offset="1"/>
+        </LinearGradientBrush>
 
-        <Grid Grid.Row="1">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="440"/>
-                <ColumnDefinition Width="16"/>
-                <ColumnDefinition Width="*"/>
-            </Grid.ColumnDefinitions>
+        <Style TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+        </Style>
 
-            <Border Grid.Column="0" Background="White" BorderBrush="#D8DEE6" BorderThickness="1" CornerRadius="6">
-                <Grid Margin="12">
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="*"/>
-                        <RowDefinition Height="Auto"/>
-                    </Grid.RowDefinitions>
+        <Style x:Key="CardBorderStyle" TargetType="Border">
+            <Setter Property="Background" Value="{StaticResource PanelBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource LineBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="16"/>
+            <Setter Property="Padding" Value="16"/>
+            <Setter Property="Effect">
+                <Setter.Value>
+                    <DropShadowEffect Color="#64748B" BlurRadius="20" ShadowDepth="4" Opacity="0.12"/>
+                </Setter.Value>
+            </Setter>
+        </Style>
 
-                    <TextBlock Text="Profiles" FontSize="16" FontWeight="SemiBold" Foreground="#111827" Margin="0,0,0,10"/>
-                    <DataGrid x:Name="ProfilesGrid" Grid.Row="1" AutoGenerateColumns="False" CanUserAddRows="False"
-                              IsReadOnly="True" SelectionMode="Single" SelectionChanged="ProfilesGrid_SelectionChanged"
-                              HeadersVisibility="Column" GridLinesVisibility="Horizontal">
-                        <DataGrid.Columns>
-                            <DataGridTextColumn Header="Name" Binding="{Binding DisplayName}" Width="*"/>
-                            <DataGridTextColumn Header="TCP" Binding="{Binding TcpLatencyDisplay}" Width="64">
-                                <DataGridTextColumn.ElementStyle>
-                                    <Style TargetType="TextBlock">
-                                        <Setter Property="HorizontalAlignment" Value="Right"/>
-                                        <Setter Property="Foreground" Value="#6B7280"/>
-                                        <Style.Triggers>
-                                            <DataTrigger Binding="{Binding IsTcpLatencyTesting}" Value="True">
-                                                <Setter Property="Foreground" Value="#2563EB"/>
-                                            </DataTrigger>
-                                            <DataTrigger Binding="{Binding TcpLatencyDisplay}" Value="Timeout">
-                                                <Setter Property="Foreground" Value="#DC2626"/>
-                                            </DataTrigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </DataGridTextColumn.ElementStyle>
-                            </DataGridTextColumn>
-                            <DataGridTextColumn Header="Real" Binding="{Binding RealLatencyDisplay}" Width="64">
-                                <DataGridTextColumn.ElementStyle>
-                                    <Style TargetType="TextBlock">
-                                        <Setter Property="HorizontalAlignment" Value="Right"/>
-                                        <Setter Property="Foreground" Value="#6B7280"/>
-                                        <Style.Triggers>
-                                            <DataTrigger Binding="{Binding IsRealLatencyTesting}" Value="True">
-                                                <Setter Property="Foreground" Value="#2563EB"/>
-                                            </DataTrigger>
-                                            <DataTrigger Binding="{Binding RealLatencyDisplay}" Value="Timeout">
-                                                <Setter Property="Foreground" Value="#DC2626"/>
-                                            </DataTrigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </DataGridTextColumn.ElementStyle>
-                            </DataGridTextColumn>
-                            <DataGridTextColumn Header="Endpoint" Binding="{Binding Endpoint}" Width="120"/>
-                        </DataGrid.Columns>
-                    </DataGrid>
-                    <StackPanel Grid.Row="2" Margin="0,10,0,0">
+        <Style x:Key="NavButtonStyle" TargetType="Button">
+            <Setter Property="Height" Value="38"/>
+            <Setter Property="HorizontalContentAlignment" Value="Left"/>
+            <Setter Property="Padding" Value="12,0"/>
+            <Setter Property="Margin" Value="0,2"/>
+            <Setter Property="Foreground" Value="#475569"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Root" Background="{TemplateBinding Background}" CornerRadius="10">
+                            <ContentPresenter Margin="{TemplateBinding Padding}" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Root" Property="Background" Value="#F1F5F9"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="ActiveNavButtonStyle" TargetType="Button" BasedOn="{StaticResource NavButtonStyle}">
+            <Setter Property="Foreground" Value="{StaticResource AccentTextBrush}"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Background" Value="#FEF3C7"/>
+        </Style>
+
+        <Style x:Key="DarkButtonStyle" TargetType="Button">
+            <Setter Property="Height" Value="36"/>
+            <Setter Property="MinWidth" Value="78"/>
+            <Setter Property="Padding" Value="14,0"/>
+            <Setter Property="Foreground" Value="#334155"/>
+            <Setter Property="Background" Value="#FFFFFF"/>
+            <Setter Property="BorderBrush" Value="{StaticResource LineBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Root" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="10">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Margin="{TemplateBinding Padding}"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Root" Property="Background" Value="#F8FAFC"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.45"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="PrimaryButtonStyle" TargetType="Button" BasedOn="{StaticResource DarkButtonStyle}">
+            <Setter Property="Foreground" Value="#111827"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="Background" Value="{StaticResource AccentGradientBrush}"/>
+            <Setter Property="BorderBrush" Value="#FBBF24"/>
+        </Style>
+
+        <Style x:Key="FieldTextBoxStyle" TargetType="TextBox">
+            <Setter Property="Height" Value="34"/>
+            <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+            <Setter Property="Background" Value="{StaticResource Panel3Brush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource LineBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="10,6"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="CaretBrush" Value="#FACC15"/>
+        </Style>
+
+        <Style TargetType="TextBox" BasedOn="{StaticResource FieldTextBoxStyle}"/>
+
+        <Style x:Key="ToggleSwitchStyle" TargetType="CheckBox">
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="CheckBox">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <Border x:Name="Track" Width="42" Height="24" CornerRadius="12" Background="#CBD5E1" VerticalAlignment="Center">
+                                <Border x:Name="Thumb" Width="18" Height="18" CornerRadius="9" Background="White" Margin="3" HorizontalAlignment="Left"/>
+                            </Border>
+                        </StackPanel>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Track" Property="Background" Value="#CA8A04"/>
+                                <Setter TargetName="Thumb" Property="HorizontalAlignment" Value="Right"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style TargetType="DataGrid">
+            <Setter Property="Background" Value="{StaticResource PanelBrush}"/>
+            <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="RowBackground" Value="{StaticResource PanelBrush}"/>
+            <Setter Property="AlternatingRowBackground" Value="#F8FAFC"/>
+            <Setter Property="HorizontalGridLinesBrush" Value="#E2E8F0"/>
+            <Setter Property="VerticalGridLinesBrush" Value="Transparent"/>
+            <Setter Property="HeadersVisibility" Value="Column"/>
+            <Setter Property="GridLinesVisibility" Value="Horizontal"/>
+        </Style>
+
+        <Style TargetType="DataGridColumnHeader">
+            <Setter Property="Background" Value="{StaticResource Panel3Brush}"/>
+            <Setter Property="Foreground" Value="{StaticResource MutedBrush}"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Padding" Value="10,8"/>
+            <Setter Property="BorderBrush" Value="#E2E8F0"/>
+            <Setter Property="BorderThickness" Value="0,0,0,1"/>
+        </Style>
+
+        <Style TargetType="DataGridRow">
+            <Setter Property="MinHeight" Value="38"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="#F8FAFC"/>
+                </Trigger>
+                <Trigger Property="IsSelected" Value="True">
+                    <Setter Property="Background" Value="#FEF9C3"/>
+                    <Setter Property="Foreground" Value="#92400E"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style TargetType="DataGridCell">
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="10,6"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="DataGridCell">
+                        <Border Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter VerticalAlignment="Center"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="StatCardStyle" TargetType="Border">
+            <Setter Property="Background" Value="{StaticResource PanelBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource LineBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="14"/>
+            <Setter Property="Padding" Value="14"/>
+        </Style>
+
+        <Style x:Key="HealthItemStyle" TargetType="Border">
+            <Setter Property="Background" Value="{StaticResource Panel2Brush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource LineBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="10"/>
+            <Setter Property="Padding" Value="12"/>
+            <Setter Property="Margin" Value="0,0,8,8"/>
+        </Style>
+
+        <Style x:Key="ControlFieldBorderStyle" TargetType="Border">
+            <Setter Property="Height" Value="38"/>
+            <Setter Property="Padding" Value="12,0"/>
+            <Setter Property="CornerRadius" Value="11"/>
+            <Setter Property="Background" Value="{StaticResource Panel2Brush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource LineBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+        </Style>
+    </Window.Resources>
+
+    <Grid Background="{StaticResource BgBrush}">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="272"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+
+        <!-- Sidebar -->
+        <Border Grid.Column="0" BorderBrush="#E2E8F0" BorderThickness="0,0,1,0">
+            <Border.Background>
+                <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                    <GradientStop Color="#FFFFFF" Offset="0"/>
+                    <GradientStop Color="#F8FAFC" Offset="1"/>
+                </LinearGradientBrush>
+            </Border.Background>
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <StackPanel Orientation="Horizontal" Margin="18,20,18,16">
+                    <Border Width="44" Height="44" CornerRadius="14" Background="#FFFFFF" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" ClipToBounds="True">
+                        <Image x:Name="BrandIconImage" Stretch="UniformToFill"/>
+                    </Border>
+                    <StackPanel Margin="12,0,0,0" VerticalAlignment="Center">
+                        <TextBlock Text="NaiwaProxy" FontSize="17" FontWeight="Bold"/>
+                        <TextBlock Text="Windows · Xray Client" FontSize="11" Foreground="{StaticResource MutedBrush}" Margin="0,4,0,0"/>
+                    </StackPanel>
+                </StackPanel>
+                <Border Grid.Row="1" Height="36" Margin="14,0,14,10" CornerRadius="10" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" Background="{StaticResource Panel3Brush}">
+                    <Grid>
+                        <TextBlock Text="⌕" Foreground="{StaticResource MutedBrush}" FontSize="13" Margin="12,0" VerticalAlignment="Center"/>
+                        <TextBlock Text="搜索菜单…" Foreground="{StaticResource MutedBrush}" FontSize="12" Margin="34,0,0,0" VerticalAlignment="Center"/>
+                    </Grid>
+                </Border>
+                <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" Margin="10,0,10,12">
+                    <StackPanel>
+                        <Button Style="{StaticResource ActiveNavButtonStyle}" Content="◎  节点管理"/>
+                        <Button Style="{StaticResource NavButtonStyle}" Content="⇅  订阅管理" Click="SubscriptionNavButton_Click"/>
+                    </StackPanel>
+                </ScrollViewer>
+                <Border Grid.Row="3" Margin="12,0,12,14" Padding="14" Background="{StaticResource Panel2Brush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" CornerRadius="14">
+                    <StackPanel>
                         <StackPanel Orientation="Horizontal">
-                            <Button Content="New" Width="68" Height="30" Margin="0,0,6,0" Click="NewButton_Click"/>
-                            <Button Content="Save" Width="68" Height="30" Margin="0,0,6,0" Click="SaveButton_Click"/>
-                            <Button Content="Delete" Width="68" Height="30" Click="DeleteButton_Click"/>
+                            <Ellipse x:Name="SideStatusDot" Width="8" Height="8" Fill="#16A34A" VerticalAlignment="Center"/>
+                            <TextBlock x:Name="SideStatusText" Text="运行中 · 系统代理已开启" FontSize="13" FontWeight="Bold" Margin="8,0,0,0"/>
                         </StackPanel>
-                        <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
-                            <Button x:Name="TestTcpLatencyButton" Content="TCP" Width="68" Height="30" Margin="0,0,6,0" Click="TestTcpLatencyButton_Click"/>
-                            <Button x:Name="TestRealLatencyButton" Content="Real" Width="68" Height="30" Margin="0,0,6,0" Click="TestRealLatencyButton_Click"/>
-                            <Button x:Name="TestAllTcpLatencyButton" Content="All TCP" Width="72" Height="30" Margin="0,0,6,0" Click="TestAllTcpLatencyButton_Click"/>
-                            <Button x:Name="TestAllRealLatencyButton" Content="All Real" Width="72" Height="30" Click="TestAllRealLatencyButton_Click"/>
-                        </StackPanel>
+                        <TextBlock x:Name="SideNodeText" Text="节点：-" Foreground="{StaticResource MutedBrush}" FontSize="12" Margin="0,8,0,0"/>
+                        <TextBlock x:Name="SidePortsText" Text="HTTP 127.0.0.1:10809 · SOCKS 10808" Foreground="{StaticResource MutedBrush}" FontSize="12" Margin="0,3,0,0"/>
+                        <TextBlock x:Name="SideCoreText" Text="Core 未运行" Foreground="{StaticResource MutedBrush}" FontSize="12" Margin="0,3,0,0"/>
+                    </StackPanel>
+                </Border>
+            </Grid>
+        </Border>
+
+        <!-- Main -->
+        <Grid Grid.Column="1">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="72"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+
+            <Border Grid.Row="0" Background="#FFFFFF" BorderBrush="#E2E8F0" BorderThickness="0,0,0,1">
+                <Grid Margin="24,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="节点管理" FontSize="22" FontWeight="Bold" VerticalAlignment="Center"/>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                        <Border Padding="12,6" CornerRadius="8" Background="#F1F5F9" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" Margin="0,0,10,0">
+                            <TextBlock x:Name="TrafficBadgeText" Text="下行 — · 上传 —" FontSize="12" Foreground="#475569"/>
+                        </Border>
+                        <Border x:Name="ProxyToggleBorder" Style="{StaticResource ControlFieldBorderStyle}" BorderBrush="#FBBF24" Background="#FEF9C3">
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <TextBlock Text="启用代理" Foreground="{StaticResource MutedBrush}" FontSize="12" Margin="0,0,10,0"/>
+                                <CheckBox x:Name="ProxyToggle" Style="{StaticResource ToggleSwitchStyle}" Checked="ProxyToggle_Changed" Unchecked="ProxyToggle_Changed"/>
+                                <TextBlock x:Name="ProxyStateText" Text="运行中" Foreground="{StaticResource GreenBrush}" FontSize="12" FontWeight="SemiBold" Margin="10,0,0,0"/>
+                            </StackPanel>
+                        </Border>
                     </StackPanel>
                 </Grid>
             </Border>
 
-            <Border Grid.Column="2" Background="White" BorderBrush="#D8DEE6" BorderThickness="1" CornerRadius="6">
-                <TabControl>
-                    <TabItem Header="Server">
-                        <ScrollViewer VerticalScrollBarVisibility="Auto">
-                            <Grid Margin="18">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="140"/>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="140"/>
-                                    <ColumnDefinition Width="*"/>
-                                </Grid.ColumnDefinitions>
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="Auto"/>
-                                    <RowDefinition Height="Auto"/>
-                                    <RowDefinition Height="Auto"/>
-                                    <RowDefinition Height="Auto"/>
-                                    <RowDefinition Height="Auto"/>
-                                    <RowDefinition Height="Auto"/>
-                                    <RowDefinition Height="Auto"/>
-                                    <RowDefinition Height="Auto"/>
-                                </Grid.RowDefinitions>
+            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                <StackPanel Margin="24,22,24,28">
+                    <!-- Node list module -->
+                    <Border Style="{StaticResource CardBorderStyle}" Margin="0,0,0,16">
+                        <StackPanel>
+                            <!-- Status bar -->
+                            <WrapPanel Margin="0,0,0,14">
+                                <ComboBox x:Name="NodePickerCombo" Width="220" Height="38" Margin="0,0,12,8"
+                                          DisplayMemberPath="PickerDisplay" SelectionChanged="NodePickerCombo_SelectionChanged"/>
+                                <Border MinHeight="38" MinWidth="320" Padding="12,0" CornerRadius="11" Background="{StaticResource Panel2Brush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" Margin="0,0,12,8">
+                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                        <TextBlock x:Name="NodeAddressText" Text="[VMess] -" Foreground="{StaticResource AccentTextBrush}" FontWeight="SemiBold"/>
+                                        <TextBlock Text="当前延迟：" Foreground="{StaticResource MutedBrush}" Margin="12,0,0,0"/>
+                                        <TextBlock x:Name="CurrentTcpLatencyText" Text="TCP -" Foreground="{StaticResource GreenBrush}" FontWeight="Bold"/>
+                                        <Border x:Name="NodeAvailabilityTag" Background="#DCFCE7" BorderBrush="#86EFAC" BorderThickness="1" CornerRadius="999" Padding="8,2" Margin="10,0,0,0">
+                                            <TextBlock x:Name="NodeAvailabilityText" Text="待测速" Foreground="#166534" FontSize="11"/>
+                                        </Border>
+                                    </StackPanel>
+                                </Border>
+                                <Button x:Name="TestTcpLatencyButton" Content="TCP 测速" Style="{StaticResource DarkButtonStyle}" Margin="0,0,8,8" Click="TestTcpLatencyButton_Click"/>
+                                <Button x:Name="SwitchFastestButton" Content="切换最快" Style="{StaticResource DarkButtonStyle}" Margin="0,0,0,8" Click="SwitchFastestButton_Click"/>
+                            </WrapPanel>
 
-                                <TextBlock Grid.Row="0" Grid.Column="0" Text="Name" VerticalAlignment="Center" Margin="0,0,8,10"/>
-                                <TextBox x:Name="NameBox" Grid.Row="0" Grid.Column="1" Grid.ColumnSpan="3" Height="30" Margin="0,0,0,10"/>
+                            <!-- Table -->
+                            <Border BorderBrush="{StaticResource LineBrush}" BorderThickness="1" CornerRadius="12" ClipToBounds="True">
+                                <Border.ContextMenu>
+                                    <ContextMenu>
+                                        <MenuItem Header="新建节点" Click="CtxNewNode_Click"/>
+                                        <MenuItem Header="导入节点…" Click="CtxImportNode_Click"/>
+                                        <MenuItem Header="导出节点…" Click="CtxExportNode_Click"/>
+                                        <Separator/>
+                                        <MenuItem Header="全部 TCP 测速" Click="CtxAllTcpTest_Click"/>
+                                        <Separator/>
+                                        <MenuItem Header="节点维护…" Click="CtxMaintainNode_Click"/>
+                                    </ContextMenu>
+                                </Border.ContextMenu>
+                                <Grid>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="*"/>
+                                    </Grid.RowDefinitions>
+                                    <WrapPanel Margin="14" VerticalAlignment="Center">
+                                        <Grid Width="220" Height="34" Margin="0,0,8,0">
+                                            <TextBox x:Name="SearchBox" TextChanged="SearchBox_TextChanged"/>
+                                            <TextBlock Text="搜索节点名称 / 地址…" Foreground="{StaticResource MutedBrush}" FontSize="12"
+                                                       Margin="12,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding Text, ElementName=SearchBox}" Value="">
+                                                                <Setter Property="Visibility" Value="Visible"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                        </Grid>
+                                        <ComboBox x:Name="ProtocolFilterCombo" Width="120" Margin="0,0,8,0" SelectionChanged="FilterChanged">
+                                            <ComboBoxItem Content="全部协议" IsSelected="True"/>
+                                            <ComboBoxItem Content="VMess"/>
+                                        </ComboBox>
+                                        <ComboBox Width="120" Margin="0,0,8,0" IsEnabled="False">
+                                            <ComboBoxItem Content="全部订阅" IsSelected="True"/>
+                                        </ComboBox>
+                                        <ComboBox Width="120" Margin="0,0,8,0" IsEnabled="False">
+                                            <ComboBoxItem Content="延迟优先" IsSelected="True"/>
+                                        </ComboBox>
+                                        <Button Content="仅可用" Style="{StaticResource DarkButtonStyle}" Margin="0,0,0,0" IsEnabled="False"/>
+                                    </WrapPanel>
+                                    <DataGrid x:Name="ProfilesGrid" Grid.Row="1" AutoGenerateColumns="False" CanUserAddRows="False"
+                                              IsReadOnly="True" SelectionMode="Single" SelectionChanged="ProfilesGrid_SelectionChanged"
+                                              MinHeight="280" MaxHeight="360" PreviewMouseRightButtonDown="ProfilesGrid_PreviewMouseRightButtonDown"
+                                              Margin="14,0,14,14">
+                                        <DataGrid.ContextMenu>
+                                            <ContextMenu>
+                                                <MenuItem Header="设为活动节点" Click="CtxSetActiveNode_Click"/>
+                                                <Separator/>
+                                                <MenuItem Header="编辑节点" Click="CtxEditNode_Click"/>
+                                                <Separator/>
+                                                <MenuItem Header="TCP 测速" Click="CtxTcpTest_Click"/>
+                                                <Separator/>
+                                                <MenuItem Header="删除节点" Click="CtxDeleteNode_Click"/>
+                                            </ContextMenu>
+                                        </DataGrid.ContextMenu>
+                                        <DataGrid.Columns>
+                                            <DataGridTextColumn Header="名称" Binding="{Binding ListDisplayName}" Width="1.4*"/>
+                                            <DataGridTextColumn Header="协议" Binding="{Binding ProtocolDisplay}" Width="72"/>
+                                            <DataGridTextColumn Header="地址" Binding="{Binding Endpoint}" Width="1.6*"/>
+                                            <DataGridTextColumn Header="地区" Binding="{Binding RegionDisplay}" Width="56"/>
+                                            <DataGridTextColumn Header="TCP" Binding="{Binding TcpLatencyDisplay}" Width="72">
+                                                <DataGridTextColumn.ElementStyle>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="HorizontalAlignment" Value="Right"/>
+                                                        <Setter Property="Foreground" Value="{StaticResource MutedBrush}"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsTcpLatencyTesting}" Value="True">
+                                                                <Setter Property="Foreground" Value="#38BDF8"/>
+                                                            </DataTrigger>
+                                                            <DataTrigger Binding="{Binding TcpLatencyDisplay}" Value="Timeout">
+                                                                <Setter Property="Foreground" Value="{StaticResource RedBrush}"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </DataGridTextColumn.ElementStyle>
+                                            </DataGridTextColumn>
+                                            <DataGridTextColumn Header="订阅" Binding="{Binding SubscriptionDisplay}" Width="72"/>
+                                            <DataGridTextColumn Header="更新" Binding="{Binding UpdatedDisplay}" Width="72"/>
+                                        </DataGrid.Columns>
+                                    </DataGrid>
+                                </Grid>
+                            </Border>
 
-                                <TextBlock Grid.Row="1" Grid.Column="0" Text="Address" VerticalAlignment="Center" Margin="0,0,8,10"/>
-                                <TextBox x:Name="AddressBox" Grid.Row="1" Grid.Column="1" Height="30" Margin="0,0,12,10"/>
-                                <TextBlock Grid.Row="1" Grid.Column="2" Text="Port" VerticalAlignment="Center" Margin="0,0,8,10"/>
-                                <TextBox x:Name="PortBox" Grid.Row="1" Grid.Column="3" Height="30" Margin="0,0,0,10"/>
+                            <!-- Embedded controls -->
+                            <Border Margin="0,16,0,0" Padding="0,16,0,0" BorderBrush="#E2E8F0" BorderThickness="0,1,0,0">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="252"/>
+                                        <ColumnDefinition Width="172"/>
+                                        <ColumnDefinition Width="252"/>
+                                        <ColumnDefinition Width="96"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Border Grid.Column="0" Style="{StaticResource ControlFieldBorderStyle}" Margin="0,0,12,8">
+                                        <Grid VerticalAlignment="Center">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="62"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="系统代理" Foreground="{StaticResource MutedBrush}" FontSize="12" VerticalAlignment="Center"/>
+                                            <ComboBox Grid.Column="1" x:Name="SystemProxyCombo" Height="32" BorderThickness="0" Background="Transparent"
+                                                      HorizontalContentAlignment="Left" VerticalContentAlignment="Center"
+                                                      SelectionChanged="SystemProxyCombo_SelectionChanged">
+                                                <ComboBoxItem Content="清除系统代理"/>
+                                                <ComboBoxItem Content="自动配置系统代理" IsSelected="True"/>
+                                                <ComboBoxItem Content="不改变系统代理"/>
+                                                <ComboBoxItem Content="PAC 模式"/>
+                                            </ComboBox>
+                                        </Grid>
+                                    </Border>
+                                    <Border Grid.Column="1" Style="{StaticResource ControlFieldBorderStyle}" Margin="0,0,12,8">
+                                        <Grid VerticalAlignment="Center">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="62"/>
+                                                <ColumnDefinition Width="48"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="启用 Tun" Foreground="{StaticResource MutedBrush}" FontSize="12" VerticalAlignment="Center"/>
+                                            <CheckBox Grid.Column="1" x:Name="TunToggle" Style="{StaticResource ToggleSwitchStyle}" VerticalAlignment="Center" Checked="TunToggle_Changed" Unchecked="TunToggle_Changed"/>
+                                            <TextBlock Grid.Column="2" x:Name="TunStateText" Text="已关闭" Foreground="{StaticResource MutedBrush}" FontSize="12" VerticalAlignment="Center"/>
+                                        </Grid>
+                                    </Border>
+                                    <Border Grid.Column="2" Style="{StaticResource ControlFieldBorderStyle}" Margin="0,0,12,8">
+                                        <Grid VerticalAlignment="Center">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="62"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="路由规则" Foreground="{StaticResource MutedBrush}" FontSize="12" VerticalAlignment="Center"/>
+                                            <ComboBox Grid.Column="1" x:Name="RoutingCombo" Height="32" BorderThickness="0" Background="Transparent"
+                                                      HorizontalContentAlignment="Left" VerticalContentAlignment="Center"
+                                                      SelectionChanged="RoutingCombo_SelectionChanged">
+                                                <ComboBoxItem Content="全局代理"/>
+                                                <ComboBoxItem Content="V4-绕过大陆 (Whitelist)" IsSelected="True"/>
+                                                <ComboBoxItem Content="绕过局域网"/>
+                                                <ComboBoxItem Content="直连模式"/>
+                                                <ComboBoxItem Content="自定义规则"/>
+                                            </ComboBox>
+                                        </Grid>
+                                    </Border>
+                                    <Button Grid.Column="3" x:Name="EditRoutingButton" Content="编辑规则" Style="{StaticResource DarkButtonStyle}" Margin="0,0,0,8" VerticalAlignment="Stretch" Click="EditRoutingButton_Click"/>
+                                </Grid>
+                            </Border>
+                        </StackPanel>
+                    </Border>
 
-                                <TextBlock Grid.Row="2" Grid.Column="0" Text="UUID" VerticalAlignment="Center" Margin="0,0,8,10"/>
-                                <TextBox x:Name="UuidBox" Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="3" Height="30" Margin="0,0,0,10"/>
+                    <!-- Stats -->
+                    <UniformGrid Columns="4" Margin="0,0,0,16">
+                        <Border Style="{StaticResource StatCardStyle}" Margin="0,0,8,0">
+                            <StackPanel>
+                                <TextBlock Text="当前下载" Foreground="{StaticResource MutedBrush}" FontSize="12"/>
+                                <TextBlock x:Name="StatDownloadText" Text="—" FontSize="20" FontWeight="Bold" Margin="0,6,0,0"/>
+                                <TextBlock Text="今日 —" Foreground="{StaticResource MutedBrush}" FontSize="12" Margin="0,4,0,0"/>
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource StatCardStyle}" Margin="0,0,8,0">
+                            <StackPanel>
+                                <TextBlock Text="当前上传" Foreground="{StaticResource MutedBrush}" FontSize="12"/>
+                                <TextBlock x:Name="StatUploadText" Text="—" FontSize="20" FontWeight="Bold" Margin="0,6,0,0"/>
+                                <TextBlock Text="今日 —" Foreground="{StaticResource MutedBrush}" FontSize="12" Margin="0,4,0,0"/>
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource StatCardStyle}" Margin="0,0,8,0">
+                            <StackPanel>
+                                <TextBlock Text="累计流量" Foreground="{StaticResource MutedBrush}" FontSize="12"/>
+                                <TextBlock x:Name="StatMonthText" Text="—" FontSize="20" FontWeight="Bold" Margin="0,6,0,0"/>
+                                <TextBlock Text="重启后保留" Foreground="{StaticResource MutedBrush}" FontSize="12" Margin="0,4,0,0"/>
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource StatCardStyle}">
+                            <StackPanel>
+                                <TextBlock Text="连接 / 流量" Foreground="{StaticResource MutedBrush}" FontSize="12"/>
+                                <TextBlock x:Name="StatConnectionsText" Text="—" FontSize="20" FontWeight="Bold" Margin="0,6,0,0"/>
+                                <TextBlock Text="订阅剩余 —" Foreground="{StaticResource MutedBrush}" FontSize="12" Margin="0,4,0,0"/>
+                            </StackPanel>
+                        </Border>
+                    </UniformGrid>
 
-                                <TextBlock Grid.Row="3" Grid.Column="0" Text="Alter ID" VerticalAlignment="Center" Margin="0,0,8,10"/>
-                                <TextBox x:Name="AlterIdBox" Grid.Row="3" Grid.Column="1" Height="30" Margin="0,0,12,10"/>
-                                <TextBlock Grid.Row="3" Grid.Column="2" Text="Security" VerticalAlignment="Center" Margin="0,0,8,10"/>
-                                <ComboBox x:Name="SecurityBox" Grid.Row="3" Grid.Column="3" Height="30" Margin="0,0,0,10">
-                                    <ComboBoxItem Content="auto"/>
-                                    <ComboBoxItem Content="none"/>
-                                    <ComboBoxItem Content="aes-128-gcm"/>
-                                    <ComboBoxItem Content="chacha20-poly1305"/>
-                                </ComboBox>
-
-                                <TextBlock Grid.Row="4" Grid.Column="0" Text="Network" VerticalAlignment="Center" Margin="0,0,8,10"/>
-                                <ComboBox x:Name="NetworkBox" Grid.Row="4" Grid.Column="1" Height="30" Margin="0,0,12,10">
-                                    <ComboBoxItem Content="tcp"/>
-                                    <ComboBoxItem Content="ws"/>
-                                </ComboBox>
-                                <TextBlock Grid.Row="4" Grid.Column="2" Text="TLS" VerticalAlignment="Center" Margin="0,0,8,10"/>
-                                <ComboBox x:Name="TlsBox" Grid.Row="4" Grid.Column="3" Height="30" Margin="0,0,0,10">
-                                    <ComboBoxItem Content="none"/>
-                                    <ComboBoxItem Content="tls"/>
-                                </ComboBox>
-
-                                <TextBlock Grid.Row="5" Grid.Column="0" Text="Host" VerticalAlignment="Center" Margin="0,0,8,10"/>
-                                <TextBox x:Name="HostBox" Grid.Row="5" Grid.Column="1" Height="30" Margin="0,0,12,10"/>
-                                <TextBlock Grid.Row="5" Grid.Column="2" Text="SNI" VerticalAlignment="Center" Margin="0,0,8,10"/>
-                                <TextBox x:Name="SniBox" Grid.Row="5" Grid.Column="3" Height="30" Margin="0,0,0,10"/>
-
-                                <TextBlock Grid.Row="6" Grid.Column="0" Text="Path" VerticalAlignment="Center" Margin="0,0,8,10"/>
-                                <TextBox x:Name="PathBox" Grid.Row="6" Grid.Column="1" Grid.ColumnSpan="3" Height="30" Margin="0,0,0,10"/>
-
-                                <Button Grid.Row="7" Grid.Column="1" Content="Save Profile" Width="130" Height="34" HorizontalAlignment="Left" Click="SaveButton_Click"/>
-                            </Grid>
-                        </ScrollViewer>
-                    </TabItem>
-
-                    <TabItem Header="Import">
-                        <Grid Margin="18">
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="*"/>
-                                <RowDefinition Height="Auto"/>
-                            </Grid.RowDefinitions>
-                            <TextBlock Text="VMess sharing link" FontSize="15" FontWeight="SemiBold" Foreground="#111827" Margin="0,0,0,10"/>
-                            <TextBox x:Name="ImportBox" Grid.Row="1" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"/>
-                            <Button Grid.Row="2" Content="Import VMess" Width="130" Height="34" HorizontalAlignment="Left" Margin="0,12,0,0" Click="ImportButton_Click"/>
-                        </Grid>
-                    </TabItem>
-
-                    <TabItem Header="Runtime">
-                        <Grid Margin="18">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="150"/>
-                                <ColumnDefinition Width="240"/>
-                                <ColumnDefinition Width="150"/>
-                                <ColumnDefinition Width="240"/>
-                            </Grid.ColumnDefinitions>
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="Auto"/>
-                            </Grid.RowDefinitions>
-
-                            <TextBlock Grid.Row="0" Grid.Column="0" Text="SOCKS Port" VerticalAlignment="Center" Margin="0,0,8,10"/>
-                            <TextBox x:Name="SocksPortBox" Grid.Row="0" Grid.Column="1" Height="30" Margin="0,0,12,10"/>
-                            <TextBlock Grid.Row="0" Grid.Column="2" Text="HTTP Port" VerticalAlignment="Center" Margin="0,0,8,10"/>
-                            <TextBox x:Name="HttpPortBox" Grid.Row="0" Grid.Column="3" Height="30" Margin="0,0,0,10"/>
-
-                            <TextBlock Grid.Row="1" Grid.Column="0" Text="Core EXE" VerticalAlignment="Center" Margin="0,0,8,10"/>
-                            <TextBox x:Name="CoreExeBox" Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="3" Height="30" Margin="0,0,0,10"/>
-
-                            <Button Grid.Row="2" Grid.Column="1" Content="Save Runtime" Width="130" Height="34" HorizontalAlignment="Left" Click="SaveRuntimeButton_Click"/>
-                        </Grid>
-                    </TabItem>
-                </TabControl>
-            </Border>
+                    <!-- Health -->
+                    <Border Style="{StaticResource CardBorderStyle}">
+                        <StackPanel>
+                            <TextBlock Text="健康概览" FontSize="15" FontWeight="Bold" Margin="0,0,0,12"/>
+                            <UniformGrid Columns="2">
+                                <Border Style="{StaticResource HealthItemStyle}">
+                                    <Grid>
+                                        <TextBlock Text="Core 文件" HorizontalAlignment="Left"/>
+                                        <TextBlock x:Name="HealthCoreText" Text="检测中" HorizontalAlignment="Right" Foreground="{StaticResource GreenBrush}"/>
+                                    </Grid>
+                                </Border>
+                                <Border Style="{StaticResource HealthItemStyle}" Margin="0,0,0,8">
+                                    <Grid>
+                                        <TextBlock Text="geoip / geosite" HorizontalAlignment="Left"/>
+                                        <TextBlock x:Name="HealthGeoText" Text="检测中" HorizontalAlignment="Right" Foreground="{StaticResource GreenBrush}"/>
+                                    </Grid>
+                                </Border>
+                                <Border Style="{StaticResource HealthItemStyle}">
+                                    <Grid>
+                                        <TextBlock Text="端口占用" HorizontalAlignment="Left"/>
+                                        <TextBlock x:Name="HealthPortText" Text="检测中" HorizontalAlignment="Right" Foreground="{StaticResource GreenBrush}"/>
+                                    </Grid>
+                                </Border>
+                                <Border Style="{StaticResource HealthItemStyle}" Margin="0,0,0,8">
+                                    <Grid>
+                                        <TextBlock Text="系统代理一致" HorizontalAlignment="Left"/>
+                                        <TextBlock x:Name="HealthProxyText" Text="检测中" HorizontalAlignment="Right" Foreground="{StaticResource GreenBrush}"/>
+                                    </Grid>
+                                </Border>
+                                <Border Style="{StaticResource HealthItemStyle}">
+                                    <Grid>
+                                        <TextBlock Text="当前节点连通" HorizontalAlignment="Left"/>
+                                        <TextBlock x:Name="HealthNodeText" Text="待测速" HorizontalAlignment="Right" Foreground="{StaticResource GreenBrush}"/>
+                                    </Grid>
+                                </Border>
+                                <Border Style="{StaticResource HealthItemStyle}" Margin="0,0,0,8">
+                                    <Grid>
+                                        <TextBlock Text="订阅状态" HorizontalAlignment="Left"/>
+                                        <TextBlock x:Name="HealthSubText" Text="未配置" HorizontalAlignment="Right" Foreground="{StaticResource YellowBrush}"/>
+                                    </Grid>
+                                </Border>
+                                <Border Style="{StaticResource HealthItemStyle}">
+                                    <Grid>
+                                        <TextBlock Text="TUN 驱动" HorizontalAlignment="Left"/>
+                                        <TextBlock x:Name="HealthTunText" Text="检测中" HorizontalAlignment="Right" Foreground="{StaticResource YellowBrush}"/>
+                                    </Grid>
+                                </Border>
+                                <Border Style="{StaticResource HealthItemStyle}" Margin="0,0,0,8">
+                                    <Grid>
+                                        <TextBlock Text="PAC 服务" HorizontalAlignment="Left"/>
+                                        <TextBlock Text="未启用" HorizontalAlignment="Right" Foreground="{StaticResource YellowBrush}"/>
+                                    </Grid>
+                                </Border>
+                            </UniformGrid>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
         </Grid>
-
-        <TextBlock Grid.Row="2" Text="Core folder: application directory\cores. Generated config: %APPDATA%\NaiwaProxy\config.json"
-                   Foreground="#6B7280" FontSize="12" Margin="0,12,0,0"/>
     </Grid>
 </Window>

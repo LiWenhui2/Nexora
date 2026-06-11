@@ -7,11 +7,8 @@ namespace NaiwaProxy.Models;
 public sealed class VmessProfile : INotifyPropertyChanged
 {
     private bool _isTcpLatencyTesting;
-    private bool _isRealLatencyTesting;
     private bool _tcpLatencyTested;
-    private bool _realLatencyTested;
     private int? _tcpLatencyMs;
-    private int? _realLatencyMs;
 
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
     public string Name { get; set; } = "New VMess Server";
@@ -27,19 +24,14 @@ public sealed class VmessProfile : INotifyPropertyChanged
     public string Tls { get; set; } = "";
     public string Sni { get; set; } = "";
     public string Remark { get; set; } = "";
+    public string SubscriptionName { get; set; } = "";
+    public DateTime? SubscriptionUpdatedAt { get; set; }
 
     [JsonIgnore]
     public bool IsTcpLatencyTesting
     {
         get => _isTcpLatencyTesting;
         private set => SetLatencyTestingField(ref _isTcpLatencyTesting, value, nameof(TcpLatencyDisplay));
-    }
-
-    [JsonIgnore]
-    public bool IsRealLatencyTesting
-    {
-        get => _isRealLatencyTesting;
-        private set => SetLatencyTestingField(ref _isRealLatencyTesting, value, nameof(RealLatencyDisplay));
     }
 
     [JsonIgnore]
@@ -50,23 +42,85 @@ public sealed class VmessProfile : INotifyPropertyChanged
     }
 
     [JsonIgnore]
-    public int? RealLatencyMs
-    {
-        get => _realLatencyMs;
-        private set => SetLatencyValueField(ref _realLatencyMs, value, nameof(RealLatencyDisplay));
-    }
-
-    [JsonIgnore]
     public string TcpLatencyDisplay => FormatLatencyDisplay(IsTcpLatencyTesting, _tcpLatencyTested, TcpLatencyMs);
 
+    private bool _isActive;
+
     [JsonIgnore]
-    public string RealLatencyDisplay => FormatLatencyDisplay(IsRealLatencyTesting, _realLatencyTested, RealLatencyMs);
+    public bool IsActive => _isActive;
 
     [JsonIgnore]
     public string DisplayName => string.IsNullOrWhiteSpace(Name) ? $"{Address}:{Port}" : Name;
 
     [JsonIgnore]
+    public string ListDisplayName => IsActive ? $"★ {DisplayName}" : DisplayName;
+
+    [JsonIgnore]
     public string Endpoint => $"{Address}:{Port}";
+
+    [JsonIgnore]
+    public string ProtocolDisplay => "VMess";
+
+    [JsonIgnore]
+    public string RegionDisplay => "-";
+
+    [JsonIgnore]
+    public string SubscriptionDisplay => string.IsNullOrWhiteSpace(SubscriptionName) ? "手动" : SubscriptionName;
+
+    [JsonIgnore]
+    public string UpdatedDisplay
+    {
+        get
+        {
+            if (SubscriptionUpdatedAt is null)
+            {
+                return "-";
+            }
+
+            var elapsed = DateTime.Now - SubscriptionUpdatedAt.Value;
+            if (elapsed.TotalMinutes < 1)
+            {
+                return "刚刚";
+            }
+
+            if (elapsed.TotalHours < 1)
+            {
+                return $"{(int)elapsed.TotalMinutes} 分钟前";
+            }
+
+            if (elapsed.TotalDays < 1)
+            {
+                return $"{(int)elapsed.TotalHours} 小时前";
+            }
+
+            return $"{(int)elapsed.TotalDays} 天前";
+        }
+    }
+
+    [JsonIgnore]
+    public string PickerDisplay
+    {
+        get
+        {
+            var tls = string.IsNullOrWhiteSpace(Tls) ? "" : " · TLS";
+            return $"{DisplayName} · {ProtocolDisplay}{tls}";
+        }
+    }
+
+    [JsonIgnore]
+    public string NodeAddressDisplay => $"[{ProtocolDisplay}] {Endpoint}";
+
+    public void SetActive(bool value)
+    {
+        if (_isActive == value)
+        {
+            return;
+        }
+
+        _isActive = value;
+        OnPropertyChanged(nameof(IsActive));
+        OnPropertyChanged(nameof(ListDisplayName));
+    }
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -83,33 +137,14 @@ public sealed class VmessProfile : INotifyPropertyChanged
         OnPropertyChanged(nameof(TcpLatencyDisplay));
     }
 
-    public void BeginRealLatencyTest()
-    {
-        IsRealLatencyTesting = true;
-    }
-
-    public void CompleteRealLatencyTest(int? latencyMs)
-    {
-        IsRealLatencyTesting = false;
-        _realLatencyTested = true;
-        RealLatencyMs = latencyMs;
-        OnPropertyChanged(nameof(RealLatencyDisplay));
-    }
-
     public void ResetLatency()
     {
         _tcpLatencyTested = false;
-        _realLatencyTested = false;
         _tcpLatencyMs = null;
-        _realLatencyMs = null;
         _isTcpLatencyTesting = false;
-        _isRealLatencyTesting = false;
         OnPropertyChanged(nameof(IsTcpLatencyTesting));
-        OnPropertyChanged(nameof(IsRealLatencyTesting));
         OnPropertyChanged(nameof(TcpLatencyMs));
-        OnPropertyChanged(nameof(RealLatencyMs));
         OnPropertyChanged(nameof(TcpLatencyDisplay));
-        OnPropertyChanged(nameof(RealLatencyDisplay));
     }
 
     private void SetLatencyTestingField(ref bool field, bool value, string displayPropertyName)

@@ -1,0 +1,1688 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>NaiwaProxy · Main UI Preview</title>
+  <style>
+    :root {
+      --bg: #0b1020;
+      --side: #080d18;
+      --panel: #111827;
+      --panel2: #1a2336;
+      --panel3: #0f172a;
+      --line: #243047;
+      --text: #f1f5f9;
+      --muted: #94a3b8;
+      --accent: #facc15;
+      --accent-soft: rgba(250, 204, 21, .12);
+      --accent-text: #fde68a;
+      --blue: #38bdf8;
+      --green: #4ade80;
+      --red: #f87171;
+      --yellow: #fbbf24;
+      --shadow: 0 18px 40px rgba(0,0,0,.28);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: "Segoe UI", "Microsoft YaHei UI", sans-serif;
+    }
+    button, input, select { font: inherit; }
+    .app {
+      height: 100vh;
+      display: grid;
+      grid-template-columns: 272px 1fr;
+      min-width: 1240px;
+      min-height: 760px;
+    }
+    .side {
+      background: linear-gradient(180deg, #0a0f1a 0%, var(--side) 100%);
+      border-right: 1px solid #1e293b;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 20px 18px 16px;
+      border-bottom: 1px solid rgba(255,255,255,.04);
+    }
+    .logo {
+      width: 44px;
+      height: 44px;
+      border-radius: 14px;
+      overflow: hidden;
+      flex: none;
+      box-shadow: 0 8px 20px rgba(245, 158, 11, .22);
+      background: #fff;
+    }
+    .logo img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+    .brand h1 { margin: 0; font-size: 17px; font-weight: 700; }
+    .brand p { margin: 4px 0 0; font-size: 11px; color: var(--muted); }
+    .nav-search {
+      margin: 14px 14px 8px;
+      position: relative;
+    }
+    .nav-search input {
+      width: 100%;
+      height: 36px;
+      border-radius: 10px;
+      border: 1px solid var(--line);
+      background: #0f172a;
+      color: var(--text);
+      padding: 0 12px 0 34px;
+      outline: none;
+    }
+    .nav-search span {
+      position: absolute;
+      left: 11px;
+      top: 9px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .nav {
+      flex: 1;
+      overflow: auto;
+      padding: 4px 10px 12px;
+    }
+    .root, .group-title, .child {
+      width: 100%;
+      border: 0;
+      text-align: left;
+      cursor: pointer;
+      background: transparent;
+    }
+    .root, .group-title {
+      height: 38px;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      padding: 0 12px;
+      color: #cbd5e1;
+      margin: 2px 0;
+    }
+    .root.active, .child.active {
+      background: var(--accent-soft);
+      color: var(--accent-text);
+      font-weight: 700;
+    }
+    .group-title {
+      font-size: 13px;
+      font-weight: 600;
+      justify-content: space-between;
+      color: #cbd5e1;
+      letter-spacing: .01em;
+    }
+    .group-title.expanded {
+      color: var(--accent-text);
+      background: rgba(255,255,255,.03);
+    }
+    .group-title .chevron {
+      color: var(--muted);
+      font-size: 11px;
+      transition: transform .18s ease;
+    }
+    .group-title.expanded .chevron { transform: rotate(180deg); color: var(--accent-text); }
+    .group-title .left { display: flex; gap: 8px; align-items: center; }
+    .group-title:hover, .root:hover, .child:hover { background: rgba(255,255,255,.04); }
+    .children.closed { display: none; }
+    .child {
+      height: 32px;
+      margin: 1px 0 1px 12px;
+      padding: 0 14px;
+      border-radius: 9px;
+      color: #94a3b8;
+      font-size: 12px;
+    }
+    .side-status {
+      margin: 0 12px 14px;
+      background: var(--panel2);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 14px;
+    }
+    .dot {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 99px;
+      background: var(--green);
+      margin-right: 8px;
+      box-shadow: 0 0 0 4px rgba(74, 222, 128, .12);
+    }
+    .main {
+      display: grid;
+      grid-template-rows: 72px 1fr;
+      min-width: 0;
+    }
+    .top {
+      border-bottom: 1px solid #1e293b;
+      padding: 0 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: rgba(8, 13, 24, .72);
+      backdrop-filter: blur(10px);
+    }
+    .top h2 { margin: 0; font-size: 22px; font-weight: 700; }
+    .top p { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
+    .tools { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+    .top-proxy-toggle {
+      min-width: 132px;
+      height: 38px;
+      margin: 0;
+    }
+    .pill, .badge {
+      border-radius: 999px;
+      padding: 6px 12px;
+      font-size: 12px;
+      border: 1px solid transparent;
+      white-space: nowrap;
+    }
+    .pill.ok { background: rgba(34,197,94,.12); border-color: rgba(34,197,94,.25); color: #bbf7d0; }
+    .pill.warn { background: rgba(251,191,36,.12); border-color: rgba(251,191,36,.25); color: #fde68a; }
+    .badge { background: #172033; border-color: var(--line); color: #cbd5e1; }
+    .select, .button {
+      height: 36px;
+      border-radius: 10px;
+      border: 1px solid var(--line);
+      background: #0f172a;
+      color: #e2e8f0;
+      padding: 0 14px;
+      cursor: pointer;
+    }
+    .button.primary {
+      background: linear-gradient(135deg, #facc15, #f59e0b);
+      border-color: #fbbf24;
+      color: #111827;
+      font-weight: 700;
+    }
+    .button.ghost { background: transparent; }
+    .button.danger { background: rgba(248,113,113,.12); border-color: rgba(248,113,113,.35); color: #fecaca; }
+    .button:hover { filter: brightness(1.06); }
+    .content {
+      padding: 22px 24px 28px;
+      overflow: auto;
+    }
+    .grid2 { display: grid; grid-template-columns: 1.05fr .95fr; gap: 16px; margin-bottom: 16px; }
+    .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 16px; }
+    .grid4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 16px; }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 18px;
+      box-shadow: var(--shadow);
+    }
+    .card.compact { padding: 14px 16px; }
+    .section-title { font-size: 15px; font-weight: 700; color: #e2e8f0; margin-bottom: 4px; }
+    .muted { color: var(--muted); font-size: 12px; line-height: 1.65; }
+    .hero {
+      display: grid;
+      grid-template-columns: 1fr 220px;
+      gap: 18px;
+      align-items: stretch;
+    }
+    .title-large { font-size: 28px; font-weight: 800; margin: 8px 0 6px; }
+    .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 18px; }
+    .stat-box {
+      background: var(--panel2);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 12px;
+    }
+    .stat-box b { display: block; font-size: 20px; margin-bottom: 4px; }
+    .actions {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
+      margin-top: 14px;
+    }
+    .actions.single { grid-template-columns: 1fr; align-content: center; }
+    .kpis .small, .small {
+      background: var(--panel2);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 14px;
+    }
+    .small b { display: block; font-size: 24px; margin-top: 6px; }
+    .list { display: grid; gap: 8px; margin-top: 14px; }
+    .item {
+      background: var(--panel2);
+      border: 1px solid var(--line);
+      border-radius: 11px;
+      padding: 11px 12px;
+      font-size: 13px;
+      color: #cbd5e1;
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+    }
+    .item .left { display: flex; gap: 10px; align-items: center; min-width: 0; }
+    .item .left:before {
+      content: "";
+      width: 7px;
+      height: 7px;
+      border-radius: 99px;
+      background: var(--accent);
+      flex: none;
+    }
+    .item .meta { color: var(--muted); font-size: 12px; white-space: nowrap; }
+    .tag {
+      font-size: 11px;
+      padding: 3px 8px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      color: #cbd5e1;
+      background: #0f172a;
+    }
+    .tag.green { color: #86efac; border-color: rgba(34,197,94,.3); background: rgba(34,197,94,.08); }
+    .tag.yellow { color: #fde68a; border-color: rgba(251,191,36,.3); background: rgba(251,191,36,.08); }
+    .tag.red { color: #fca5a5; border-color: rgba(248,113,113,.3); background: rgba(248,113,113,.08); }
+    .table-wrap { overflow: auto; margin-top: 14px; border: 1px solid var(--line); border-radius: 12px; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid rgba(255,255,255,.04); }
+    th { color: #94a3b8; font-weight: 600; background: #0f172a; position: sticky; top: 0; }
+    tr:hover td { background: rgba(255,255,255,.02); }
+    tr.active td { background: var(--accent-soft); }
+    .toolbar {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 14px;
+      align-items: center;
+    }
+    .toolbar input, .toolbar select {
+      height: 34px;
+      border-radius: 9px;
+      border: 1px solid var(--line);
+      background: #0f172a;
+      color: var(--text);
+      padding: 0 10px;
+      min-width: 140px;
+    }
+    .form-grid {
+      display: grid;
+      grid-template-columns: 120px 1fr 120px 1fr;
+      gap: 12px 14px;
+      margin-top: 14px;
+      align-items: center;
+    }
+    .form-grid label { color: #94a3b8; font-size: 12px; }
+    .form-grid input, .form-grid select, .form-grid textarea {
+      height: 34px;
+      border-radius: 9px;
+      border: 1px solid var(--line);
+      background: #0f172a;
+      color: var(--text);
+      padding: 0 10px;
+      width: 100%;
+    }
+    .form-grid textarea { min-height: 88px; padding: 10px; resize: vertical; }
+    .form-grid .span2 { grid-column: span 3; }
+    .form-grid .span4 { grid-column: 1 / -1; }
+    .toggle-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 11px 0;
+      border-bottom: 1px solid rgba(255,255,255,.04);
+      font-size: 13px;
+    }
+    .toggle-row:last-child { border-bottom: 0; }
+    .switch {
+      width: 42px;
+      height: 24px;
+      border-radius: 999px;
+      background: #334155;
+      position: relative;
+    }
+    .switch.on { background: #ca8a04; }
+    .switch:after {
+      content: "";
+      position: absolute;
+      top: 3px; left: 3px;
+      width: 18px; height: 18px;
+      border-radius: 50%;
+      background: white;
+    }
+    .switch.on:after { left: 21px; }
+    .log-panel {
+      margin-top: 14px;
+      background: #020617;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 12px;
+      font-family: Consolas, "Cascadia Mono", monospace;
+      font-size: 12px;
+      line-height: 1.6;
+      color: #cbd5e1;
+      min-height: 220px;
+      max-height: 320px;
+      overflow: auto;
+      white-space: pre-wrap;
+    }
+    .health-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+      margin-top: 14px;
+    }
+    .health {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 12px;
+      border-radius: 10px;
+      background: var(--panel2);
+      border: 1px solid var(--line);
+      font-size: 12px;
+    }
+    .progress {
+      height: 8px;
+      background: #0f172a;
+      border-radius: 999px;
+      overflow: hidden;
+      margin-top: 10px;
+    }
+    .progress > i {
+      display: block;
+      height: 100%;
+      background: linear-gradient(90deg, #facc15, #f59e0b);
+      border-radius: 999px;
+    }
+    .empty-note {
+      border: 1px dashed #334155;
+      border-radius: 12px;
+      padding: 16px;
+      color: #94a3b8;
+      font-size: 13px;
+      line-height: 1.7;
+      margin-top: 14px;
+    }
+    .chart-bars {
+      display: flex;
+      align-items: flex-end;
+      gap: 8px;
+      height: 120px;
+      margin-top: 16px;
+    }
+    .chart-bars i {
+      flex: 1;
+      display: block;
+      border-radius: 8px 8px 4px 4px;
+      background: linear-gradient(180deg, rgba(250,204,21,.85), rgba(245,158,11,.35));
+      min-height: 18px;
+    }
+    .dash-controls {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 16px 18px;
+      margin-bottom: 16px;
+      box-shadow: var(--shadow);
+    }
+    .dash-controls.embedded {
+      margin: 16px 0 0;
+      padding: 16px 0 0;
+      background: transparent;
+      border: 0;
+      border-radius: 0;
+      box-shadow: none;
+      border-top: 1px solid rgba(255,255,255,.06);
+    }
+    .control-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: center;
+    }
+    .control-row + .control-row {
+      margin-top: 14px;
+      padding-top: 14px;
+      border-top: 1px solid rgba(255,255,255,.05);
+    }
+    .control-field {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-height: 38px;
+      padding: 0 12px;
+      border-radius: 11px;
+      border: 1px solid var(--line);
+      background: var(--panel2);
+      font-size: 13px;
+      color: #e2e8f0;
+    }
+    .control-field label {
+      color: var(--muted);
+      font-size: 12px;
+      white-space: nowrap;
+    }
+    .control-field select {
+      height: 32px;
+      border: 0;
+      background: transparent;
+      color: #f8fafc;
+      outline: none;
+      min-width: 168px;
+      cursor: pointer;
+    }
+    .control-field.grow { flex: 1; min-width: 220px; }
+    .ctx-menu {
+      position: fixed;
+      z-index: 1000;
+      min-width: 196px;
+      padding: 6px;
+      border-radius: 12px;
+      border: 1px solid var(--line);
+      background: #111827;
+      box-shadow: 0 16px 40px rgba(0,0,0,.45);
+    }
+    .ctx-menu.hidden { display: none; }
+    .ctx-item {
+      width: 100%;
+      border: 0;
+      background: transparent;
+      color: #e2e8f0;
+      text-align: left;
+      padding: 8px 12px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 13px;
+    }
+    .ctx-item:hover { background: rgba(255,255,255,.06); }
+    .ctx-item.danger { color: #fca5a5; }
+    .ctx-item.disabled { color: var(--muted); cursor: default; }
+    .ctx-item.disabled:hover { background: transparent; }
+    .ctx-sep { height: 1px; margin: 4px 8px; background: var(--line); }
+    .ctx-hint {
+      padding: 6px 12px 4px;
+      font-size: 11px;
+      color: var(--muted);
+    }
+    .modal {
+      position: fixed;
+      inset: 0;
+      z-index: 900;
+      background: rgba(2,6,23,.72);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    .modal.hidden { display: none; }
+    .modal-panel {
+      width: min(920px, 96vw);
+      max-height: 88vh;
+      overflow: auto;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      box-shadow: var(--shadow);
+    }
+    .modal-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 18px;
+      border-bottom: 1px solid var(--line);
+    }
+    .modal-head h3 { margin: 0; font-size: 16px; }
+    .modal-close {
+      width: 32px;
+      height: 32px;
+      border: 0;
+      border-radius: 8px;
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 20px;
+      line-height: 1;
+    }
+    .modal-close:hover { background: rgba(255,255,255,.06); color: #fff; }
+    .modal-body { padding: 16px 18px 18px; }
+    .modal-body .card { box-shadow: none; margin: 0; }
+    .node-table-area tbody tr { cursor: context-menu; }
+    .control-field.system-proxy {
+      min-width: 220px;
+      padding-right: 8px;
+    }
+    .control-field.system-proxy select {
+      min-width: 188px;
+      flex: 1;
+    }
+    .control-field.proxy-switch {
+      min-width: 132px;
+      border-color: rgba(250, 204, 21, .28);
+      background: rgba(250, 204, 21, .08);
+    }
+    .control-field.proxy-switch .state {
+      font-size: 12px;
+      color: #86efac;
+      font-weight: 600;
+    }
+    .control-field.proxy-switch.off {
+      border-color: var(--line);
+      background: var(--panel2);
+    }
+    .control-field.proxy-switch.off .state { color: var(--muted); font-weight: 500; }
+    .control-field[data-switch] { cursor: pointer; user-select: none; }
+    .control-field[data-switch] select { cursor: default; }
+    .control-actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .latency-banner {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: center;
+      flex: 1;
+      min-width: 280px;
+      font-size: 13px;
+    }
+    .latency-banner .node-id {
+      color: #fde68a;
+      font-weight: 600;
+    }
+    .latency-banner .latency-val {
+      color: #86efac;
+      font-weight: 700;
+    }
+    .latency-banner .latency-val.warn { color: #fde68a; }
+    .latency-banner .latency-val.bad { color: #fca5a5; }
+    .node-picker {
+      min-width: 180px;
+      height: 38px;
+      border-radius: 11px;
+      border: 1px solid var(--line);
+      background: var(--panel2);
+      color: #f8fafc;
+      padding: 0 12px;
+    }
+    .node-status-bar {
+      margin-bottom: 14px;
+    }
+    @media (max-width: 1400px) {
+      .grid4 { grid-template-columns: repeat(2, 1fr); }
+      .stats { grid-template-columns: repeat(2, 1fr); }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="side">
+      <div class="brand">
+        <div class="logo"><img src="assets/app-icon.png" alt="NaiwaProxy" /></div>
+        <div>
+          <h1>NaiwaProxy</h1>
+          <p>Windows · Xray Client</p>
+        </div>
+      </div>
+      <div class="nav-search">
+        <span>⌕</span>
+        <input id="navFilter" placeholder="搜索菜单…" />
+      </div>
+      <div class="nav" id="nav"></div>
+      <div class="side-status">
+        <div style="font-size:13px;font-weight:700"><span class="dot"></span>运行中 · 系统代理已开启</div>
+        <div class="muted" style="margin-top:8px">节点：香港 01 · VMess</div>
+        <div class="muted">HTTP 127.0.0.1:10809 · SOCKS 10808</div>
+        <div class="muted">Core PID 14328 · 已运行 2h 18m</div>
+      </div>
+    </aside>
+    <main class="main">
+      <header class="top">
+        <div>
+          <h2 id="title">节点管理</h2>
+        </div>
+        <div class="tools" id="topTools">
+          <div class="badge" id="topTraffic">↓ 18.4 MB/s · ↑ 820 KB/s</div>
+          <div class="top-proxy-toggle control-field proxy-switch" data-switch>
+            <label>启用代理</label>
+            <div class="switch on"></div>
+            <span class="state">运行中</span>
+          </div>
+        </div>
+      </header>
+      <section class="content" id="content"></section>
+    </main>
+  </div>
+  <div id="ctxMenu" class="ctx-menu hidden"></div>
+  <div id="modal" class="modal hidden">
+    <div class="modal-panel">
+      <div class="modal-head">
+        <h3 id="modalTitle"></h3>
+        <button class="modal-close" id="modalClose" type="button">×</button>
+      </div>
+      <div id="modalBody" class="modal-body"></div>
+    </div>
+  </div>
+<script>
+const navGroups = [
+  { icon: "◎", title: "节点管理", items: [["node-list", "节点管理"]], root: true },
+  { icon: "⇅", title: "订阅管理", items: [
+    ["sub-list","订阅列表"],["sub-update","订阅更新"],["sub-parse","订阅解析"],["sub-policy","订阅策略"]
+  ]},
+  { icon: "◌", title: "代理模式", items: [
+    ["proxy-system","系统代理"],["proxy-tun","TUN 模式"],["proxy-pac","PAC 模式"],["proxy-port","代理端口"]
+  ]},
+  { icon: "⌁", title: "路由规则", items: [
+    ["rule-mode","规则模式"],["rule-list","规则列表"],["rule-action","规则操作"],["rule-set","规则集"]
+  ]},
+  { icon: "▦", title: "分组与策略", items: [
+    ["group-node","节点分组"],["group-policy","策略组"],["group-auto","自动切换"]
+  ]},
+  { icon: "◈", title: "Core 管理", items: [
+    ["core-type","Core 类型"],["core-file","Core 文件"],["core-run","Core 运行"],["core-config","配置生成"]
+  ]},
+  { icon: "≡", title: "日志与诊断", items: [
+    ["log-run","运行日志"],["log-viewer","日志查看器"],["diagnosis","诊断工具"]
+  ]},
+  { icon: "DNS", title: "DNS 设置", items: [
+    ["dns-server","DNS 服务器"],["dns-policy","DNS 策略"],["dns-advanced","DNS 高级选项"]
+  ]},
+  { icon: "⌘", title: "安全与隐私", items: [
+    ["safe-data","本地数据保护"],["safe-permission","权限控制"],["safe-privacy","隐私选项"]
+  ]},
+  { icon: "⚙", title: "设置", items: [
+    ["setting-general","常规设置"],["setting-network","网络设置"],["setting-core","Core 设置"],["setting-storage","存储设置"]
+  ]},
+  { icon: "◖", title: "托盘菜单", items: [
+    ["tray-status","托盘状态"],["tray-action","托盘操作"],["tray-nodes","托盘节点列表"]
+  ]},
+  { icon: "↻", title: "更新与安装", items: [
+    ["update-app","应用更新"],["update-core","Core 更新"],["update-migrate","数据迁移"],["update-installer","安装程序优化"]
+  ]},
+  { icon: "◇", title: "用户体验", items: [
+    ["ux-layout","界面布局"],["ux-theme","主题"],["ux-interaction","交互体验"],["ux-i18n","国际化"]
+  ]},
+  { icon: "☁", title: "备份与同步", items: [
+    ["backup-local","本地备份"],["backup-cloud","云同步"],["backup-import-export","导入导出"]
+  ]},
+  { icon: "{}", title: "高级功能", items: [
+    ["advanced-custom","自定义配置"],["advanced-script","脚本与自动化"],["advanced-control","外部控制"],["advanced-dev","开发者工具"]
+  ]},
+  { icon: "?", title: "关于", items: [
+    ["about-app","应用信息"],["about-license","许可信息"],["about-support","支持信息"]
+  ]}
+];
+
+const pages = {
+  "node-list": {
+    title: "节点管理",
+    subtitle: "节点列表、流量统计与健康概览",
+    layout: "node-management"
+  },
+  "node-edit": { title: "节点编辑", subtitle: "VMess / VLESS / Trojan / SS 等协议参数", layout: "node-form" },
+  "node-import": { title: "节点导入", subtitle: "分享链接、文件、二维码与第三方配置", layout: "import" },
+  "node-export": { title: "节点导出", subtitle: "分享链接、二维码与配置导出", layout: "export" },
+  "node-speed": { title: "节点测速", subtitle: "TCP / 真实延迟 / 下载测速", layout: "speed" },
+  "node-maintain": { title: "节点维护", subtitle: "去重、清理与批量维护", layout: "maintain" },
+  "sub-list": { title: "订阅列表", subtitle: "订阅来源、流量与到期信息", layout: "subscription" },
+  "sub-update": { title: "订阅更新", subtitle: "手动/自动更新与失败重试", layout: "sub-update" },
+  "sub-parse": { title: "订阅解析", subtitle: "Base64 / Clash / Sing-box 等格式", layout: "cards", cards: [
+    { t: "Base64 节点订阅", d: "已识别 78 个 VMess / 12 个 VLESS" },
+    { t: "Clash YAML", d: "支持 proxies + proxy-groups 解析" },
+    { t: "用户信息 Header", d: "upload=12GB · total=200GB · expire=2026-08-01" }
+  ]},
+  "sub-policy": { title: "订阅策略", subtitle: "更新时保留标签、去重与分组策略", layout: "toggles", toggles: [
+    ["保留手动修改的节点名称", true], ["保留用户标签", true], ["删除订阅中已不存在节点", false],
+    ["更新后自动去重", true], ["更新后按地区分组", true]
+  ]},
+  "proxy-system": { title: "系统代理", subtitle: "Windows HTTP 代理开关与恢复", layout: "proxy-system" },
+  "proxy-tun": { title: "TUN 模式", subtitle: "虚拟网卡、路由与 DNS 劫持", layout: "tun" },
+  "proxy-pac": { title: "PAC 模式", subtitle: "PAC 文件生成与本地服务", layout: "pac" },
+  "proxy-port": { title: "代理端口", subtitle: "HTTP / SOCKS / Mixed 入站配置", layout: "ports" },
+  "rule-mode": { title: "规则模式", subtitle: "全局 / 绕过大陆 / 自定义等模式", layout: "rule-mode" },
+  "rule-list": { title: "规则列表", subtitle: "域名、IP、GeoSite、进程名规则", layout: "rule-table" },
+  "rule-action": { title: "规则操作", subtitle: "新增、排序、导入导出与命中测试", layout: "cards", cards: [
+    { t: "规则优先级", d: "当前 18 条规则，可拖拽调整顺序" },
+    { t: "命中测试", d: "google.com → 代理 · baidu.com → 直连" },
+    { t: "语法校验", d: "最近校验：通过" }
+  ]},
+  "rule-set": { title: "规则集", subtitle: "内置与远程规则集管理", layout: "rule-set" },
+  "group-node": { title: "节点分组", subtitle: "手动 / 订阅 / 地区 / 协议分组", layout: "groups" },
+  "group-policy": { title: "策略组", subtitle: "手动选择、自动优选、故障转移", layout: "policy-groups" },
+  "group-auto": { title: "自动切换", subtitle: "断线、高延迟与定时切换", layout: "toggles", toggles: [
+    ["节点断开时自动切换", true], ["延迟高于 300ms 自动切换", false],
+    ["定时切换节点", false], ["按 URL 测试结果切换", true]
+  ]},
+  "core-type": { title: "Core 类型", subtitle: "Xray / V2Ray / Sing-box 等", layout: "core-type" },
+  "core-file": { title: "Core 文件", subtitle: "路径、版本与完整性", layout: "core-file" },
+  "core-run": { title: "Core 运行", subtitle: "启停、PID 与崩溃重启", layout: "core-run" },
+  "core-config": { title: "配置生成", subtitle: "Xray JSON 预览与校验", layout: "config-preview" },
+  "log-run": { title: "运行日志", subtitle: "应用、Core、代理与订阅日志分类", layout: "log-categories" },
+  "log-viewer": { title: "日志查看器", subtitle: "实时滚动、过滤与导出", layout: "log-viewer" },
+  diagnosis: { title: "诊断工具", subtitle: "一键检查与诊断报告", layout: "diagnosis" },
+  "dns-server": { title: "DNS 服务器", subtitle: "本地 / 远程 / DoH / DoT", layout: "dns-server" },
+  "dns-policy": { title: "DNS 策略", subtitle: "国内外分流与广告拦截", layout: "toggles", toggles: [
+    ["国内域名使用国内 DNS", true], ["国外域名使用远程 DNS", true],
+    ["广告域名拦截", false], ["私有域名直连", true]
+  ]},
+  "dns-advanced": { title: "DNS 高级选项", subtitle: "hosts、fallback 与污染检测", layout: "cards", cards: [
+    { t: "hosts 映射", d: "3 条自定义映射" },
+    { t: "DNS fallback", d: "8.8.8.8 → 1.1.1.1" },
+    { t: "污染检测", d: "上次检测：未发现异常" }
+  ]},
+  "safe-data": { title: "本地数据保护", subtitle: "加密、主密码与自动锁定", layout: "toggles", toggles: [
+    ["配置文件加密", false], ["节点敏感信息隐藏", true], ["主密码保护", false], ["启动时解锁", false]
+  ]},
+  "safe-permission": { title: "权限控制", subtitle: "管理员权限与系统设置确认", layout: "cards", cards: [
+    { t: "管理员权限", d: "当前：标准用户" },
+    { t: "TUN 模式", d: "需要管理员权限" },
+    { t: "写入系统代理", d: "已开启二次确认" }
+  ]},
+  "safe-privacy": { title: "隐私选项", subtitle: "日志脱敏与历史清理", layout: "toggles", toggles: [
+    ["日志中隐藏 UUID", true], ["日志中隐藏访问域名", false], ["清理测速记录", false]
+  ]},
+  "setting-general": { title: "常规设置", subtitle: "启动、托盘与语言", layout: "toggles", toggles: [
+    ["开机自启动", false], ["启动后最小化", true], ["关闭按钮最小化到托盘", true],
+    ["启动时自动连接", false], ["语言：简体中文", true]
+  ]},
+  "setting-network": { title: "网络设置", subtitle: "端口、测速与订阅超时", layout: "network-settings" },
+  "setting-core": { title: "Core 设置", subtitle: "路径、日志等级与自动重启", layout: "core-settings" },
+  "setting-storage": { title: "存储设置", subtitle: "目录、备份与缓存清理", layout: "storage-settings" },
+  "tray-status": { title: "托盘状态", subtitle: "托盘图标信息展示预览", layout: "tray-preview" },
+  "tray-action": { title: "托盘操作", subtitle: "托盘菜单高频操作", layout: "tray-menu" },
+  "tray-nodes": { title: "托盘节点列表", subtitle: "最近使用、收藏与最低延迟", layout: "tray-nodes" },
+  "update-app": { title: "应用更新", subtitle: "检查、下载与安装 NaiwaProxy", layout: "update-app" },
+  "update-core": { title: "Core 更新", subtitle: "Xray Core 版本检查与回滚", layout: "update-core" },
+  "update-migrate": { title: "数据迁移", subtitle: "旧版本与 v2rayN 数据导入", layout: "migrate" },
+  "update-installer": { title: "安装程序优化", subtitle: "安装/卸载选项预览", layout: "installer" },
+  "ux-layout": { title: "界面布局", subtitle: "主导航与页面结构", layout: "cards", cards: [
+    { t: "左侧导航", d: "一级模块 + 可折叠二级菜单" },
+    { t: "节点管理页", d: "常用控制 + 节点列表，右键操作" },
+    { t: "弹层预览", d: "编辑 / 导入 / 导出 / 测速 / 维护" }
+  ]},
+  "ux-theme": { title: "主题", subtitle: "浅色 / 深色 / 跟随系统", layout: "theme" },
+  "ux-interaction": { title: "交互体验", subtitle: "提示、进度、快捷键与拖拽", layout: "cards", cards: [
+    { t: "后台任务", d: "订阅更新 62% · 可取消" },
+    { t: "快捷键", d: "Ctrl+R 刷新订阅 · Ctrl+T 测速" },
+    { t: "拖拽导入", d: "支持拖入 .json / .yaml / 图片" }
+  ]},
+  "ux-i18n": { title: "国际化", subtitle: "简体中文 / 繁体 / English", layout: "i18n" },
+  "backup-local": { title: "本地备份", subtitle: "手动与自动备份", layout: "backup-list" },
+  "backup-cloud": { title: "云同步", subtitle: "WebDAV / OneDrive / Google Drive", layout: "cloud-sync" },
+  "backup-import-export": { title: "导入导出", subtitle: "完整配置与分项导出", layout: "backup-io" },
+  "advanced-custom": { title: "自定义配置", subtitle: "JSON 片段与模板合并", layout: "config-preview" },
+  "advanced-script": { title: "脚本与自动化", subtitle: "启动/停止/订阅更新钩子", layout: "scripts" },
+  "advanced-control": { title: "外部控制", subtitle: "HTTP API / CLI / URI Scheme", layout: "external-control" },
+  "advanced-dev": { title: "开发者工具", subtitle: "配置预览、原始订阅与诊断包", layout: "dev-tools" },
+  "about-app": { title: "应用信息", subtitle: "版本、目录与 Core 信息", layout: "about" },
+  "about-license": { title: "许可信息", subtitle: "开源许可证汇总", layout: "licenses" },
+  "about-support": { title: "支持信息", subtitle: "文档、反馈与问题提交", layout: "support" }
+};
+
+let current = "node-list";
+const expandedGroups = new Set();
+
+function isRootPage(key) {
+  return navGroups.some(g => g.root && g.items.some(([k]) => k === key));
+}
+
+function el(tag, cls = "", text = "") {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text) e.textContent = text;
+  return e;
+}
+
+function findGroupByPageKey(key) {
+  if (isRootPage(key)) return null;
+  return navGroups.find(g => !g.root && g.items.some(([k]) => k === key)) || null;
+}
+
+function buildNav(filter = "") {
+  const nav = document.getElementById("nav");
+  nav.innerHTML = "";
+  const q = filter.trim().toLowerCase();
+  navGroups.forEach(g => {
+    const visibleItems = g.items.filter(([_, title]) => !q || title.toLowerCase().includes(q) || g.title.toLowerCase().includes(q));
+    if (!g.root && visibleItems.length === 0) return;
+    if (g.root) {
+      const key = g.items[0][0];
+      const b = el("button", "root" + (current === key ? " active" : ""), g.icon + "　" + g.title);
+      b.dataset.key = key;
+      b.onclick = () => show(key);
+      nav.appendChild(b);
+      return;
+    }
+    const isExpanded = q ? true : expandedGroups.has(g.title);
+    const head = el("button", "group-title" + (isExpanded ? " expanded" : ""));
+    head.innerHTML = `<span class="left"><span>${g.icon}</span><span>${g.title}</span></span><span class="chevron">⌄</span>`;
+    nav.appendChild(head);
+    const children = el("div", "children" + (isExpanded ? "" : " closed"));
+    nav.appendChild(children);
+    head.onclick = () => {
+      if (expandedGroups.has(g.title)) expandedGroups.delete(g.title);
+      else expandedGroups.add(g.title);
+      buildNav(document.getElementById("navFilter").value);
+    };
+    visibleItems.forEach(([key, title]) => {
+      const c = el("button", "child" + (current === key ? " active" : ""), title);
+      c.dataset.key = key;
+      c.onclick = () => show(key);
+      children.appendChild(c);
+    });
+  });
+}
+
+function card(title, body) {
+  const head = title ? `<div class="section-title">${title}</div>` : "";
+  return `<div class="card">${head}${body}</div>`;
+}
+function actions(items, primaryFirst = true) {
+  return `<div class="actions">${items.map((x, i) => `<button class="button ${primaryFirst && i === 0 ? "primary" : ""}">${x}</button>`).join("")}</div>`;
+}
+function toggles(items) {
+  return `<div class="list">${items.map(([label, on]) => `
+    <div class="toggle-row"><span>${label}</span><div class="switch ${on ? "on" : ""}"></div></div>`).join("")}</div>`;
+}
+function table(headers, rows, activeIndex = 0) {
+  return `<div class="table-wrap"><table><thead><tr>${headers.map(h => `<th>${h}</th>`).join("")}</tr></thead><tbody>
+    ${rows.map((r, i) => `<tr class="${i === activeIndex ? "active" : ""}">${r.map(c => `<td>${c}</td>`).join("")}</tr>`).join("")}
+  </tbody></table></div>`;
+}
+
+function renderNodeStatusBar() {
+  return `
+    <div class="control-row node-status-bar">
+      <select class="node-picker">
+        <option selected>香港 01 · VMess · TLS</option>
+        <option>日本 02 · VMess</option>
+        <option>新加坡 01 · VLESS</option>
+        <option>美国 03 · Trojan</option>
+      </select>
+      <div class="latency-banner">
+        <span class="node-id">[VMess] hk-01.example.com:443</span>
+        <span class="muted">当前延迟：</span>
+        <span class="latency-val">TCP 28 ms</span>
+        <span class="muted">·</span>
+        <span class="latency-val">Real 36 ms</span>
+        <span class="tag green">可用</span>
+      </div>
+      <button class="button">TCP 测速</button>
+      <button class="button primary">Real 测速</button>
+      <button class="button">切换最快</button>
+    </div>`;
+}
+
+function renderDashControls(embedded = false) {
+  return `
+    <div class="dash-controls${embedded ? " embedded" : ""}">
+      <div class="control-row">
+        <div class="control-field system-proxy">
+          <label>系统代理</label>
+          <select>
+            <option>清除系统代理</option>
+            <option selected>自动配置系统代理</option>
+            <option>不改变系统代理</option>
+            <option>PAC 模式</option>
+          </select>
+        </div>
+        <div class="control-field" data-switch>
+          <label>启用 Tun</label>
+          <div class="switch"></div>
+          <span class="state muted">已关闭</span>
+        </div>
+        <div class="control-field grow">
+          <label>路由规则</label>
+          <select>
+            <option>全局代理</option>
+            <option selected>V4-绕过大陆 (Whitelist)</option>
+            <option>绕过局域网</option>
+            <option>仅代理国外</option>
+            <option>直连模式</option>
+            <option>自定义模式</option>
+          </select>
+        </div>
+        <button class="button">重启 Core</button>
+      </div>
+    </div>`;
+}
+
+function renderNodeManagement() {
+  return `
+    ${card("", `
+      ${renderNodeStatusBar()}
+      <div class="node-table-area">
+        <div class="toolbar">
+          <input placeholder="搜索节点名称 / 地址…" value="香港" />
+          <select><option>全部协议</option><option>VMess</option><option>VLESS</option></select>
+          <select><option>全部订阅</option><option>主机场</option></select>
+          <select><option>延迟优先</option><option>名称</option><option>更新时间</option></select>
+          <button class="button">仅可用</button>
+        </div>
+        ${table(
+          ["名称","协议","地址","地区","TCP","Real","订阅","更新"],
+          [
+            ["★ 香港 01","VMess","hk-01.example.com:443","HK","28 ms","36 ms","主机场","2 分钟前"],
+            ["日本 02","VMess","jp-02.example.com:443","JP","41 ms","48 ms","主机场","2 分钟前"],
+            ["新加坡 01","VLESS","sg.example.com:8443","SG","55 ms","62 ms","备用订阅","1 天前"],
+            ["美国 03","Trojan","us.example.com:443","US","168 ms","Timeout","备用订阅","1 天前"],
+            ["台湾 01","Shadowsocks","tw.example.com:8388","TW","-","-","测试订阅","3 天前"]
+          ]
+        )}
+      </div>
+      ${renderDashControls(true)}
+    `)}
+    <div class="grid4">
+      <div class="small"><span class="muted">当前下载</span><b>18.4 MB/s</b><div class="muted">今日 4.8 GB</div></div>
+      <div class="small"><span class="muted">当前上传</span><b>820 KB/s</b><div class="muted">今日 820 MB</div></div>
+      <div class="small"><span class="muted">本月累计</span><b>126 GB</b><div class="muted">上传 18 GB</div></div>
+      <div class="small"><span class="muted">连接 / 流量</span><b>24</b><div class="muted">订阅剩余 83.6 GB</div></div>
+    </div>
+    ${card("健康概览", `<div class="health-grid">
+        ${[
+          ["Core 文件", "正常", "green"], ["geoip / geosite", "已就绪", "green"],
+          ["端口占用", "10808/10809 正常", "green"], ["系统代理一致", "一致", "green"],
+          ["当前节点连通", "可用 · 36ms", "green"], ["订阅状态", "2 天未更新", "yellow"],
+          ["TUN 驱动", "未安装", "yellow"], ["PAC 服务", "未启用", "yellow"]
+        ].map(([a,b,c])=>`<div class="health"><span>${a}</span><span class="tag ${c}">${b}</span></div>`).join("")}
+      </div>`)}`;
+}
+
+function renderNodeTable() {
+  return renderNodeManagement();
+}
+
+function renderNodeForm() {
+  return card("节点编辑", `
+    <div class="form-grid">
+      <label>名称</label><input class="span2" value="香港 01" />
+      <label>协议</label><select><option>VMess</option><option>VLESS</option><option>Trojan</option></select>
+      <label>地址</label><input value="hk-01.example.com" />
+      <label>端口</label><input value="443" />
+      <label>UUID</label><input class="span2" value="6ba7b810-9dad-11d1-80b4-00c04fd430c8" />
+      <label>Alter ID</label><input value="0" />
+      <label>Security</label><select><option>auto</option></select>
+      <label>Network</label><select><option>ws</option><option>tcp</option><option>grpc</option></select>
+      <label>TLS</label><select><option>tls</option><option>none</option><option>reality</option></select>
+      <label>Host</label><input value="cdn.example.com" />
+      <label>SNI</label><input value="cdn.example.com" />
+      <label>Path</label><input class="span2" value="/ws" />
+      <label>备注</label><input class="span2" value="低延迟 · 晚高峰稳定" />
+      <label>标签</label><input class="span2" value="HK, 收藏, 主力" />
+    </div>
+    <div class="toolbar" style="margin-top:16px">
+      <button class="button primary">保存节点</button>
+      <button class="button">复制分享链接</button>
+      <button class="button">生成二维码</button>
+    </div>`);
+}
+
+function renderImport() {
+  return `<div class="grid2">
+    ${card("批量导入", `<textarea class="span4" style="width:100%;min-height:120px;margin-top:12px;background:#0f172a;border:1px solid var(--line);border-radius:10px;color:#e2e8f0;padding:12px">vmess://eyJ2IjoiMiIsInBzIjoi6aaZ5rivIDA...
+vless://uuid@host:443?type=ws&security=tls#Node-A
+trojan://password@host:443?sni=example.com#Node-B</textarea>
+      <div class="toolbar">${["从剪贴板识别","选择本地文件","扫描二维码","预览导入结果"].map((x,i)=>`<button class="button ${i===3?"primary":""}">${x}</button>`).join("")}</div>`)}
+    ${card("支持格式", `<div class="list">
+      ${["vmess:// / vless:// / trojan:// / ss://","Clash YAML · Sing-box JSON · Xray JSON","二维码图片 · 摄像头扫描","v2rayN 配置迁移"].map(x=>`<div class="item"><span class="left">${x}</span></div>`).join("")}
+    </div>`)}
+  </div>`;
+}
+
+function renderExport() {
+  return card("节点导出", `
+    <div class="toolbar">
+      <button class="button primary">导出选中节点链接</button>
+      <button class="button">导出二维码</button>
+      <button class="button">导出 Clash YAML</button>
+      <button class="button">导出备份文件</button>
+    </div>
+    <div class="list">
+      ${[
+        ["香港 01","vmess://…已脱敏"],
+        ["日本 02","vless://…已脱敏"]
+      ].map(x=>`<div class="item"><span class="left">${x[0]}</span><span class="meta">${x[1]}</span></div>`).join("")}
+    </div>`);
+}
+
+function renderSpeed() {
+  return `<div class="grid2">
+    ${card("测速任务", `<div class="list">
+      ${[
+        ["香港 01","Real 完成 · 36 ms","green"],["日本 02","Real 测试中…","yellow"],
+        ["新加坡 01","等待中","tag"],["美国 03","TCP Timeout","red"]
+      ].map(x=>`<div class="item"><span class="left">${x[0]}</span><span class="tag ${x[2]==="tag"?"":x[2]}">${x[1]}</span></div>`).join("")}
+    </div><div class="progress"><i style="width:62%"></i></div>`)}
+    ${card("测速选项", toggles([
+      ["TCP 延迟测试", true], ["真实代理延迟测试", true], ["HTTP 下载测速", false],
+      ["超时自动取消", true], ["完成后按延迟排序", true], ["定时自动测速", false]
+    ]))}
+  </div>`;
+}
+
+function renderMaintain() {
+  return card("节点维护", `
+    <div class="grid2" style="margin-top:0">
+      <div>${actions(["删除重复节点","清理不可用节点","清理高延迟节点","批量添加标签"], true)}</div>
+      <div class="list">
+        ${[
+          ["按地址+端口去重","预计移除 6 个"],
+          ["按 UUID 去重","预计移除 1 个"],
+          ["合并同名节点","预计处理 3 个"]
+        ].map(x=>`<div class="item"><span class="left">${x[0]}</span><span class="meta">${x[1]}</span></div>`).join("")}
+      </div>
+    </div>`);
+}
+
+function renderSubscription() {
+  return `<div class="grid2">
+    ${card("订阅列表", table(
+      ["名称","节点","流量","到期","更新","状态"],
+      [
+        ["主机场","78","83.6/200 GB","2026-08-01","2 天前","启用"],
+        ["备用订阅","30","不限","-","5 小时前","启用"],
+        ["测试订阅","20","-","-","1 周前","禁用"],
+        ["自建节点","4","-","-","手动","启用"]
+      ]
+    ))}
+    ${card("订阅操作", actions(["添加订阅","更新全部","编辑策略","删除订阅"]))}
+  </div>`;
+}
+
+function renderSubUpdate() {
+  return card("订阅更新", `
+    <div class="grid2" style="margin-top:0">
+      <div>${toggles([
+        ["启动时自动更新", true], ["每 24 小时更新", true], ["更新失败重试 3 次", true],
+        ["更新后自动测速", false], ["更新后自动去重", true]
+      ])}</div>
+      <div class="list">
+        ${[
+          ["主机场","成功 · +2 节点 · 09:12"],
+          ["备用订阅","成功 · 无变化 · 08:40"],
+          ["测试订阅","跳过 · 已禁用","tag"]
+        ].map(x=>`<div class="item"><span class="left">${x[0]}</span><span class="meta">${x[1]}</span></div>`).join("")}
+      </div>
+    </div>`);
+}
+
+function renderProxySystem() {
+  return card("系统代理", `
+    <div class="control-field system-proxy" style="margin-top:14px;border:0;background:transparent;padding:0">
+      <label>系统代理模式</label>
+      <select style="min-width:220px;height:38px;border:1px solid var(--line);border-radius:11px;background:var(--panel2);padding:0 12px;color:#f8fafc">
+        <option>清除系统代理</option>
+        <option selected>自动配置系统代理</option>
+        <option>不改变系统代理</option>
+        <option>PAC 模式</option>
+      </select>
+    </div>
+    <div class="list" style="margin-top:14px">
+      ${[
+        ["HTTP 代理","127.0.0.1:10809"],["SOCKS 代理","127.0.0.1:10808"],
+        ["退出时自动关闭", "已开启"],["异常退出后恢复", "已开启"]
+      ].map(x=>`<div class="item"><span class="left">${x[0]}</span><span class="meta">${x[1]}</span></div>`).join("")}
+    </div>
+    <div class="toolbar"><button class="button">检测配置</button><button class="button">恢复系统代理</button></div>
+  `);
+}
+
+function renderTun() {
+  return `<div class="grid2">
+    ${card("TUN 状态", `<div class="list">
+      ${[
+        ["TUN 状态","未启用","yellow"],["wintun.dll","已安装","green"],
+        ["管理员权限","需要提升","red"],["DNS 劫持","未配置","tag"]
+      ].map(x=>`<div class="item"><span class="left">${x[0]}</span><span class="tag ${x[2]}">${x[1]}</span></div>`).join("")}
+    </div>`)}
+    ${card("TUN 配置", toggles([
+      ["启用 TUN 虚拟网卡", false], ["排除局域网地址", true], ["自动安装 TUN 驱动", true]
+    ]))}
+  </div>`;
+}
+
+function renderPac() {
+  return card("PAC 模式", `
+    <div class="form-grid">
+      <label>PAC 地址</label><input class="span2" value="http://127.0.0.1:2080/proxy.pac" />
+      <label>模式</label><select><option>绕过大陆 + 局域网</option></select>
+    </div>
+    <div class="toolbar">${["生成 PAC","启用 PAC 代理","预览规则","调试"].map((x,i)=>`<button class="button ${i===1?"primary":""}">${x}</button>`).join("")}</div>
+    <div class="log-panel">function FindProxyForURL(url, host) {
+  if (shExpMatch(host, "*.cn")) return "DIRECT";
+  return "PROXY 127.0.0.1:10809";
+}</div>`);
+}
+
+function renderPorts() {
+  return card("代理端口", `
+    <div class="form-grid">
+      <label>HTTP</label><input value="10809" /><label>状态</label><span class="tag green">可用</span>
+      <label>SOCKS</label><input value="10808" /><label>状态</label><span class="tag green">可用</span>
+      <label>Mixed</label><input value="10810" /><label>状态</label><span class="tag yellow">未启用</span>
+      <label>允许局域网</label><span class="switch"></span><label>绑定地址</label><input value="127.0.0.1" />
+    </div>`);
+}
+
+function renderRuleMode() {
+  return card("规则模式", `
+    <div class="list">
+      ${[
+        ["绕过大陆","当前使用","green"],["全局代理",""],["绕过局域网",""],["仅代理国外",""],["直连模式",""],["自定义模式",""]
+      ].map(x=>`<div class="item"><span class="left">${x[0]}</span>${x[1]?`<span class="tag ${x[2]}">${x[1]}</span>`:""}</div>`).join("")}
+    </div>`);
+}
+
+function renderRuleTable() {
+  return card("规则列表", table(
+    ["优先级","类型","匹配项","动作","状态"],
+    [
+      ["1","GeoSite","geolocation-cn","直连","启用"],
+      ["2","Domain","google.com","代理","启用"],
+      ["3","IP-CIDR","10.0.0.0/8","直连","启用"],
+      ["4","Process","chrome.exe","代理","禁用"]
+    ]
+  ));
+}
+
+function renderRuleSet() {
+  return card("规则集", table(
+    ["名称","来源","版本","更新","状态"],
+    [
+      ["geolocation-cn","内置","2026.06.01","内置","启用"],
+      ["gfwlist-remote","远程","2026.06.08","1 天前","启用"],
+      ["ads","远程","2026.06.07","2 天前","禁用"]
+    ]
+  ));
+}
+
+function renderGroups() {
+  return card("节点分组", `<div class="list">
+    ${[["香港","12 节点"],["日本","18 节点"],["新加坡","8 节点"],["美国","16 节点"],["自建","4 节点"]].map(x=>`
+      <div class="item"><span class="left">${x[0]}</span><span class="meta">${x[1]}</span></div>`).join("")}
+  </div>`);
+}
+
+function renderPolicyGroups() {
+  return card("策略组", table(
+    ["策略组","类型","成员","当前选中"],
+    [
+      ["Auto","自动最低延迟","HK/JP/SG 共 12","香港 01"],
+      ["Fallback","故障转移","US/TW 共 6","美国 03"],
+      ["Manual","手动选择","全部","香港 01"]
+    ]
+  ));
+}
+
+function renderCoreType() {
+  return card("Core 类型", `<div class="list">
+    ${[
+      ["Xray Core","当前使用 · v25.6.8","green"],["V2Ray Core","可选"],["Sing-box Core","可选"],["自定义 Core","可选"]
+    ].map(x=>`<div class="item"><span class="left">${x[0]}</span>${x[1]?`<span class="tag ${x[2]||""}">${x[1]}</span>`:""}</div>`).join("")}
+  </div>`);
+}
+
+function renderCoreFile() {
+  return card("Core 文件", `<div class="list">
+    ${[
+      ["Core 路径","D:\\Program Files\\NaiwaProxy\\cores\\xray.exe"],
+      ["版本","Xray 25.6.8 / win-x64"],
+      ["geoip.dat","19.2 MB · 正常"],
+      ["geosite.dat","10.6 MB · 正常"]
+    ].map(x=>`<div class="item"><span class="left">${x[0]}</span><span class="meta">${x[1]}</span></div>`).join("")}
+  </div><div class="toolbar">${["检查完整性","下载 Core","回滚版本"].map((x,i)=>`<button class="button ${i===0?"primary":""}">${x}</button>`).join("")}</div>`);
+}
+
+function renderCoreRun() {
+  return `<div class="grid2">
+    ${card("Core 运行", `<div class="list">
+      ${[
+        ["状态","运行中","green"],["PID","14328"],["启动时间","09:42:18"],["自动重启","已开启"]
+      ].map(x=>`<div class="item"><span class="left">${x[0]}</span><span class="meta ${x[2]||""}">${x[1]}</span></div>`).join("")}
+    </div><div class="actions">${["启动","停止","重启","查看输出"].map((x,i)=>`<button class="button ${i===1?"danger":i===0?"primary":""}">${x}</button>`).join("")}</div>`)}
+    ${card("最近输出", `<div class="log-panel">2026/06/10 11:58:02 [Warning] core: Xray 25.6.8 started
+2026/06/10 11:58:02 [Info] inbound/http: listening on 127.0.0.1:10809
+2026/06/10 11:58:02 [Info] inbound/socks: listening on 127.0.0.1:10808</div>`)}
+  </div>`;
+}
+
+function renderConfigPreview() {
+  return card("配置生成 / 预览", `
+    <div class="toolbar">${["格式化","校验","复制","打开目录"].map((x,i)=>`<button class="button ${i===1?"primary":""}">${x}</button>`).join("")}</div>
+    <div class="log-panel">{
+  "inbounds": [{ "port": 10809, "protocol": "http" }],
+  "outbounds": [{ "protocol": "vmess", "tag": "proxy" }],
+  "routing": { "domainStrategy": "AsIs" }
+}</div>`);
+}
+
+function renderLogCategories() {
+  return card("运行日志", `<div class="list">
+    ${[
+      ["应用日志","128 KB · 今日"],
+      ["Core 日志","256 KB · 今日"],
+      ["代理连接日志","1.2 MB · 今日"],
+      ["订阅更新日志","32 KB · 今日"]
+    ].map(x=>`<div class="item"><span class="left">${x[0]}</span><span class="meta">${x[1]}</span></div>`).join("")}
+  </div>`);
+}
+
+function renderLogViewer() {
+  return card("日志查看器", `
+    <div class="toolbar">
+      <select><option>全部等级</option><option>Warning+</option></select>
+      <input placeholder="搜索关键词…" />
+      <button class="button">导出</button>
+      <button class="button">清空</button>
+      <button class="button primary">暂停滚动</button>
+    </div>
+    <div class="log-panel">[11:58:02] [App] 系统代理已开启 127.0.0.1:10809
+[11:58:03] [Core] accepted tcp:127.0.0.1:52114 -> www.gstatic.com:80
+[11:58:05] [SpeedTest] 香港 01 Real latency 36 ms
+[11:58:10] [Sub] 主机场 update skipped (disabled schedule)</div>`);
+}
+
+function renderDiagnosis() {
+  return `<div class="grid2">
+    ${card("诊断结果", `<div class="health-grid">
+      ${[
+        ["Core 文件","通过","green"],["配置文件","通过","green"],["端口占用","通过","green"],
+        ["系统代理","通过","green"],["DNS 解析","待检查","yellow"],["订阅链接","通过","green"]
+      ].map(x=>`<div class="health"><span>${x[0]}</span><span class="tag ${x[2]}">${x[1]}</span></div>`).join("")}
+    </div><div class="toolbar"><button class="button primary">开始诊断</button><button class="button">生成报告</button></div>`)}
+    ${card("诊断报告摘要", `<div class="empty-note">NaiwaProxy 0.1.0 · Windows 11 · Core 运行正常 · 建议更新主机场订阅（2 天未更新）</div>`)}
+  </div>`;
+}
+
+function renderDnsServer() {
+  return card("DNS 服务器", `
+    <div class="form-grid">
+      <label>本地 DNS</label><input value="223.5.5.5" /><label>远程 DNS</label><input value="8.8.8.8" />
+      <label>DoH</label><input class="span2" value="https://dns.google/dns-query" />
+      <label>FakeDNS</label><span class="switch"></span><label>DoT</label><input value="1.1.1.1" />
+    </div>`);
+}
+
+function renderNetworkSettings() {
+  return card("网络设置", `
+    <div class="form-grid">
+      <label>HTTP 端口</label><input value="10809" /><label>SOCKS 端口</label><input value="10808" />
+      <label>测速 URL</label><input class="span2" value="http://www.gstatic.com/generate_204" />
+      <label>延迟超时</label><input value="5000 ms" /><label>订阅超时</label><input value="15000 ms" />
+    </div>`);
+}
+
+function renderCoreSettings() {
+  return card("Core 设置", `
+    <div class="form-grid">
+      <label>Core 路径</label><input class="span2" value="cores\\xray.exe" />
+      <label>日志等级</label><select><option>warning</option></select>
+      <label>自动重启</label><span class="switch on"></span>
+    </div>`);
+}
+
+function renderStorageSettings() {
+  return card("存储设置", `
+    <div class="list">
+      ${[
+        ["配置目录","%APPDATA%\\NaiwaProxy"],["日志目录","%APPDATA%\\NaiwaProxy\\logs"],
+        ["备份目录","%APPDATA%\\NaiwaProxy\\backups"],["缓存大小","48 MB"]
+      ].map(x=>`<div class="item"><span class="left">${x[0]}</span><span class="meta">${x[1]}</span></div>`).join("")}
+    </div><div class="toolbar"><button class="button">清理缓存</button><button class="button primary">立即备份</button></div>`);
+}
+
+function renderTrayPreview() {
+  return card("托盘状态预览", `<div class="list">
+    ${[
+      ["NaiwaProxy · 运行中"],["香港 01 · 36 ms"],["↓ 18.4 MB/s · ↑ 820 KB/s"],["系统代理：已开启"]
+    ].map(x=>`<div class="item"><span class="left">${x[0]}</span></div>`).join("")}
+  </div>`);
+}
+
+function renderTrayMenu() {
+  return card("托盘菜单", `<div class="list">
+    ${["启动代理","停止代理","切换节点 ▸","切换代理模式 ▸","打开主窗口","打开日志","退出"].map(x=>`<div class="item"><span class="left">${x}</span></div>`).join("")}
+  </div>`);
+}
+
+function renderTrayNodes() {
+  return card("托盘节点列表", `<div class="list">
+    ${[
+      ["★ 香港 01","36 ms · 当前","green"],["日本 02","48 ms"],["新加坡 01","62 ms"],["最近：美国 03","168 ms"]
+    ].map(x=>`<div class="item"><span class="left">${x[0]}</span><span class="tag ${x[2]||""}">${x[1]||""}</span></div>`).join("")}
+  </div>`);
+}
+
+function renderUpdateApp() {
+  return card("应用更新", `<div class="list">
+    ${[
+      ["当前版本","0.1.0"],["最新版本","0.1.0"],["构建时间","2026-06-10"],["自动检查","已开启"]
+    ].map(x=>`<div class="item"><span class="left">${x[0]}</span><span class="meta">${x[1]}</span></div>`).join("")}
+  </div><div class="toolbar"><button class="button primary">检查更新</button></div>`);
+}
+
+function renderUpdateCore() {
+  return card("Core 更新", `<div class="list">
+    ${[
+      ["当前 Core","Xray 25.6.8"],["可用更新","无"],["备份版本","25.5.0 可用"]
+    ].map(x=>`<div class="item"><span class="left">${x[0]}</span><span class="meta">${x[1]}</span></div>`).join("")}
+  </div>`);
+}
+
+function renderMigrate() {
+  return card("数据迁移", actions(["导入旧版 NaiwaProxy","导入 v2rayN 配置","从备份恢复","导出迁移包"]));
+}
+
+function renderInstaller() {
+  return card("安装程序选项", toggles([
+    ["安装时选择开机启动", false], ["创建桌面快捷方式", true],
+    ["安装时检测旧版本", true], ["卸载时保留用户配置", true], ["卸载时清理系统代理", true]
+  ]));
+}
+
+function renderTheme() {
+  return card("主题", `<div class="list">
+    ${[
+      ["深色主题","当前","green"],["浅色主题",""],["跟随系统",""],["强调色：奶蛙黄","#FACC15"]
+    ].map(x=>`<div class="item"><span class="left">${x[0]}</span>${x[1]?`<span class="tag ${x[2]}">${x[1]}</span>`:""}</div>`).join("")}
+  </div>`);
+}
+
+function renderI18n() {
+  return card("国际化", `<div class="list">
+    ${[["简体中文","当前","green"],["繁体中文",""],["English",""]].map(x=>`
+      <div class="item"><span class="left">${x[0]}</span>${x[1]?`<span class="tag ${x[2]}">${x[1]}</span>`:""}</div>`).join("")}
+  </div>`);
+}
+
+function renderBackupList() {
+  return card("本地备份", table(
+    ["备份名","时间","大小","操作"],
+    [
+      ["auto-2026-06-10-0900","今天 09:00","820 KB","恢复"],
+      ["before-update","昨天 22:14","815 KB","恢复"],
+      ["manual-backup","2026-06-08","810 KB","恢复"]
+    ]
+  ));
+}
+
+function renderCloudSync() {
+  return card("云同步", `<div class="list">
+    ${[
+      ["WebDAV","未配置"],["OneDrive","未连接"],["Google Drive","未连接"]
+    ].map(x=>`<div class="item"><span class="left">${x[0]}</span><span class="meta">${x[1]}</span></div>`).join("")}
+  </div>`);
+}
+
+function renderBackupIo() {
+  return card("导入导出", actions(["导出完整配置","导入完整配置","导出节点","导出订阅","导出规则"]));
+}
+
+function renderScripts() {
+  return card("脚本与自动化", table(
+    ["钩子","脚本","状态"],
+    [
+      ["启动后","post-start.ps1","启用"],
+      ["停止后","post-stop.ps1","禁用"],
+      ["订阅更新后","after-sub-update.ps1","启用"]
+    ]
+  ));
+}
+
+function renderExternalControl() {
+  return card("外部控制", `<div class="list">
+    ${[
+      ["本地 HTTP API","http://127.0.0.1:8765 · 未启用"],
+      ["URI Scheme","naiwaproxy://switch?node=hk-01"],
+      ["CLI","NaiwaProxy.exe --connect hk-01"]
+    ].map(x=>`<div class="item"><span class="left">${x[0]}</span><span class="meta">${x[1]||""}</span></div>`).join("")}
+  </div>`);
+}
+
+function renderDevTools() {
+  return `<div class="grid2">
+    ${card("开发者工具", actions(["查看生成配置","测试配置合法性","查看订阅原文","导出诊断包"]))}
+    ${card("解析预览", `<div class="log-panel">Profile: 香港 01
+Protocol: vmess · Network: ws · TLS: true
+Latency: TCP 28ms · Real 36ms</div>`)}
+  </div>`;
+}
+
+function renderAbout() {
+  return card("应用信息", `<div class="list">
+    ${[
+      ["应用版本","0.1.0"],["构建时间","2026-06-10"],["Core 版本","Xray 25.6.8"],
+      ["配置目录","%APPDATA%\\NaiwaProxy"],["项目主页","github.com/LiWenhui2/NaiwaProxy"]
+    ].map(x=>`<div class="item"><span class="left">${x[0]}</span><span class="meta">${x[1]}</span></div>`).join("")}
+  </div>`);
+}
+
+function renderLicenses() {
+  return card("许可信息", `<div class="list">
+    ${["NaiwaProxy","Xray Core (MPL-2.0)","Inno Setup","第三方依赖"].map(x=>`<div class="item"><span class="left">${x}</span></div>`).join("")}
+  </div>`);
+}
+
+function renderSupport() {
+  return card("支持信息", actions(["检查更新","打开项目主页","提交 Issue","查看文档","导出反馈信息"]));
+}
+
+function renderCards(p) {
+  return card(p.title, `<div class="list">${p.cards.map(c=>`
+    <div class="item"><span class="left">${c.t}</span><span class="meta">${c.d}</span></div>`).join("")}</div>`);
+}
+
+function renderToggles(p) {
+  return card(p.title, toggles(p.toggles));
+}
+
+const layoutRenderers = {
+  "node-management": renderNodeManagement,
+  "node-table": renderNodeTable,
+  "node-form": renderNodeForm,
+  import: renderImport,
+  export: renderExport,
+  speed: renderSpeed,
+  maintain: renderMaintain,
+  subscription: renderSubscription,
+  "sub-update": renderSubUpdate,
+  cards: p => renderCards(p),
+  toggles: p => renderToggles(p),
+  "proxy-system": renderProxySystem,
+  tun: renderTun,
+  pac: renderPac,
+  ports: renderPorts,
+  "rule-mode": renderRuleMode,
+  "rule-table": renderRuleTable,
+  "rule-set": renderRuleSet,
+  groups: renderGroups,
+  "policy-groups": renderPolicyGroups,
+  "core-type": renderCoreType,
+  "core-file": renderCoreFile,
+  "core-run": renderCoreRun,
+  "config-preview": renderConfigPreview,
+  "log-categories": renderLogCategories,
+  "log-viewer": renderLogViewer,
+  diagnosis: renderDiagnosis,
+  "dns-server": renderDnsServer,
+  "network-settings": renderNetworkSettings,
+  "core-settings": renderCoreSettings,
+  "storage-settings": renderStorageSettings,
+  "tray-preview": renderTrayPreview,
+  "tray-menu": renderTrayMenu,
+  "tray-nodes": renderTrayNodes,
+  "update-app": renderUpdateApp,
+  "update-core": renderUpdateCore,
+  migrate: renderMigrate,
+  installer: renderInstaller,
+  theme: renderTheme,
+  i18n: renderI18n,
+  "backup-list": renderBackupList,
+  "cloud-sync": renderCloudSync,
+  "backup-io": renderBackupIo,
+  scripts: renderScripts,
+  "external-control": renderExternalControl,
+  "dev-tools": renderDevTools,
+  about: renderAbout,
+  licenses: renderLicenses,
+  support: renderSupport
+};
+
+const ctxMenuEl = document.getElementById("ctxMenu");
+const modalEl = document.getElementById("modal");
+const modalTitleEl = document.getElementById("modalTitle");
+const modalBodyEl = document.getElementById("modalBody");
+let ctxTargetRow = null;
+
+const ctxMenus = {
+  node: [
+    { label: "设为活动节点" },
+    { label: "编辑节点", page: "node-edit" },
+    { sep: true },
+    { label: "复制分享链接" },
+    { label: "生成二维码" },
+    { sep: true },
+    { label: "TCP 测速" },
+    { label: "Real 测速" },
+    { sep: true },
+    { label: "删除节点", danger: true }
+  ],
+  list: [
+    { label: "新建节点", page: "node-edit" },
+    { label: "导入节点…", page: "node-import" },
+    { label: "导出节点…", page: "node-export" },
+    { sep: true },
+    { label: "全部 TCP 测速", page: "node-speed" },
+    { label: "全部 Real 测速", page: "node-speed" },
+    { label: "切换最快节点" },
+    { sep: true },
+    { label: "节点维护…", page: "node-maintain" },
+    { label: "删除重复节点", page: "node-maintain" },
+    { label: "清理不可用节点", page: "node-maintain" }
+  ]
+};
+
+function hideCtxMenu() {
+  ctxMenuEl.classList.add("hidden");
+  ctxMenuEl.innerHTML = "";
+  ctxTargetRow = null;
+}
+
+function openModal(pageKey) {
+  const p = pages[pageKey];
+  if (!p) return;
+  const render = layoutRenderers[p.layout];
+  modalTitleEl.textContent = p.title;
+  modalBodyEl.innerHTML = render ? render(p) : `<div class="empty-note">页面布局预览待补充：${p.title}</div>`;
+  modalEl.classList.remove("hidden");
+  hideCtxMenu();
+}
+
+function closeModal() {
+  modalEl.classList.add("hidden");
+  modalBodyEl.innerHTML = "";
+}
+
+function showCtxMenu(e, type) {
+  e.preventDefault();
+  hideCtxMenu();
+  if (type === "node") ctxTargetRow = e.target.closest("tbody tr");
+  const items = ctxMenus[type] || [];
+  items.forEach(item => {
+    if (item.sep) {
+      ctxMenuEl.appendChild(el("div", "ctx-sep"));
+      return;
+    }
+    const btn = el("button", "ctx-item" + (item.danger ? " danger" : ""), item.label);
+    if (item.page) {
+      btn.onclick = () => openModal(item.page);
+    } else {
+      btn.classList.add("disabled");
+    }
+    ctxMenuEl.appendChild(btn);
+  });
+  ctxMenuEl.classList.remove("hidden");
+  const pad = 8;
+  const rect = ctxMenuEl.getBoundingClientRect();
+  let x = e.clientX;
+  let y = e.clientY;
+  if (x + rect.width > window.innerWidth - pad) x = window.innerWidth - rect.width - pad;
+  if (y + rect.height > window.innerHeight - pad) y = window.innerHeight - rect.height - pad;
+  ctxMenuEl.style.left = x + "px";
+  ctxMenuEl.style.top = y + "px";
+}
+
+function setProxyEnabled(on) {
+  document.querySelectorAll(".proxy-switch").forEach(field => {
+    const sw = field.querySelector(".switch");
+    const state = field.querySelector(".state");
+    if (sw) sw.classList.toggle("on", on);
+    field.classList.toggle("off", !on);
+    if (state) state.textContent = on ? "运行中" : "已停止";
+  });
+}
+
+function handleSwitchClick(e) {
+  const field = e.target.closest("[data-switch]");
+  if (!field || e.target.closest("select")) return;
+  const sw = field.querySelector(".switch");
+  const state = field.querySelector(".state");
+  if (!sw) return;
+  sw.classList.toggle("on");
+  const on = sw.classList.contains("on");
+  field.classList.toggle("off", !on);
+  const label = field.querySelector("label")?.textContent || "";
+  if (label.includes("代理") && !label.includes("系统")) {
+    setProxyEnabled(on);
+    return;
+  }
+  if (!state) return;
+  if (label.includes("Tun")) {
+    state.textContent = on ? "已启用" : "已关闭";
+  }
+}
+
+function show(key) {
+  current = key;
+  const p = pages[key];
+  document.getElementById("title").textContent = p.title;
+  const proxyOn = document.querySelector("#topTools .proxy-switch .switch")?.classList.contains("on") ?? true;
+  const render = layoutRenderers[p.layout];
+  document.getElementById("content").innerHTML = render ? render(p) : `<div class="empty-note">页面布局预览待补充：${p.title}</div>`;
+  setProxyEnabled(proxyOn);
+  const group = findGroupByPageKey(key);
+  if (group) expandedGroups.add(group.title);
+  buildNav(document.getElementById("navFilter").value);
+  hideCtxMenu();
+}
+
+document.getElementById("navFilter").addEventListener("input", e => buildNav(e.target.value));
+document.getElementById("content").addEventListener("contextmenu", e => {
+  if (current !== "node-list") return;
+  if (e.target.closest("tbody tr")) {
+    showCtxMenu(e, "node");
+    return;
+  }
+  if (e.target.closest(".node-table-area")) showCtxMenu(e, "list");
+});
+document.addEventListener("click", hideCtxMenu);
+document.addEventListener("scroll", hideCtxMenu, true);
+document.getElementById("modalClose").addEventListener("click", closeModal);
+modalEl.addEventListener("click", e => {
+  if (e.target === modalEl) closeModal();
+});
+document.getElementById("topTools").addEventListener("click", handleSwitchClick);
+document.getElementById("content").addEventListener("click", handleSwitchClick);
+buildNav();
+show("node-list");
+</script>
+</body>
+</html>

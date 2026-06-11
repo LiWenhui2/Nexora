@@ -14,8 +14,35 @@ public static class CoreConfigBuilder
             {
                 loglevel = "warning"
             },
+            api = new
+            {
+                tag = "api",
+                services = new[] { "StatsService" }
+            },
+            stats = new { },
+            policy = new
+            {
+                system = new
+                {
+                    statsInboundUplink = true,
+                    statsInboundDownlink = true,
+                    statsOutboundUplink = true,
+                    statsOutboundDownlink = true
+                }
+            },
             inbounds = new object[]
             {
+                new
+                {
+                    tag = "api",
+                    port = settings.ApiPort,
+                    listen = "127.0.0.1",
+                    protocol = "dokodemo-door",
+                    settings = new
+                    {
+                        address = "127.0.0.1"
+                    }
+                },
                 new
                 {
                     tag = "socks",
@@ -75,11 +102,7 @@ public static class CoreConfigBuilder
                     protocol = "blackhole"
                 }
             },
-            routing = new
-            {
-                domainStrategy = "AsIs",
-                rules = Array.Empty<object>()
-            }
+            routing = BuildRouting(settings)
         };
 
         return JsonSerializer.Serialize(config, new JsonSerializerOptions { WriteIndented = true });
@@ -138,5 +161,138 @@ public static class CoreConfigBuilder
         }
 
         return result;
+    }
+
+    private static object BuildRouting(AppSettings settings)
+    {
+        var rules = new List<object>
+        {
+            new
+            {
+                type = "field",
+                inboundTag = new[] { "api" },
+                outboundTag = "api"
+            }
+        };
+
+        switch (settings.RoutingMode)
+        {
+            case "Custom":
+                AddCustomRule(rules, settings.CustomRouting.BlockDomains, settings.CustomRouting.BlockIps, "block");
+                AddCustomRule(rules, settings.CustomRouting.DirectDomains, settings.CustomRouting.DirectIps, "direct");
+                AddCustomRule(rules, settings.CustomRouting.ProxyDomains, settings.CustomRouting.ProxyIps, "proxy");
+                break;
+            case "Direct":
+                rules.Add(new
+                {
+                    type = "field",
+                    network = "tcp,udp",
+                    outboundTag = "direct"
+                });
+                break;
+            case "BypassLan":
+                rules.Add(BuildPrivateDirectRule());
+                break;
+            case "BypassChina":
+                rules.Add(BuildPrivateDirectRule());
+                rules.Add(new
+                {
+                    type = "field",
+                    ip = new[] { "geoip:cn" },
+                    outboundTag = "direct"
+                });
+                rules.Add(new
+                {
+                    type = "field",
+                    domain = new[] { "geosite:cn" },
+                    outboundTag = "direct"
+                });
+                break;
+            case "Global":
+            default:
+                break;
+        }
+
+        return new
+        {
+            domainStrategy = "IPIfNonMatch",
+            rules
+        };
+    }
+
+    private static void AddCustomRule(List<object> rules, List<string> domains, List<string> ips, string outboundTag)
+    {
+        var normalizedDomains = domains
+            .Select(NormalizeDomainRule)
+            .Where(rule => !string.IsNullOrWhiteSpace(rule))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        var normalizedIps = ips
+            .Select(rule => rule.Trim())
+            .Where(rule => !string.IsNullOrWhiteSpace(rule))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        if (normalizedDomains.Length == 0 && normalizedIps.Length == 0)
+        {
+            return;
+        }
+
+        var rule = new Dictionary<string, object>
+        {
+            ["type"] = "field",
+            ["outboundTag"] = outboundTag
+        };
+
+        if (normalizedDomains.Length > 0)
+        {
+            rule["domain"] = normalizedDomains;
+        }
+
+        if (normalizedIps.Length > 0)
+        {
+            rule["ip"] = normalizedIps;
+        }
+
+        rules.Add(rule);
+    }
+
+    private static string NormalizeDomainRule(string value)
+    {
+        var trimmed = value.Trim();
+        if (string.IsNullOrWhiteSpace(trimmed))
+        {
+            return "";
+        }
+
+        if (trimmed.Contains("://", StringComparison.Ordinal))
+        {
+            trimmed = new Uri(trimmed).Host;
+        }
+
+        if (trimmed.StartsWith("domain:", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.StartsWith("full:", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.StartsWith("regexp:", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.StartsWith("geosite:", StringComparison.OrdinalIgnoreCase))
+        {
+            return trimmed;
+        }
+
+        return $"domain:{trimmed}";
+    }
+
+    private static object BuildPrivateDirectRule()
+    {
+        return new
+        {
+            type = "field",
+            ip = new[]
+            {
+                "geoip:private",
+                "127.0.0.0/8",
+                "224.0.0.0/4"
+            },
+            outboundTag = "direct"
+        };
     }
 }
