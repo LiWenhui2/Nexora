@@ -1298,7 +1298,7 @@ function renderDiagnosis() {
         ["系统代理","通过","green"],["DNS 解析","待检查","yellow"],["订阅链接","通过","green"]
       ].map(x=>`<div class="health"><span>${x[0]}</span><span class="tag ${x[2]}">${x[1]}</span></div>`).join("")}
     </div><div class="toolbar"><button class="button primary">开始诊断</button><button class="button">生成报告</button></div>`)}
-    ${card("诊断报告摘要", `<div class="empty-note">NaiwaProxy 0.1.0 · Windows 11 · Core 运行正常 · 建议更新主机场订阅（2 天未更新）</div>`)}
+    ${card("诊断报告摘要", `<div class="empty-note">NaiwaProxy 0.1.1 · Windows 11 · Core 运行正常 · 建议更新主机场订阅（2 天未更新）</div>`)}
   </div>`;
 }
 
@@ -1364,7 +1364,7 @@ function renderTrayNodes() {
 function renderUpdateApp() {
   return card("应用更新", `<div class="list">
     ${[
-      ["当前版本","0.1.0"],["最新版本","0.1.0"],["构建时间","2026-06-10"],["自动检查","已开启"]
+      ["当前版本","0.1.1"],["最新版本","0.1.1"],["构建时间","2026-06-11"],["自动检查","已开启"]
     ].map(x=>`<div class="item"><span class="left">${x[0]}</span><span class="meta">${x[1]}</span></div>`).join("")}
   </div><div class="toolbar"><button class="button primary">检查更新</button></div>`);
 }
@@ -1459,7 +1459,7 @@ Latency: TCP 28ms · Real 36ms</div>`)}
 function renderAbout() {
   return card("应用信息", `<div class="list">
     ${[
-      ["应用版本","0.1.0"],["构建时间","2026-06-10"],["Core 版本","Xray 25.6.8"],
+      ["应用版本","0.1.1"],["构建时间","2026-06-11"],["Core 版本","Xray 25.6.8"],
       ["配置目录","%APPDATA%\\NaiwaProxy"],["项目主页","github.com/LiWenhui2/NaiwaProxy"]
     ].map(x=>`<div class="item"><span class="left">${x[0]}</span><span class="meta">${x[1]}</span></div>`).join("")}
   </div>`);
