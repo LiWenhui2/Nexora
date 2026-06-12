@@ -11,10 +11,12 @@ public sealed class VmessProfile : INotifyPropertyChanged
     private int? _tcpLatencyMs;
 
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
+    public string Protocol { get; set; } = "vmess";
     public string Name { get; set; } = "New VMess Server";
     public string Address { get; set; } = "";
     public int Port { get; set; } = 443;
     public string UserId { get; set; } = "";
+    public string Password { get; set; } = "";
     public int AlterId { get; set; }
     public string Security { get; set; } = "auto";
     public string Network { get; set; } = "tcp";
@@ -59,7 +61,15 @@ public sealed class VmessProfile : INotifyPropertyChanged
     public string Endpoint => $"{Address}:{Port}";
 
     [JsonIgnore]
-    public string ProtocolDisplay => "VMess";
+    public string ProtocolDisplay => Protocol.ToLowerInvariant() switch
+    {
+        "vless" => "VLESS",
+        "trojan" => "Trojan",
+        "shadowsocks" or "ss" => "Shadowsocks",
+        "socks" or "socks5" => "SOCKS",
+        "http" or "https" => "HTTP",
+        _ => "VMess"
+    };
 
     [JsonIgnore]
     public string RegionDisplay => "-";

@@ -1,5 +1,5 @@
 #define MyAppName "NaiwaProxy"
-#define MyAppVersion "0.1.1"
+#define MyAppVersion "1.0.0"
 #define MyAppPublisher "LiWenhui2"
 #define MyAppExeName "NaiwaProxy.exe"
 

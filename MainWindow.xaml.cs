@@ -2,20 +2,31 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
+using System.Net.Http;
+using System.Reflection;
+using System.Text;
+using System.Text.Json;
+using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
+using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
+using Microsoft.Win32;
 using NaiwaProxy.Dialogs;
 using NaiwaProxy.Models;
 using NaiwaProxy.Services;
+using QRCoder;
 
 namespace NaiwaProxy;
 
 public partial class MainWindow : Window
 {
+    private const string ProjectUrl = "https://github.com/LiWenhui2/NaiwaProxy";
+    private const string LatestReleaseApi = "https://api.github.com/repos/LiWenhui2/NaiwaProxy/releases/latest";
+    private static readonly HttpClient UpdateHttpClient = new();
     private readonly SettingsStore _settingsStore = new();
     private readonly CoreService _coreService = new();
     private readonly ObservableCollection<VmessProfile> _profiles = [];
@@ -78,6 +89,7 @@ public partial class MainWindow : Window
         bitmap.EndInit();
         bitmap.Freeze();
         BrandIconImage.Source = bitmap;
+        AboutIconImage.Source = bitmap;
     }
 
     private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
@@ -104,6 +116,7 @@ public partial class MainWindow : Window
         NodePickerCombo.ItemsSource = _profiles;
         SelectSystemProxyCombo(_settings.SystemProxyMode);
         SelectRoutingCombo(_settings.RoutingMode);
+        UpdateRoutingEditorVisibility();
 
         var selected = _profiles.FirstOrDefault(p => p.Id == _settings.SelectedProfileId) ?? _profiles.FirstOrDefault();
         ProfilesGrid.SelectedItem = selected;
@@ -123,13 +136,27 @@ public partial class MainWindow : Window
         }
 
         var keyword = SearchBox?.Text?.Trim();
-        if (string.IsNullOrWhiteSpace(keyword))
+        if (!string.IsNullOrWhiteSpace(keyword) &&
+            !profile.DisplayName.Contains(keyword, StringComparison.OrdinalIgnoreCase) &&
+            !profile.Endpoint.Contains(keyword, StringComparison.OrdinalIgnoreCase))
         {
-            return true;
+            return false;
         }
 
-        return profile.DisplayName.Contains(keyword, StringComparison.OrdinalIgnoreCase)
-            || profile.Endpoint.Contains(keyword, StringComparison.OrdinalIgnoreCase);
+        var protocol = (ProtocolFilterCombo?.SelectedItem as ComboBoxItem)?.Content?.ToString();
+        if (!string.IsNullOrWhiteSpace(protocol) &&
+            protocol != "全部协议" &&
+            !string.Equals(profile.ProtocolDisplay, protocol, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        if (AvailableOnlyCheck?.IsChecked == true && profile.TcpLatencyMs is null)
+        {
+            return false;
+        }
+
+        return true;
     }
 
     private void SearchBox_TextChanged(object sender, TextChangedEventArgs e)
@@ -142,6 +169,11 @@ public partial class MainWindow : Window
         RefreshProfilesView();
     }
 
+    private void AvailabilityFilterChanged(object sender, RoutedEventArgs e)
+    {
+        RefreshProfilesView();
+    }
+
     private void RefreshProfilesView()
     {
         if (!_isUiReady || _profilesView is null)
@@ -149,7 +181,24 @@ public partial class MainWindow : Window
             return;
         }
 
+        ApplyProfilesSort();
         _profilesView.Refresh();
+    }
+
+    private void ApplyProfilesSort()
+    {
+        if (_profilesView is null)
+        {
+            return;
+        }
+
+        _profilesView.SortDescriptions.Clear();
+        var sort = (SortCombo?.SelectedItem as ComboBoxItem)?.Content?.ToString();
+        if (sort == "延迟优先")
+        {
+            _profilesView.SortDescriptions.Add(new SortDescription(nameof(VmessProfile.TcpLatencyMs), ListSortDirection.Ascending));
+            _profilesView.SortDescriptions.Add(new SortDescription(nameof(VmessProfile.DisplayName), ListSortDirection.Ascending));
+        }
     }
 
     private void ProfilesGrid_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -545,6 +594,7 @@ public partial class MainWindow : Window
 
         _settings.RoutingMode = GetRoutingModeFromCombo();
         _settingsStore.Save(_settings);
+        UpdateRoutingEditorVisibility();
 
         if (_coreService.IsRunning)
         {
@@ -571,6 +621,7 @@ public partial class MainWindow : Window
         _settings.RoutingMode = "Custom";
         _settingsStore.Save(_settings);
         SelectRoutingCombo(_settings.RoutingMode);
+        UpdateRoutingEditorVisibility();
 
         if (_coreService.IsRunning)
         {
@@ -704,6 +755,17 @@ public partial class MainWindow : Window
         }
 
         _suppressRoutingComboEvent = false;
+        UpdateRoutingEditorVisibility();
+    }
+
+    private void UpdateRoutingEditorVisibility()
+    {
+        if (EditRoutingButton is null)
+        {
+            return;
+        }
+
+        EditRoutingButton.Visibility = _settings.RoutingMode == "Custom" ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void RefreshHealthOverview()
@@ -748,6 +810,15 @@ public partial class MainWindow : Window
         {
             ProfilesGrid.SelectedItem = profile;
         }
+    }
+
+    private void ProfilesGrid_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
+    {
+        e.Handled = true;
+        NodePageScroll.RaiseEvent(new MouseWheelEventArgs(e.MouseDevice, e.Timestamp, e.Delta)
+        {
+            RoutedEvent = MouseWheelEvent
+        });
     }
 
     private async void CtxSetActiveNode_Click(object sender, RoutedEventArgs e)
@@ -850,20 +921,345 @@ public partial class MainWindow : Window
         NodePickerCombo.ItemsSource = _profiles;
     }
 
-    private void CtxNewNode_Click(object sender, RoutedEventArgs e) => OpenEditDialog(null);
+    private void CtxNewNode_Click(object sender, RoutedEventArgs e) => ShowNewNodePage();
 
-    private void CtxImportNode_Click(object sender, RoutedEventArgs e) => OpenImportDialog();
+    private void CtxImportNode_Click(object sender, RoutedEventArgs e) => ShowImportPage();
 
-    private void SubscriptionNavButton_Click(object sender, RoutedEventArgs e) => OpenImportDialog();
+    private void SubscriptionNavButton_Click(object sender, RoutedEventArgs e) => ShowImportPage();
+
+    private void NodeListNavButton_Click(object sender, RoutedEventArgs e) => ShowNodePage();
+
+    private void NewNodeNavButton_Click(object sender, RoutedEventArgs e) => ShowNewNodePage();
+
+    private void ImportNodeNavButton_Click(object sender, RoutedEventArgs e) => ShowImportPage();
+
+    private void ExportNodeNavButton_Click(object sender, RoutedEventArgs e) => ShowExportPage();
+
+    private void UpdateNavButton_Click(object sender, RoutedEventArgs e) => ShowUpdatePage();
+
+    private void GithubNavButton_Click(object sender, RoutedEventArgs e) => OpenPath(ProjectUrl);
+
+    private void AboutNavButton_Click(object sender, RoutedEventArgs e)
+    {
+        ShowAboutPage();
+    }
+
+    private void ShowNodePage()
+    {
+        ShowPage(NodePageScroll, NodeListNavButton);
+    }
+
+    private void ShowNewNodePage()
+    {
+        InlineClearNodeForm();
+        ShowPage(NewNodePageScroll, NewNodeNavButton);
+    }
+
+    private void ShowImportPage()
+    {
+        ShowPage(ImportPageScroll, ImportNodeNavButton);
+    }
+
+    private void ShowExportPage()
+    {
+        RefreshExportProfiles();
+        ShowPage(ExportPageScroll, ExportNodeNavButton);
+    }
+
+    private void ShowUpdatePage()
+    {
+        UpdateStatusText.Text = "点击按钮检查 GitHub Release 中的最新版本。";
+        ShowPage(UpdatePageScroll, UpdateNavButton);
+    }
+
+    private void ShowAboutPage()
+    {
+        LoadAboutPageInfo();
+        ShowPage(AboutPageScroll, AboutNavButton);
+    }
+
+    private void ShowPage(ScrollViewer page, Button? activeButton)
+    {
+        NodePageScroll.Visibility = Visibility.Collapsed;
+        NewNodePageScroll.Visibility = Visibility.Collapsed;
+        ImportPageScroll.Visibility = Visibility.Collapsed;
+        ExportPageScroll.Visibility = Visibility.Collapsed;
+        UpdatePageScroll.Visibility = Visibility.Collapsed;
+        AboutPageScroll.Visibility = Visibility.Collapsed;
+        page.Visibility = Visibility.Visible;
+
+        foreach (var button in new[] { NodeListNavButton, NewNodeNavButton, ImportNodeNavButton, ExportNodeNavButton, AboutNavButton, UpdateNavButton })
+        {
+            button.Style = ReferenceEquals(button, activeButton)
+                ? (Style)FindResource("ActiveNavButtonStyle")
+                : (Style)FindResource("NavChildButtonStyle");
+        }
+    }
+
+    private void LoadAboutPageInfo()
+    {
+        var configDirectory = GetConfigDirectory();
+        var runtimeDirectory = Path.Combine(AppContext.BaseDirectory, "cores");
+        AboutAppVersionText.Text = GetCurrentVersion();
+        AboutBuildTimeText.Text = GetBuildTime();
+        AboutCoreVersionText.Text = GetExecutableVersion(CoreRunner.ResolveCorePath("xray.exe"), "version");
+        AboutTunRuntimeText.Text = File.Exists(TunService.SingBoxPath)
+            ? GetExecutableVersion(TunService.SingBoxPath, "version")
+            : "未安装";
+        AboutConfigDirectoryText.Text = configDirectory;
+        AboutRuntimeDirectoryText.Text = runtimeDirectory;
+        AboutLicenseText.Text = "NaiwaProxy: project license · Xray Core: MPL-2.0 · sing-box: GPL-3.0-or-later · Wintun: GPL-2.0 · Inno Setup: Inno Setup License";
+    }
+
+    private void AboutOpenConfigButton_Click(object sender, RoutedEventArgs e)
+    {
+        var directory = GetConfigDirectory();
+        Directory.CreateDirectory(directory);
+        OpenPath(directory);
+    }
+
+    private void AboutOpenRuntimeButton_Click(object sender, RoutedEventArgs e) => OpenPath(Path.Combine(AppContext.BaseDirectory, "cores"));
+
+    private async void UpdatePageCheckButton_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            UpdateStatusText.Text = "正在检查更新...";
+            using var request = new HttpRequestMessage(HttpMethod.Get, LatestReleaseApi);
+            request.Headers.UserAgent.ParseAdd("NaiwaProxy");
+            using var response = await UpdateHttpClient.SendAsync(request);
+            response.EnsureSuccessStatusCode();
+            using var stream = await response.Content.ReadAsStreamAsync();
+            using var document = await JsonDocument.ParseAsync(stream);
+            var root = document.RootElement;
+            var latestTag = root.GetProperty("tag_name").GetString() ?? "";
+            var htmlUrl = root.GetProperty("html_url").GetString() ?? ProjectUrl;
+            var currentVersion = GetCurrentVersion();
+            if (CompareVersionText(latestTag, currentVersion) <= 0)
+            {
+                UpdateStatusText.Text = $"当前已是最新版本：{currentVersion}。GitHub 最新版本：{latestTag}";
+                return;
+            }
+
+            UpdateStatusText.Text = $"发现新版本 {latestTag}。可点击“打开发布页”下载。";
+            _latestReleaseUrl = htmlUrl;
+        }
+        catch (Exception ex)
+        {
+            UpdateStatusText.Text = $"检查更新失败：{ex.Message}";
+        }
+    }
+
+    private string _latestReleaseUrl = ProjectUrl;
+
+    private void UpdatePageReleaseButton_Click(object sender, RoutedEventArgs e) => OpenPath(_latestReleaseUrl);
+
+    private void InlineClearNodeButton_Click(object sender, RoutedEventArgs e) => InlineClearNodeForm();
+
+    private void InlineClearNodeForm()
+    {
+        InlineProtocolBox.SelectedIndex = 0;
+        InlineNameBox.Text = "";
+        InlineAddressBox.Text = "";
+        InlinePortBox.Text = "443";
+        InlineUserBox.Text = "";
+        InlinePasswordBox.Text = "";
+        InlineSecurityBox.Text = "auto";
+        InlineNetworkBox.Text = "tcp";
+        InlineHostBox.Text = "";
+        InlineSniBox.Text = "";
+        InlinePathBox.Text = "";
+    }
+
+    private void InlineSaveNodeButton_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            if (!int.TryParse(InlinePortBox.Text.Trim(), out var port) || port is <= 0 or > 65535)
+            {
+                throw new InvalidOperationException("端口必须在 1 到 65535 之间。");
+            }
+
+            var protocol = (InlineProtocolBox.SelectedItem as ComboBoxItem)?.Content?.ToString() ?? "vmess";
+            if ((protocol is "vmess" or "vless") && !Guid.TryParse(InlineUserBox.Text.Trim(), out _))
+            {
+                throw new InvalidOperationException("VMess/VLESS 节点需要填写有效 UUID。");
+            }
+
+            if (string.IsNullOrWhiteSpace(InlineAddressBox.Text))
+            {
+                throw new InvalidOperationException("地址不能为空。");
+            }
+
+            var profile = new VmessProfile
+            {
+                Protocol = protocol,
+                Name = string.IsNullOrWhiteSpace(InlineNameBox.Text) ? $"{InlineAddressBox.Text.Trim()}:{port}" : InlineNameBox.Text.Trim(),
+                Address = InlineAddressBox.Text.Trim(),
+                Port = port,
+                UserId = InlineUserBox.Text.Trim(),
+                Password = InlinePasswordBox.Text.Trim(),
+                Security = string.IsNullOrWhiteSpace(InlineSecurityBox.Text) ? "auto" : InlineSecurityBox.Text.Trim(),
+                Network = string.IsNullOrWhiteSpace(InlineNetworkBox.Text) ? "tcp" : InlineNetworkBox.Text.Trim(),
+                Host = InlineHostBox.Text.Trim(),
+                Sni = InlineSniBox.Text.Trim(),
+                Path = InlinePathBox.Text.Trim()
+            };
+
+            _profiles.Add(profile);
+            SaveProfiles(profile.Id);
+            RefreshNodePicker();
+            ProfilesGrid.SelectedItem = profile;
+            ShowNodePage();
+        }
+        catch (Exception ex)
+        {
+            ShowError(ex);
+        }
+    }
+
+    private void InlinePasteImportButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (Clipboard.ContainsText())
+        {
+            InlineImportBox.Text = Clipboard.GetText();
+        }
+    }
+
+    private async void InlineOpenImportFileButton_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new OpenFileDialog
+        {
+            Title = "选择节点文本文件",
+            Filter = "文本和配置文件|*.txt;*.conf;*.json;*.yaml;*.yml|所有文件|*.*"
+        };
+        if (dialog.ShowDialog(this) == true)
+        {
+            InlineImportBox.Text = await File.ReadAllTextAsync(dialog.FileName);
+        }
+    }
+
+    private async void InlineImportButton_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var imported = await SubscriptionImportService.ImportAsync(InlineImportBox.Text);
+            foreach (var profile in imported)
+            {
+                _profiles.Add(profile);
+            }
+
+            var last = imported.LastOrDefault();
+            SaveProfiles(last?.Id ?? _settings.SelectedProfileId);
+            RefreshNodePicker();
+            ProfilesGrid.Items.Refresh();
+            if (last is not null)
+            {
+                ProfilesGrid.SelectedItem = last;
+            }
+
+            ShowNodePage();
+        }
+        catch (Exception ex)
+        {
+            ShowError(ex);
+        }
+    }
+
+    private void RefreshExportProfiles()
+    {
+        ExportProfileCombo.ItemsSource = null;
+        ExportProfileCombo.ItemsSource = _profiles;
+        ExportProfileCombo.SelectedItem = ProfilesGrid.SelectedItem as VmessProfile ?? _profiles.FirstOrDefault();
+        RefreshExportPreview();
+    }
+
+    private void ExportProfileCombo_SelectionChanged(object sender, SelectionChangedEventArgs e) => RefreshExportPreview();
+
+    private void RefreshExportPreview()
+    {
+        if (ExportProfileCombo.SelectedItem is not VmessProfile profile)
+        {
+            ExportShareBox.Text = "";
+            ExportQrImage.Source = null;
+            return;
+        }
+
+        var link = BuildShareLink(profile);
+        ExportShareBox.Text = link;
+        ExportQrImage.Source = GenerateQrImage(link);
+    }
+
+    private void CopyExportLinkButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (!string.IsNullOrWhiteSpace(ExportShareBox.Text))
+        {
+            Clipboard.SetText(ExportShareBox.Text);
+        }
+    }
+
+    private void SaveExportLinkButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (ExportProfileCombo.SelectedItem is not VmessProfile profile || string.IsNullOrWhiteSpace(ExportShareBox.Text))
+        {
+            return;
+        }
+
+        var dialog = new SaveFileDialog
+        {
+            Title = "导出节点",
+            FileName = $"{SanitizeFileName(profile.DisplayName)}.txt",
+            Filter = "文本文件|*.txt|所有文件|*.*"
+        };
+        if (dialog.ShowDialog(this) == true)
+        {
+            File.WriteAllText(dialog.FileName, ExportShareBox.Text, Encoding.UTF8);
+        }
+    }
 
     private void CtxExportNode_Click(object sender, RoutedEventArgs e)
     {
-        MessageBox.Show("节点导出功能将在后续版本提供。", "NaiwaProxy", MessageBoxButton.OK, MessageBoxImage.Information);
+        ShowExportPage();
     }
 
     private void CtxMaintainNode_Click(object sender, RoutedEventArgs e)
     {
-        MessageBox.Show("节点维护（去重、清理不可用节点等）将在后续版本提供。", "NaiwaProxy", MessageBoxButton.OK, MessageBoxImage.Information);
+        if (_profiles.Count == 0)
+        {
+            MessageBox.Show("当前没有需要维护的节点。", "NaiwaProxy", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var result = MessageBox.Show("将执行：\n1. 按协议、地址、端口、账号/密码删除重复节点\n2. 删除已测速且超时的节点\n\n是否继续？", "节点维护", MessageBoxButton.YesNo, MessageBoxImage.Question);
+        if (result != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        var before = _profiles.Count;
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var selectedId = _settings.SelectedProfileId;
+        var kept = _profiles
+            .Where(profile => profile.TcpLatencyDisplay != "Timeout")
+            .Where(profile => seen.Add(BuildProfileKey(profile)))
+            .ToList();
+
+        _profiles.Clear();
+        foreach (var profile in kept)
+        {
+            _profiles.Add(profile);
+        }
+
+        if (_profiles.All(profile => profile.Id != selectedId))
+        {
+            selectedId = _profiles.FirstOrDefault()?.Id;
+        }
+
+        SaveProfiles(selectedId);
+        RefreshNodePicker();
+        RefreshProfilesView();
+        ProfilesGrid.SelectedItem = _profiles.FirstOrDefault(profile => profile.Id == selectedId);
+        MessageBox.Show($"维护完成：清理 {before - _profiles.Count} 个节点，保留 {_profiles.Count} 个节点。", "NaiwaProxy", MessageBoxButton.OK, MessageBoxImage.Information);
     }
 
     private void CtxAllTcpTest_Click(object sender, RoutedEventArgs e)
@@ -986,9 +1382,11 @@ public partial class MainWindow : Window
     private static void CopyProfile(VmessProfile source, VmessProfile target)
     {
         target.Name = source.Name;
+        target.Protocol = source.Protocol;
         target.Address = source.Address;
         target.Port = source.Port;
         target.UserId = source.UserId;
+        target.Password = source.Password;
         target.AlterId = source.AlterId;
         target.Security = source.Security;
         target.Network = source.Network;
@@ -1000,6 +1398,238 @@ public partial class MainWindow : Window
         target.Remark = source.Remark;
         target.SubscriptionName = source.SubscriptionName;
         target.SubscriptionUpdatedAt = source.SubscriptionUpdatedAt;
+    }
+
+    private static string BuildProfileKey(VmessProfile profile)
+    {
+        return string.Join("|", profile.Protocol, profile.Address, profile.Port, profile.UserId, profile.Password, profile.Security);
+    }
+
+    private static BitmapImage GenerateQrImage(string value)
+    {
+        using var generator = new QRCodeGenerator();
+        using var data = generator.CreateQrCode(value, QRCodeGenerator.ECCLevel.Q);
+        var qr = new PngByteQRCode(data);
+        var bytes = qr.GetGraphic(8);
+        using var stream = new MemoryStream(bytes);
+        var bitmap = new BitmapImage();
+        bitmap.BeginInit();
+        bitmap.CacheOption = BitmapCacheOption.OnLoad;
+        bitmap.StreamSource = stream;
+        bitmap.EndInit();
+        bitmap.Freeze();
+        return bitmap;
+    }
+
+    private static string SanitizeFileName(string value)
+    {
+        var invalidChars = Path.GetInvalidFileNameChars();
+        var sanitized = new string(value.Select(ch => invalidChars.Contains(ch) ? '_' : ch).ToArray()).Trim();
+        return string.IsNullOrWhiteSpace(sanitized) ? "NaiwaProxy-Node" : sanitized;
+    }
+
+    private static string BuildShareLink(VmessProfile profile)
+    {
+        return profile.Protocol.ToLowerInvariant() switch
+        {
+            "vless" => BuildVlessLink(profile),
+            "trojan" => BuildTrojanLink(profile),
+            "shadowsocks" or "ss" => BuildShadowsocksLink(profile),
+            "socks" or "socks5" => BuildUserPassLink(profile, "socks"),
+            "http" or "https" => BuildUserPassLink(profile, "http"),
+            _ => BuildVmessLink(profile)
+        };
+    }
+
+    private static string BuildVmessLink(VmessProfile profile)
+    {
+        var payload = new
+        {
+            v = "2",
+            ps = profile.DisplayName,
+            add = profile.Address,
+            port = profile.Port.ToString(),
+            id = profile.UserId,
+            aid = profile.AlterId.ToString(),
+            scy = profile.Security,
+            net = profile.Network,
+            type = profile.Type,
+            host = profile.Host,
+            path = profile.Path,
+            tls = profile.Tls,
+            sni = profile.Sni
+        };
+        return $"vmess://{Convert.ToBase64String(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(payload)))}";
+    }
+
+    private static string BuildVlessLink(VmessProfile profile)
+    {
+        var query = BuildQuery([
+            ("encryption", string.IsNullOrWhiteSpace(profile.Security) ? "none" : profile.Security),
+            ("type", profile.Network),
+            ("security", string.IsNullOrWhiteSpace(profile.Tls) ? "" : "tls"),
+            ("sni", profile.Sni),
+            ("host", profile.Host),
+            ("path", profile.Path)
+        ]);
+        return $"vless://{Uri.EscapeDataString(profile.UserId)}@{profile.Address}:{profile.Port}{query}#{Uri.EscapeDataString(profile.DisplayName)}";
+    }
+
+    private static string BuildTrojanLink(VmessProfile profile)
+    {
+        var query = BuildQuery([
+            ("type", profile.Network),
+            ("security", string.IsNullOrWhiteSpace(profile.Tls) ? "tls" : "tls"),
+            ("sni", profile.Sni),
+            ("host", profile.Host),
+            ("path", profile.Path)
+        ]);
+        return $"trojan://{Uri.EscapeDataString(profile.Password)}@{profile.Address}:{profile.Port}{query}#{Uri.EscapeDataString(profile.DisplayName)}";
+    }
+
+    private static string BuildShadowsocksLink(VmessProfile profile)
+    {
+        var method = string.IsNullOrWhiteSpace(profile.Security) ? "aes-128-gcm" : profile.Security;
+        var userInfo = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{method}:{profile.Password}")).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+        return $"ss://{userInfo}@{profile.Address}:{profile.Port}#{Uri.EscapeDataString(profile.DisplayName)}";
+    }
+
+    private static string BuildUserPassLink(VmessProfile profile, string scheme)
+    {
+        var userInfo = string.IsNullOrWhiteSpace(profile.UserId)
+            ? ""
+            : $"{Uri.EscapeDataString(profile.UserId)}:{Uri.EscapeDataString(profile.Password)}@";
+        return $"{scheme}://{userInfo}{profile.Address}:{profile.Port}#{Uri.EscapeDataString(profile.DisplayName)}";
+    }
+
+    private static string BuildQuery(IEnumerable<(string Key, string Value)> values)
+    {
+        var items = values
+            .Where(item => !string.IsNullOrWhiteSpace(item.Value))
+            .Select(item => $"{Uri.EscapeDataString(item.Key)}={Uri.EscapeDataString(item.Value)}")
+            .ToArray();
+        return items.Length == 0 ? "" : $"?{string.Join("&", items)}";
+    }
+
+    private static string GetConfigDirectory()
+    {
+        return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "NaiwaProxy");
+    }
+
+    private static string GetCurrentVersion()
+    {
+        var assembly = Assembly.GetExecutingAssembly();
+        var version = assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
+            ?? assembly.GetName().Version?.ToString(3)
+            ?? "未知";
+        return version.Split('+')[0];
+    }
+
+    private static string GetBuildTime()
+    {
+        var executablePath = Environment.ProcessPath;
+        if (!string.IsNullOrWhiteSpace(executablePath) && File.Exists(executablePath))
+        {
+            return File.GetLastWriteTime(executablePath).ToString("yyyy-MM-dd HH:mm");
+        }
+
+        return DateTime.Now.ToString("yyyy-MM-dd HH:mm");
+    }
+
+    private static string GetExecutableVersion(string executablePath, string arguments)
+    {
+        if (!File.Exists(executablePath))
+        {
+            return "缺失";
+        }
+
+        try
+        {
+            using var process = Process.Start(new ProcessStartInfo
+            {
+                FileName = executablePath,
+                Arguments = arguments,
+                WorkingDirectory = Path.GetDirectoryName(executablePath) ?? AppContext.BaseDirectory,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true
+            });
+
+            if (process is null)
+            {
+                return "无法读取";
+            }
+
+            var output = process.StandardOutput.ReadLine();
+            process.WaitForExit(3000);
+            return string.IsNullOrWhiteSpace(output) ? "无法读取" : ShortenExecutableVersion(output.Trim());
+        }
+        catch
+        {
+            return "无法读取";
+        }
+    }
+
+    private static string ShortenExecutableVersion(string output)
+    {
+        var parts = output.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (parts.Length >= 2 && string.Equals(parts[0], "Xray", StringComparison.OrdinalIgnoreCase))
+        {
+            return $"Xray {parts[1]}";
+        }
+
+        return output;
+    }
+
+    private static int CompareVersionText(string left, string right)
+    {
+        var leftParts = ExtractVersionParts(left);
+        var rightParts = ExtractVersionParts(right);
+        for (var i = 0; i < 4; i++)
+        {
+            var comparison = leftParts[i].CompareTo(rightParts[i]);
+            if (comparison != 0)
+            {
+                return comparison;
+            }
+        }
+
+        return 0;
+    }
+
+    private static int[] ExtractVersionParts(string value)
+    {
+        var match = Regex.Match(value, @"\d+(?:\.\d+){0,3}");
+        if (!match.Success)
+        {
+            return [0, 0, 0, 0];
+        }
+
+        var parts = match.Value.Split('.');
+        var result = new[] { 0, 0, 0, 0 };
+        for (var i = 0; i < parts.Length && i < result.Length; i++)
+        {
+            _ = int.TryParse(parts[i], out result[i]);
+        }
+
+        return result;
+    }
+
+    private static void OpenPath(string path)
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = path,
+                UseShellExecute = true
+            });
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(ex.Message, "NaiwaProxy", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
     }
 
     private static void ShowError(Exception exception)

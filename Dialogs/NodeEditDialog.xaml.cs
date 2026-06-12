@@ -32,9 +32,11 @@ public partial class NodeEditDialog : Window
     private void LoadProfile(VmessProfile profile)
     {
         NameBox.Text = profile.Name;
+        SelectCombo(ProtocolBox, profile.Protocol);
         AddressBox.Text = profile.Address;
         PortBox.Text = profile.Port.ToString();
         UuidBox.Text = profile.UserId;
+        PasswordBox.Text = profile.Password;
         AlterIdBox.Text = profile.AlterId.ToString();
         HostBox.Text = profile.Host;
         SniBox.Text = profile.Sni;
@@ -61,18 +63,26 @@ public partial class NodeEditDialog : Window
             throw new InvalidOperationException("地址不能为空。");
         }
 
-        if (!Guid.TryParse(UuidBox.Text.Trim(), out _))
+        var protocol = SelectedComboValue(ProtocolBox, "vmess");
+        if ((protocol is "vmess" or "vless") && !Guid.TryParse(UuidBox.Text.Trim(), out _))
         {
             throw new InvalidOperationException("UUID 格式无效。");
+        }
+
+        if ((protocol is "trojan" or "shadowsocks") && string.IsNullOrWhiteSpace(PasswordBox.Text))
+        {
+            throw new InvalidOperationException("当前协议需要填写密码。");
         }
 
         return new VmessProfile
         {
             Id = Profile.Id,
+            Protocol = protocol,
             Name = NameBox.Text.Trim(),
             Address = AddressBox.Text.Trim(),
             Port = port,
             UserId = UuidBox.Text.Trim(),
+            Password = PasswordBox.Text.Trim(),
             AlterId = alterId,
             Security = SelectedComboValue(SecurityBox, "auto"),
             Network = SelectedComboValue(NetworkBox, "tcp"),
@@ -88,10 +98,12 @@ public partial class NodeEditDialog : Window
         return new VmessProfile
         {
             Id = source.Id,
+            Protocol = source.Protocol,
             Name = source.Name,
             Address = source.Address,
             Port = source.Port,
             UserId = source.UserId,
+            Password = source.Password,
             AlterId = source.AlterId,
             Security = source.Security,
             Network = source.Network,

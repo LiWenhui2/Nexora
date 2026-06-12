@@ -1,5 +1,6 @@
 using System.Net.Http;
 using System.Text;
+using System.Text.RegularExpressions;
 using NaiwaProxy.Models;
 
 namespace NaiwaProxy.Services;
@@ -15,11 +16,13 @@ public static class SubscriptionImportService
     {
         if (string.IsNullOrWhiteSpace(input))
         {
-            throw new InvalidOperationException("请输入 vmess:// 链接或订阅地址。");
+            throw new InvalidOperationException("请输入节点链接、订阅地址或本地文本内容。");
         }
 
         var trimmed = input.Trim();
-        if (Uri.TryCreate(trimmed, UriKind.Absolute, out var uri) && uri.Scheme is "http" or "https")
+        if (Uri.TryCreate(trimmed, UriKind.Absolute, out var uri) &&
+            uri.Scheme is "http" or "https" &&
+            ShouldTreatAsSubscription(uri, trimmed))
         {
             return await ImportFromUrlAsync(uri, cancellationToken);
         }
@@ -50,7 +53,7 @@ public static class SubscriptionImportService
 
         if (candidates.Count == 0)
         {
-            throw new FormatException("没有识别到 vmess:// 节点。");
+            throw new FormatException("没有识别到支持的节点链接。");
         }
 
         var profiles = new List<VmessProfile>();
@@ -67,9 +70,41 @@ public static class SubscriptionImportService
 
     private static IEnumerable<string> ExtractCandidates(string content)
     {
-        return content
-            .Split(['\r', '\n', ' ', '\t'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Where(item => item.StartsWith("vmess://", StringComparison.OrdinalIgnoreCase));
+        var pattern = @"(?i)\b(?:vmess|vless|trojan|ss|socks5?|https?)://[^\s""'<>]+";
+        foreach (Match match in Regex.Matches(content, pattern))
+        {
+            var value = match.Value.Trim().TrimEnd(',', ';');
+            if (value.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+                value.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+            {
+                if (!Uri.TryCreate(value, UriKind.Absolute, out var uri) || ShouldTreatAsSubscription(uri, value))
+                {
+                    continue;
+                }
+            }
+
+            yield return value;
+        }
+    }
+
+    private static bool ShouldTreatAsSubscription(Uri uri, string raw)
+    {
+        if (!string.IsNullOrWhiteSpace(uri.UserInfo))
+        {
+            return false;
+        }
+
+        if (!string.IsNullOrWhiteSpace(uri.Fragment))
+        {
+            return false;
+        }
+
+        if (!uri.IsDefaultPort)
+        {
+            return false;
+        }
+
+        return raw.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries).Length == 1;
     }
 
     private static bool TryDecodeBase64(string content, out string decoded)

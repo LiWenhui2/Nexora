@@ -4,10 +4,11 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
-        Title="NaiwaProxy" Height="760" Width="1240" MinHeight="700" MinWidth="1120"
+        Title="NaiwaProxy" Height="800" Width="1460" MinHeight="740" MinWidth="1280"
         Icon="/assets/app-icon.ico"
         Background="#F4F6FA"
-        FontFamily="Segoe UI, Microsoft YaHei UI">
+        FontFamily="Segoe UI, Microsoft YaHei UI"
+        FontSize="17">
     <Window.Resources>
         <SolidColorBrush x:Key="BgBrush" Color="#F4F6FA"/>
         <SolidColorBrush x:Key="PanelBrush" Color="#FFFFFF"/>
@@ -44,10 +45,11 @@
         </Style>
 
         <Style x:Key="NavButtonStyle" TargetType="Button">
-            <Setter Property="Height" Value="38"/>
+            <Setter Property="Height" Value="46"/>
+            <Setter Property="FontSize" Value="19"/>
             <Setter Property="HorizontalContentAlignment" Value="Left"/>
-            <Setter Property="Padding" Value="12,0"/>
-            <Setter Property="Margin" Value="0,2"/>
+            <Setter Property="Padding" Value="14,0"/>
+            <Setter Property="Margin" Value="0,3"/>
             <Setter Property="Foreground" Value="#475569"/>
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="BorderThickness" Value="0"/>
@@ -74,8 +76,50 @@
             <Setter Property="Background" Value="#FEF3C7"/>
         </Style>
 
+        <Style x:Key="NavChildButtonStyle" TargetType="Button" BasedOn="{StaticResource NavButtonStyle}">
+            <Setter Property="Height" Value="42"/>
+            <Setter Property="FontSize" Value="18"/>
+            <Setter Property="Padding" Value="28,0,12,0"/>
+            <Setter Property="Foreground" Value="#64748B"/>
+        </Style>
+
+        <Style x:Key="NavGroupHeaderStyle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="#475569"/>
+            <Setter Property="FontSize" Value="17"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="Margin" Value="14,18,0,6"/>
+        </Style>
+
+        <Geometry x:Key="IconList">M3,5 L3.01,5 M3,12 L3.01,12 M3,19 L3.01,19 M8,5 L21,5 M8,12 L21,12 M8,19 L21,19</Geometry>
+        <Geometry x:Key="IconPlus">M5,12 L19,12 M12,5 L12,19</Geometry>
+        <Geometry x:Key="IconImport">M21,15 L21,19 A2,2 0 0 1 19,21 L5,21 A2,2 0 0 1 3,19 L3,15 M7,10 L12,15 L17,10 M12,15 L12,3</Geometry>
+        <Geometry x:Key="IconExport">M21,15 L21,19 A2,2 0 0 1 19,21 L5,21 A2,2 0 0 1 3,19 L3,15 M17,8 L12,3 L7,8 M12,3 L12,15</Geometry>
+        <Geometry x:Key="IconRss">M4,11 A9,9 0 0 1 13,20 M4,4 A16,16 0 0 1 20,20 M5,19 A1,1 0 1 0 5,17 A1,1 0 0 0 5,19</Geometry>
+        <Geometry x:Key="IconRefresh">M21,2 L21,8 L15,8 M3,12 A9,9 0 0 1 18,5.3 L21,8 M3,22 L3,16 L9,16 M21,12 A9,9 0 0 1 6,18.7 L3,16</Geometry>
+        <Geometry x:Key="IconSettings">M12,15.5 A3.5,3.5 0 1 0 12,8.5 A3.5,3.5 0 0 0 12,15.5 M19.4,15 A1.65,1.65 0 0 0 19.7,16.8 L19.8,16.9 A2,2 0 0 1 17,19.7 L16.9,19.6 A1.65,1.65 0 0 0 15,19.4 A1.65,1.65 0 0 0 14,20.9 L14,21 A2,2 0 0 1 10,21 L10,20.9 A1.65,1.65 0 0 0 9,19.4 A1.65,1.65 0 0 0 7.1,19.6 L7,19.7 A2,2 0 0 1 4.2,16.9 L4.3,16.8 A1.65,1.65 0 0 0 4.6,15 A1.65,1.65 0 0 0 3.1,14 L3,14 A2,2 0 0 1 3,10 L3.1,10 A1.65,1.65 0 0 0 4.6,9 A1.65,1.65 0 0 0 4.3,7.2 L4.2,7.1 A2,2 0 0 1 7,4.3 L7.1,4.4 A1.65,1.65 0 0 0 9,4.6 A1.65,1.65 0 0 0 10,3.1 L10,3 A2,2 0 0 1 14,3 L14,3.1 A1.65,1.65 0 0 0 15,4.6 A1.65,1.65 0 0 0 16.9,4.4 L17,4.3 A2,2 0 0 1 19.8,7.1 L19.7,7.2 A1.65,1.65 0 0 0 19.4,9 A1.65,1.65 0 0 0 20.9,10 L21,10 A2,2 0 0 1 21,14 L20.9,14 A1.65,1.65 0 0 0 19.4,15</Geometry>
+        <Geometry x:Key="IconShield">M12,22 C12,22 20,18 20,12 L20,5 L12,2 L4,5 L4,12 C4,18 12,22 12,22</Geometry>
+        <Geometry x:Key="IconInfo">M12,16 L12,12 M12,8 L12.01,8 M22,12 A10,10 0 1 1 2,12 A10,10 0 0 1 22,12</Geometry>
+        <Geometry x:Key="IconGitHub">M12,.297c-6.63,0-12,5.373-12,12 0,5.303 3.438,9.8 8.205,11.385 .6,.113 .82,-.258 .82,-.577 0,-.285-.01,-1.04-.015,-2.04-3.338,.724-4.042,-1.61-4.042,-1.61C4.422,18.07 3.633,17.7 3.633,17.7c-1.087,-.744 .084,-.729 .084,-.729 1.205,.084 1.838,1.236 1.838,1.236 1.07,1.835 2.809,1.305 3.495,.998 .108,-.776 .417,-1.305 .76,-1.605-2.665,-.3-5.466,-1.332-5.466,-5.93 0,-1.31 .465,-2.38 1.235,-3.22-.135,-.303-.54,-1.523 .105,-3.176 0,0 1.005,-.322 3.3,1.23 .96,-.267 1.98,-.399 3,-.405 1.02,.006 2.04,.138 3,.405 2.28,-1.552 3.285,-1.23 3.285,-1.23 .645,1.653 .24,2.873 .12,3.176 .765,.84 1.23,1.91 1.23,3.22 0,4.61-2.805,5.625-5.475,5.92 .42,.36 .81,1.096 .81,2.22 0,1.606-.015,2.896-.015,3.286 0,.315 .21,.69 .825,.57C20.565,22.092 24,17.592 24,12.297c0,-6.627-5.373,-12-12,-12</Geometry>
+
+        <Style x:Key="NavLineIconStyle" TargetType="Path">
+            <Setter Property="Width" Value="20"/>
+            <Setter Property="Height" Value="20"/>
+            <Setter Property="Stretch" Value="Uniform"/>
+            <Setter Property="Stroke" Value="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
+            <Setter Property="StrokeThickness" Value="2"/>
+            <Setter Property="StrokeStartLineCap" Value="Round"/>
+            <Setter Property="StrokeEndLineCap" Value="Round"/>
+            <Setter Property="StrokeLineJoin" Value="Round"/>
+            <Setter Property="Margin" Value="0,0,10,0"/>
+        </Style>
+
+        <Style x:Key="NavFillIconStyle" TargetType="Path" BasedOn="{StaticResource NavLineIconStyle}">
+            <Setter Property="StrokeThickness" Value="0"/>
+            <Setter Property="Fill" Value="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
+        </Style>
+
         <Style x:Key="DarkButtonStyle" TargetType="Button">
-            <Setter Property="Height" Value="36"/>
+            <Setter Property="Height" Value="40"/>
             <Setter Property="MinWidth" Value="78"/>
             <Setter Property="Padding" Value="14,0"/>
             <Setter Property="Foreground" Value="#334155"/>
@@ -110,7 +154,7 @@
         </Style>
 
         <Style x:Key="FieldTextBoxStyle" TargetType="TextBox">
-            <Setter Property="Height" Value="34"/>
+            <Setter Property="Height" Value="38"/>
             <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
             <Setter Property="Background" Value="{StaticResource Panel3Brush}"/>
             <Setter Property="BorderBrush" Value="{StaticResource LineBrush}"/>
@@ -165,7 +209,7 @@
         </Style>
 
         <Style TargetType="DataGridRow">
-            <Setter Property="MinHeight" Value="38"/>
+            <Setter Property="MinHeight" Value="42"/>
             <Setter Property="BorderThickness" Value="0"/>
             <Style.Triggers>
                 <Trigger Property="IsMouseOver" Value="True">
@@ -210,7 +254,7 @@
         </Style>
 
         <Style x:Key="ControlFieldBorderStyle" TargetType="Border">
-            <Setter Property="Height" Value="38"/>
+            <Setter Property="Height" Value="42"/>
             <Setter Property="Padding" Value="12,0"/>
             <Setter Property="CornerRadius" Value="11"/>
             <Setter Property="Background" Value="{StaticResource Panel2Brush}"/>
@@ -221,7 +265,7 @@
 
     <Grid Background="{StaticResource BgBrush}">
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="272"/>
+            <ColumnDefinition Width="320"/>
             <ColumnDefinition Width="*"/>
         </Grid.ColumnDefinitions>
 
@@ -240,36 +284,119 @@
                     <RowDefinition Height="*"/>
                     <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
-                <StackPanel Orientation="Horizontal" Margin="18,20,18,16">
-                    <Border Width="44" Height="44" CornerRadius="14" Background="#FFFFFF" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" ClipToBounds="True">
+                <StackPanel Orientation="Horizontal" Margin="20,22,20,18">
+                    <Border Width="50" Height="50" CornerRadius="14" Background="#FFFFFF" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" ClipToBounds="True">
                         <Image x:Name="BrandIconImage" Stretch="UniformToFill"/>
                     </Border>
                     <StackPanel Margin="12,0,0,0" VerticalAlignment="Center">
-                        <TextBlock Text="NaiwaProxy" FontSize="17" FontWeight="Bold"/>
-                        <TextBlock Text="Windows · Xray Client" FontSize="11" Foreground="{StaticResource MutedBrush}" Margin="0,4,0,0"/>
+                        <TextBlock Text="NaiwaProxy" FontSize="24" FontWeight="Bold"/>
+                        <TextBlock Text="Windows · Xray Client" FontSize="18" Foreground="{StaticResource MutedBrush}" Margin="0,4,0,0"/>
                     </StackPanel>
                 </StackPanel>
-                <Border Grid.Row="1" Height="36" Margin="14,0,14,10" CornerRadius="10" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" Background="{StaticResource Panel3Brush}">
+                <Border Grid.Row="1" Height="42" Margin="16,0,16,10" CornerRadius="10" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" Background="{StaticResource Panel3Brush}">
                     <Grid>
-                        <TextBlock Text="⌕" Foreground="{StaticResource MutedBrush}" FontSize="13" Margin="12,0" VerticalAlignment="Center"/>
-                        <TextBlock Text="搜索菜单…" Foreground="{StaticResource MutedBrush}" FontSize="12" Margin="34,0,0,0" VerticalAlignment="Center"/>
+                        <TextBlock Text="⌕" Foreground="{StaticResource MutedBrush}" FontSize="19" Margin="12,0" VerticalAlignment="Center"/>
+                        <TextBlock Text="搜索菜单…" Foreground="{StaticResource MutedBrush}" FontSize="18" Margin="38,0,0,0" VerticalAlignment="Center"/>
                     </Grid>
                 </Border>
-                <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" Margin="10,0,10,12">
+                <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" Margin="12,0,12,12">
                     <StackPanel>
-                        <Button Style="{StaticResource ActiveNavButtonStyle}" Content="◎  节点管理"/>
-                        <Button Style="{StaticResource NavButtonStyle}" Content="⇅  订阅管理" Click="SubscriptionNavButton_Click"/>
+                        <TextBlock Style="{StaticResource NavGroupHeaderStyle}" Text="节点管理"/>
+                        <Button x:Name="NodeListNavButton" Style="{StaticResource ActiveNavButtonStyle}" Click="NodeListNavButton_Click">
+                            <StackPanel Orientation="Horizontal">
+                                <Path Style="{StaticResource NavLineIconStyle}" Data="{StaticResource IconList}"/>
+                                <TextBlock Text="节点列表"/>
+                            </StackPanel>
+                        </Button>
+                        <Button x:Name="NewNodeNavButton" Style="{StaticResource NavChildButtonStyle}" Click="NewNodeNavButton_Click">
+                            <StackPanel Orientation="Horizontal">
+                                <Path Style="{StaticResource NavLineIconStyle}" Data="{StaticResource IconPlus}"/>
+                                <TextBlock Text="新建节点"/>
+                            </StackPanel>
+                        </Button>
+                        <Button x:Name="ImportNodeNavButton" Style="{StaticResource NavChildButtonStyle}" Click="ImportNodeNavButton_Click">
+                            <StackPanel Orientation="Horizontal">
+                                <Path Style="{StaticResource NavLineIconStyle}" Data="{StaticResource IconImport}"/>
+                                <TextBlock Text="导入节点"/>
+                            </StackPanel>
+                        </Button>
+                        <Button x:Name="ExportNodeNavButton" Style="{StaticResource NavChildButtonStyle}" Click="ExportNodeNavButton_Click">
+                            <StackPanel Orientation="Horizontal">
+                                <Path Style="{StaticResource NavLineIconStyle}" Data="{StaticResource IconExport}"/>
+                                <TextBlock Text="导出节点"/>
+                            </StackPanel>
+                        </Button>
+
+                        <TextBlock Style="{StaticResource NavGroupHeaderStyle}" Text="订阅管理"/>
+                        <Button Style="{StaticResource NavChildButtonStyle}" Click="ImportNodeNavButton_Click">
+                            <StackPanel Orientation="Horizontal">
+                                <Path Style="{StaticResource NavLineIconStyle}" Data="{StaticResource IconRss}"/>
+                                <TextBlock Text="订阅导入"/>
+                            </StackPanel>
+                        </Button>
+                        <Button Style="{StaticResource NavChildButtonStyle}" IsEnabled="False">
+                            <StackPanel Orientation="Horizontal">
+                                <Path Style="{StaticResource NavLineIconStyle}" Data="{StaticResource IconRefresh}"/>
+                                <TextBlock Text="订阅更新"/>
+                            </StackPanel>
+                        </Button>
+                        <Button Style="{StaticResource NavChildButtonStyle}" IsEnabled="False">
+                            <StackPanel Orientation="Horizontal">
+                                <Path Style="{StaticResource NavLineIconStyle}" Data="{StaticResource IconSettings}"/>
+                                <TextBlock Text="订阅策略"/>
+                            </StackPanel>
+                        </Button>
+
+                        <TextBlock Style="{StaticResource NavGroupHeaderStyle}" Text="代理模式"/>
+                        <Button Style="{StaticResource NavChildButtonStyle}" Click="NodeListNavButton_Click">
+                            <StackPanel Orientation="Horizontal">
+                                <Path Style="{StaticResource NavLineIconStyle}" Data="{StaticResource IconSettings}"/>
+                                <TextBlock Text="系统代理"/>
+                            </StackPanel>
+                        </Button>
+                        <Button Style="{StaticResource NavChildButtonStyle}" Click="NodeListNavButton_Click">
+                            <StackPanel Orientation="Horizontal">
+                                <Path Style="{StaticResource NavLineIconStyle}" Data="{StaticResource IconShield}"/>
+                                <TextBlock Text="TUN 模式"/>
+                            </StackPanel>
+                        </Button>
+                        <Button Style="{StaticResource NavChildButtonStyle}" Click="NodeListNavButton_Click">
+                            <StackPanel Orientation="Horizontal">
+                                <Path Style="{StaticResource NavLineIconStyle}" Data="{StaticResource IconList}"/>
+                                <TextBlock Text="路由规则"/>
+                            </StackPanel>
+                        </Button>
+
+                        <TextBlock Style="{StaticResource NavGroupHeaderStyle}" Text="系统"/>
+                        <Button x:Name="AboutNavButton" Style="{StaticResource NavChildButtonStyle}" Click="AboutNavButton_Click">
+                            <StackPanel Orientation="Horizontal">
+                                <Path Style="{StaticResource NavLineIconStyle}" Data="{StaticResource IconInfo}"/>
+                                <TextBlock Text="关于"/>
+                            </StackPanel>
+                        </Button>
+                        <Button x:Name="UpdateNavButton" Style="{StaticResource NavChildButtonStyle}" Click="UpdateNavButton_Click">
+                            <StackPanel Orientation="Horizontal">
+                                <Path Style="{StaticResource NavLineIconStyle}" Data="{StaticResource IconRefresh}"/>
+                                <TextBlock Text="检查更新"/>
+                            </StackPanel>
+                        </Button>
+                        <Button Style="{StaticResource NavChildButtonStyle}" Click="GithubNavButton_Click">
+                            <StackPanel Orientation="Horizontal">
+                                <Path Style="{StaticResource NavFillIconStyle}" Data="{StaticResource IconGitHub}"/>
+                                <TextBlock Text="GitHub"/>
+                            </StackPanel>
+                        </Button>
                     </StackPanel>
                 </ScrollViewer>
-                <Border Grid.Row="3" Margin="12,0,12,14" Padding="14" Background="{StaticResource Panel2Brush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" CornerRadius="14">
+                <Border Grid.Row="3" Margin="14,0,14,16" Padding="16" Background="{StaticResource Panel2Brush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" CornerRadius="14">
                     <StackPanel>
                         <StackPanel Orientation="Horizontal">
                             <Ellipse x:Name="SideStatusDot" Width="8" Height="8" Fill="#16A34A" VerticalAlignment="Center"/>
-                            <TextBlock x:Name="SideStatusText" Text="运行中 · 系统代理已开启" FontSize="13" FontWeight="Bold" Margin="8,0,0,0"/>
+                            <TextBlock x:Name="SideStatusText" Text="运行中 · 系统代理已开启" FontSize="19" FontWeight="Bold" Margin="8,0,0,0"/>
                         </StackPanel>
-                        <TextBlock x:Name="SideNodeText" Text="节点：-" Foreground="{StaticResource MutedBrush}" FontSize="12" Margin="0,8,0,0"/>
-                        <TextBlock x:Name="SidePortsText" Text="HTTP 127.0.0.1:10809 · SOCKS 10808" Foreground="{StaticResource MutedBrush}" FontSize="12" Margin="0,3,0,0"/>
-                        <TextBlock x:Name="SideCoreText" Text="Core 未运行" Foreground="{StaticResource MutedBrush}" FontSize="12" Margin="0,3,0,0"/>
+                        <TextBlock x:Name="SideNodeText" Text="节点：-" Foreground="{StaticResource MutedBrush}" FontSize="18" Margin="0,8,0,0"/>
+                        <TextBlock x:Name="SidePortsText" Text="HTTP 127.0.0.1:10809 · SOCKS 10808" Foreground="{StaticResource MutedBrush}" FontSize="18" Margin="0,3,0,0"/>
+                        <TextBlock x:Name="SideCoreText" Text="Core 未运行" Foreground="{StaticResource MutedBrush}" FontSize="18" Margin="0,3,0,0"/>
                     </StackPanel>
                 </Border>
             </Grid>
@@ -278,48 +405,48 @@
         <!-- Main -->
         <Grid Grid.Column="1">
             <Grid.RowDefinitions>
-                <RowDefinition Height="72"/>
+                <RowDefinition Height="82"/>
                 <RowDefinition Height="*"/>
             </Grid.RowDefinitions>
 
             <Border Grid.Row="0" Background="#FFFFFF" BorderBrush="#E2E8F0" BorderThickness="0,0,0,1">
                 <Grid Margin="24,0">
                     <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
-                    <TextBlock Text="节点管理" FontSize="22" FontWeight="Bold" VerticalAlignment="Center"/>
-                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Border x:Name="ProxyToggleBorder" Style="{StaticResource ControlFieldBorderStyle}" BorderBrush="#FBBF24" Background="#FEF9C3" Padding="14,0" MinWidth="210" VerticalAlignment="Center">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock Text="启用代理" Foreground="{StaticResource MutedBrush}" FontSize="16" Margin="0,0,10,0"/>
+                            <CheckBox x:Name="ProxyToggle" Style="{StaticResource ToggleSwitchStyle}" Checked="ProxyToggle_Changed" Unchecked="ProxyToggle_Changed"/>
+                            <TextBlock x:Name="ProxyStateText" Text="运行中" Foreground="{StaticResource GreenBrush}" FontSize="16" FontWeight="SemiBold" Margin="10,0,0,0"/>
+                        </StackPanel>
+                    </Border>
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
                         <Border Padding="12,6" CornerRadius="8" Background="#F1F5F9" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" Margin="0,0,10,0">
-                            <TextBlock x:Name="TrafficBadgeText" Text="下行 — · 上传 —" FontSize="12" Foreground="#475569"/>
-                        </Border>
-                        <Border x:Name="ProxyToggleBorder" Style="{StaticResource ControlFieldBorderStyle}" BorderBrush="#FBBF24" Background="#FEF9C3">
-                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                <TextBlock Text="启用代理" Foreground="{StaticResource MutedBrush}" FontSize="12" Margin="0,0,10,0"/>
-                                <CheckBox x:Name="ProxyToggle" Style="{StaticResource ToggleSwitchStyle}" Checked="ProxyToggle_Changed" Unchecked="ProxyToggle_Changed"/>
-                                <TextBlock x:Name="ProxyStateText" Text="运行中" Foreground="{StaticResource GreenBrush}" FontSize="12" FontWeight="SemiBold" Margin="10,0,0,0"/>
-                            </StackPanel>
+                            <TextBlock x:Name="TrafficBadgeText" Text="下行 — · 上传 —" FontSize="16" Foreground="#475569"/>
                         </Border>
                     </StackPanel>
                 </Grid>
             </Border>
 
-            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+            <ScrollViewer x:Name="NodePageScroll" Grid.Row="1" VerticalScrollBarVisibility="Auto">
                 <StackPanel Margin="24,22,24,28">
                     <!-- Node list module -->
                     <Border Style="{StaticResource CardBorderStyle}" Margin="0,0,0,16">
                         <StackPanel>
                             <!-- Status bar -->
                             <WrapPanel Margin="0,0,0,14">
-                                <ComboBox x:Name="NodePickerCombo" Width="220" Height="38" Margin="0,0,12,8"
+                                <ComboBox x:Name="NodePickerCombo" Width="240" Height="42" Margin="0,0,12,8"
                                           DisplayMemberPath="PickerDisplay" SelectionChanged="NodePickerCombo_SelectionChanged"/>
-                                <Border MinHeight="38" MinWidth="320" Padding="12,0" CornerRadius="11" Background="{StaticResource Panel2Brush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" Margin="0,0,12,8">
+                                <Border MinHeight="42" MinWidth="360" Padding="12,0" CornerRadius="11" Background="{StaticResource Panel2Brush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" Margin="0,0,12,8">
                                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                                         <TextBlock x:Name="NodeAddressText" Text="[VMess] -" Foreground="{StaticResource AccentTextBrush}" FontWeight="SemiBold"/>
                                         <TextBlock Text="当前延迟：" Foreground="{StaticResource MutedBrush}" Margin="12,0,0,0"/>
                                         <TextBlock x:Name="CurrentTcpLatencyText" Text="TCP -" Foreground="{StaticResource GreenBrush}" FontWeight="Bold"/>
                                         <Border x:Name="NodeAvailabilityTag" Background="#DCFCE7" BorderBrush="#86EFAC" BorderThickness="1" CornerRadius="999" Padding="8,2" Margin="10,0,0,0">
-                                            <TextBlock x:Name="NodeAvailabilityText" Text="待测速" Foreground="#166534" FontSize="11"/>
+                                        <TextBlock x:Name="NodeAvailabilityText" Text="待测速" Foreground="#166534" FontSize="15"/>
                                         </Border>
                                     </StackPanel>
                                 </Border>
@@ -346,9 +473,9 @@
                                         <RowDefinition Height="*"/>
                                     </Grid.RowDefinitions>
                                     <WrapPanel Margin="14" VerticalAlignment="Center">
-                                        <Grid Width="220" Height="34" Margin="0,0,8,0">
+                                        <Grid Width="250" Height="40" Margin="0,0,8,0">
                                             <TextBox x:Name="SearchBox" TextChanged="SearchBox_TextChanged"/>
-                                            <TextBlock Text="搜索节点名称 / 地址…" Foreground="{StaticResource MutedBrush}" FontSize="12"
+                                            <TextBlock Text="搜索节点名称 / 地址…" Foreground="{StaticResource MutedBrush}" FontSize="16"
                                                        Margin="12,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False">
                                                 <TextBlock.Style>
                                                     <Style TargetType="TextBlock">
@@ -362,21 +489,28 @@
                                                 </TextBlock.Style>
                                             </TextBlock>
                                         </Grid>
-                                        <ComboBox x:Name="ProtocolFilterCombo" Width="120" Margin="0,0,8,0" SelectionChanged="FilterChanged">
+                                        <ComboBox x:Name="ProtocolFilterCombo" Width="150" Margin="0,0,8,0" SelectionChanged="FilterChanged">
                                             <ComboBoxItem Content="全部协议" IsSelected="True"/>
                                             <ComboBoxItem Content="VMess"/>
+                                            <ComboBoxItem Content="VLESS"/>
+                                            <ComboBoxItem Content="Trojan"/>
+                                            <ComboBoxItem Content="Shadowsocks"/>
+                                            <ComboBoxItem Content="SOCKS"/>
+                                            <ComboBoxItem Content="HTTP"/>
                                         </ComboBox>
-                                        <ComboBox Width="120" Margin="0,0,8,0" IsEnabled="False">
+                                        <ComboBox Width="150" Margin="0,0,8,0" IsEnabled="False">
                                             <ComboBoxItem Content="全部订阅" IsSelected="True"/>
                                         </ComboBox>
-                                        <ComboBox Width="120" Margin="0,0,8,0" IsEnabled="False">
-                                            <ComboBoxItem Content="延迟优先" IsSelected="True"/>
+                                        <ComboBox x:Name="SortCombo" Width="150" Margin="0,0,8,0" SelectionChanged="FilterChanged">
+                                            <ComboBoxItem Content="默认排序" IsSelected="True"/>
+                                            <ComboBoxItem Content="延迟优先"/>
                                         </ComboBox>
-                                        <Button Content="仅可用" Style="{StaticResource DarkButtonStyle}" Margin="0,0,0,0" IsEnabled="False"/>
+                                        <CheckBox x:Name="AvailableOnlyCheck" Content="仅可用" VerticalAlignment="Center" Margin="8,0,0,0" Checked="AvailabilityFilterChanged" Unchecked="AvailabilityFilterChanged"/>
                                     </WrapPanel>
                                     <DataGrid x:Name="ProfilesGrid" Grid.Row="1" AutoGenerateColumns="False" CanUserAddRows="False"
                                               IsReadOnly="True" SelectionMode="Single" SelectionChanged="ProfilesGrid_SelectionChanged"
                                               MinHeight="280" MaxHeight="360" PreviewMouseRightButtonDown="ProfilesGrid_PreviewMouseRightButtonDown"
+                                              PreviewMouseWheel="ProfilesGrid_PreviewMouseWheel"
                                               Margin="14,0,14,14">
                                         <DataGrid.ContextMenu>
                                             <ContextMenu>
@@ -419,20 +553,14 @@
 
                             <!-- Embedded controls -->
                             <Border Margin="0,16,0,0" Padding="0,16,0,0" BorderBrush="#E2E8F0" BorderThickness="0,1,0,0">
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="252"/>
-                                        <ColumnDefinition Width="172"/>
-                                        <ColumnDefinition Width="252"/>
-                                        <ColumnDefinition Width="96"/>
-                                    </Grid.ColumnDefinitions>
-                                    <Border Grid.Column="0" Style="{StaticResource ControlFieldBorderStyle}" Margin="0,0,12,8">
+                                <WrapPanel>
+                                    <Border Style="{StaticResource ControlFieldBorderStyle}" Width="300" Margin="0,0,12,10">
                                         <Grid VerticalAlignment="Center">
                                             <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="62"/>
+                                                <ColumnDefinition Width="82"/>
                                                 <ColumnDefinition Width="*"/>
                                             </Grid.ColumnDefinitions>
-                                            <TextBlock Text="系统代理" Foreground="{StaticResource MutedBrush}" FontSize="12" VerticalAlignment="Center"/>
+                                            <TextBlock Text="系统代理" Foreground="{StaticResource MutedBrush}" FontSize="16" VerticalAlignment="Center"/>
                                             <ComboBox Grid.Column="1" x:Name="SystemProxyCombo" Height="32" BorderThickness="0" Background="Transparent"
                                                       HorizontalContentAlignment="Left" VerticalContentAlignment="Center"
                                                       SelectionChanged="SystemProxyCombo_SelectionChanged">
@@ -443,25 +571,25 @@
                                             </ComboBox>
                                         </Grid>
                                     </Border>
-                                    <Border Grid.Column="1" Style="{StaticResource ControlFieldBorderStyle}" Margin="0,0,12,8">
+                                    <Border Style="{StaticResource ControlFieldBorderStyle}" Width="210" Margin="0,0,12,10">
                                         <Grid VerticalAlignment="Center">
                                             <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="62"/>
+                                                <ColumnDefinition Width="82"/>
                                                 <ColumnDefinition Width="48"/>
                                                 <ColumnDefinition Width="*"/>
                                             </Grid.ColumnDefinitions>
-                                            <TextBlock Text="启用 Tun" Foreground="{StaticResource MutedBrush}" FontSize="12" VerticalAlignment="Center"/>
+                                            <TextBlock Text="启用 Tun" Foreground="{StaticResource MutedBrush}" FontSize="16" VerticalAlignment="Center"/>
                                             <CheckBox Grid.Column="1" x:Name="TunToggle" Style="{StaticResource ToggleSwitchStyle}" VerticalAlignment="Center" Checked="TunToggle_Changed" Unchecked="TunToggle_Changed"/>
-                                            <TextBlock Grid.Column="2" x:Name="TunStateText" Text="已关闭" Foreground="{StaticResource MutedBrush}" FontSize="12" VerticalAlignment="Center"/>
+                                            <TextBlock Grid.Column="2" x:Name="TunStateText" Text="已关闭" Foreground="{StaticResource MutedBrush}" FontSize="16" VerticalAlignment="Center"/>
                                         </Grid>
                                     </Border>
-                                    <Border Grid.Column="2" Style="{StaticResource ControlFieldBorderStyle}" Margin="0,0,12,8">
+                                    <Border Style="{StaticResource ControlFieldBorderStyle}" Width="330" Margin="0,0,12,10">
                                         <Grid VerticalAlignment="Center">
                                             <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="62"/>
+                                                <ColumnDefinition Width="82"/>
                                                 <ColumnDefinition Width="*"/>
                                             </Grid.ColumnDefinitions>
-                                            <TextBlock Text="路由规则" Foreground="{StaticResource MutedBrush}" FontSize="12" VerticalAlignment="Center"/>
+                                            <TextBlock Text="路由规则" Foreground="{StaticResource MutedBrush}" FontSize="16" VerticalAlignment="Center"/>
                                             <ComboBox Grid.Column="1" x:Name="RoutingCombo" Height="32" BorderThickness="0" Background="Transparent"
                                                       HorizontalContentAlignment="Left" VerticalContentAlignment="Center"
                                                       SelectionChanged="RoutingCombo_SelectionChanged">
@@ -473,8 +601,8 @@
                                             </ComboBox>
                                         </Grid>
                                     </Border>
-                                    <Button Grid.Column="3" x:Name="EditRoutingButton" Content="编辑规则" Style="{StaticResource DarkButtonStyle}" Margin="0,0,0,8" VerticalAlignment="Stretch" Click="EditRoutingButton_Click"/>
-                                </Grid>
+                                    <Button x:Name="EditRoutingButton" Content="编辑规则" Style="{StaticResource DarkButtonStyle}" MinWidth="116" Margin="0,0,0,10" Visibility="Collapsed" Click="EditRoutingButton_Click"/>
+                                </WrapPanel>
                             </Border>
                         </StackPanel>
                     </Border>
@@ -483,30 +611,30 @@
                     <UniformGrid Columns="4" Margin="0,0,0,16">
                         <Border Style="{StaticResource StatCardStyle}" Margin="0,0,8,0">
                             <StackPanel>
-                                <TextBlock Text="当前下载" Foreground="{StaticResource MutedBrush}" FontSize="12"/>
-                                <TextBlock x:Name="StatDownloadText" Text="—" FontSize="20" FontWeight="Bold" Margin="0,6,0,0"/>
-                                <TextBlock Text="今日 —" Foreground="{StaticResource MutedBrush}" FontSize="12" Margin="0,4,0,0"/>
+                                <TextBlock Text="当前下载" Foreground="{StaticResource MutedBrush}" FontSize="15"/>
+                                <TextBlock x:Name="StatDownloadText" Text="—" FontSize="23" FontWeight="Bold" Margin="0,6,0,0"/>
+                                <TextBlock Text="今日 —" Foreground="{StaticResource MutedBrush}" FontSize="15" Margin="0,4,0,0"/>
                             </StackPanel>
                         </Border>
                         <Border Style="{StaticResource StatCardStyle}" Margin="0,0,8,0">
                             <StackPanel>
-                                <TextBlock Text="当前上传" Foreground="{StaticResource MutedBrush}" FontSize="12"/>
-                                <TextBlock x:Name="StatUploadText" Text="—" FontSize="20" FontWeight="Bold" Margin="0,6,0,0"/>
-                                <TextBlock Text="今日 —" Foreground="{StaticResource MutedBrush}" FontSize="12" Margin="0,4,0,0"/>
+                                <TextBlock Text="当前上传" Foreground="{StaticResource MutedBrush}" FontSize="15"/>
+                                <TextBlock x:Name="StatUploadText" Text="—" FontSize="23" FontWeight="Bold" Margin="0,6,0,0"/>
+                                <TextBlock Text="今日 —" Foreground="{StaticResource MutedBrush}" FontSize="15" Margin="0,4,0,0"/>
                             </StackPanel>
                         </Border>
                         <Border Style="{StaticResource StatCardStyle}" Margin="0,0,8,0">
                             <StackPanel>
-                                <TextBlock Text="累计流量" Foreground="{StaticResource MutedBrush}" FontSize="12"/>
-                                <TextBlock x:Name="StatMonthText" Text="—" FontSize="20" FontWeight="Bold" Margin="0,6,0,0"/>
-                                <TextBlock Text="重启后保留" Foreground="{StaticResource MutedBrush}" FontSize="12" Margin="0,4,0,0"/>
+                                <TextBlock Text="累计流量" Foreground="{StaticResource MutedBrush}" FontSize="15"/>
+                                <TextBlock x:Name="StatMonthText" Text="—" FontSize="23" FontWeight="Bold" Margin="0,6,0,0"/>
+                                <TextBlock Text="重启后保留" Foreground="{StaticResource MutedBrush}" FontSize="15" Margin="0,4,0,0"/>
                             </StackPanel>
                         </Border>
                         <Border Style="{StaticResource StatCardStyle}">
                             <StackPanel>
-                                <TextBlock Text="连接 / 流量" Foreground="{StaticResource MutedBrush}" FontSize="12"/>
-                                <TextBlock x:Name="StatConnectionsText" Text="—" FontSize="20" FontWeight="Bold" Margin="0,6,0,0"/>
-                                <TextBlock Text="订阅剩余 —" Foreground="{StaticResource MutedBrush}" FontSize="12" Margin="0,4,0,0"/>
+                                <TextBlock Text="连接 / 流量" Foreground="{StaticResource MutedBrush}" FontSize="15"/>
+                                <TextBlock x:Name="StatConnectionsText" Text="—" FontSize="23" FontWeight="Bold" Margin="0,6,0,0"/>
+                                <TextBlock Text="订阅剩余 —" Foreground="{StaticResource MutedBrush}" FontSize="15" Margin="0,4,0,0"/>
                             </StackPanel>
                         </Border>
                     </UniformGrid>
@@ -514,7 +642,7 @@
                     <!-- Health -->
                     <Border Style="{StaticResource CardBorderStyle}">
                         <StackPanel>
-                            <TextBlock Text="健康概览" FontSize="15" FontWeight="Bold" Margin="0,0,0,12"/>
+                            <TextBlock Text="健康概览" FontSize="18" FontWeight="Bold" Margin="0,0,0,12"/>
                             <UniformGrid Columns="2">
                                 <Border Style="{StaticResource HealthItemStyle}">
                                     <Grid>
@@ -565,6 +693,224 @@
                                     </Grid>
                                 </Border>
                             </UniformGrid>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+
+            <ScrollViewer x:Name="NewNodePageScroll" Grid.Row="1" VerticalScrollBarVisibility="Auto" Visibility="Collapsed">
+                <StackPanel Margin="24,22,24,28">
+                    <Border Style="{StaticResource CardBorderStyle}">
+                        <StackPanel>
+                            <TextBlock Text="新建节点" FontSize="24" FontWeight="Bold" Margin="0,0,0,16"/>
+                            <UniformGrid Columns="2" Margin="0,0,0,10">
+                                <StackPanel Margin="0,0,10,10">
+                                    <TextBlock Text="协议" Foreground="{StaticResource MutedBrush}" Margin="0,0,0,6"/>
+                                    <ComboBox x:Name="InlineProtocolBox" Height="42">
+                                        <ComboBoxItem Content="vmess" IsSelected="True"/>
+                                        <ComboBoxItem Content="vless"/>
+                                        <ComboBoxItem Content="trojan"/>
+                                        <ComboBoxItem Content="shadowsocks"/>
+                                        <ComboBoxItem Content="socks"/>
+                                        <ComboBoxItem Content="http"/>
+                                    </ComboBox>
+                                </StackPanel>
+                                <StackPanel Margin="10,0,0,10">
+                                    <TextBlock Text="名称" Foreground="{StaticResource MutedBrush}" Margin="0,0,0,6"/>
+                                    <TextBox x:Name="InlineNameBox"/>
+                                </StackPanel>
+                                <StackPanel Margin="0,0,10,10">
+                                    <TextBlock Text="地址" Foreground="{StaticResource MutedBrush}" Margin="0,0,0,6"/>
+                                    <TextBox x:Name="InlineAddressBox"/>
+                                </StackPanel>
+                                <StackPanel Margin="10,0,0,10">
+                                    <TextBlock Text="端口" Foreground="{StaticResource MutedBrush}" Margin="0,0,0,6"/>
+                                    <TextBox x:Name="InlinePortBox" Text="443"/>
+                                </StackPanel>
+                                <StackPanel Margin="0,0,10,10">
+                                    <TextBlock Text="UUID / 用户" Foreground="{StaticResource MutedBrush}" Margin="0,0,0,6"/>
+                                    <TextBox x:Name="InlineUserBox"/>
+                                </StackPanel>
+                                <StackPanel Margin="10,0,0,10">
+                                    <TextBlock Text="密码" Foreground="{StaticResource MutedBrush}" Margin="0,0,0,6"/>
+                                    <TextBox x:Name="InlinePasswordBox"/>
+                                </StackPanel>
+                                <StackPanel Margin="0,0,10,10">
+                                    <TextBlock Text="Security / 加密" Foreground="{StaticResource MutedBrush}" Margin="0,0,0,6"/>
+                                    <TextBox x:Name="InlineSecurityBox" Text="auto"/>
+                                </StackPanel>
+                                <StackPanel Margin="10,0,0,10">
+                                    <TextBlock Text="Network" Foreground="{StaticResource MutedBrush}" Margin="0,0,0,6"/>
+                                    <TextBox x:Name="InlineNetworkBox" Text="tcp"/>
+                                </StackPanel>
+                                <StackPanel Margin="0,0,10,10">
+                                    <TextBlock Text="Host" Foreground="{StaticResource MutedBrush}" Margin="0,0,0,6"/>
+                                    <TextBox x:Name="InlineHostBox"/>
+                                </StackPanel>
+                                <StackPanel Margin="10,0,0,10">
+                                    <TextBlock Text="SNI" Foreground="{StaticResource MutedBrush}" Margin="0,0,0,6"/>
+                                    <TextBox x:Name="InlineSniBox"/>
+                                </StackPanel>
+                            </UniformGrid>
+                            <TextBlock Text="Path" Foreground="{StaticResource MutedBrush}" Margin="0,0,0,6"/>
+                            <TextBox x:Name="InlinePathBox" Margin="0,0,0,16"/>
+                            <WrapPanel>
+                                <Button Content="保存节点" Style="{StaticResource PrimaryButtonStyle}" Margin="0,0,8,8" Click="InlineSaveNodeButton_Click"/>
+                                <Button Content="清空" Style="{StaticResource DarkButtonStyle}" Margin="0,0,8,8" Click="InlineClearNodeButton_Click"/>
+                            </WrapPanel>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+
+            <ScrollViewer x:Name="ImportPageScroll" Grid.Row="1" VerticalScrollBarVisibility="Auto" Visibility="Collapsed">
+                <StackPanel Margin="24,22,24,28">
+                    <Border Style="{StaticResource CardBorderStyle}">
+                        <StackPanel>
+                            <TextBlock Text="导入节点" FontSize="24" FontWeight="Bold" Margin="0,0,0,8"/>
+                            <TextBlock Text="支持 vmess://、vless://、trojan://、ss://、socks://、http://，也支持订阅地址和多行批量导入。" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,0,0,14"/>
+                            <TextBox x:Name="InlineImportBox" MinHeight="260" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" Margin="0,0,0,16"/>
+                            <WrapPanel>
+                                <Button Content="从剪贴板粘贴" Style="{StaticResource DarkButtonStyle}" Margin="0,0,8,8" Click="InlinePasteImportButton_Click"/>
+                                <Button Content="读取文本文件" Style="{StaticResource DarkButtonStyle}" Margin="0,0,8,8" Click="InlineOpenImportFileButton_Click"/>
+                                <Button Content="导入" Style="{StaticResource PrimaryButtonStyle}" Margin="0,0,8,8" Click="InlineImportButton_Click"/>
+                            </WrapPanel>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+
+            <ScrollViewer x:Name="ExportPageScroll" Grid.Row="1" VerticalScrollBarVisibility="Auto" Visibility="Collapsed">
+                <StackPanel Margin="24,22,24,28">
+                    <Border Style="{StaticResource CardBorderStyle}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="280"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="导出节点" FontSize="24" FontWeight="Bold" Margin="0,0,0,16"/>
+                                <TextBlock Text="选择节点" Foreground="{StaticResource MutedBrush}" Margin="0,0,0,6"/>
+                                <ComboBox x:Name="ExportProfileCombo" DisplayMemberPath="PickerDisplay" Height="42" Margin="0,0,0,14" SelectionChanged="ExportProfileCombo_SelectionChanged"/>
+                                <TextBlock Text="分享链接" Foreground="{StaticResource MutedBrush}" Margin="0,0,0,6"/>
+                                <TextBox x:Name="ExportShareBox" MinHeight="180" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" Margin="0,0,0,16"/>
+                                <WrapPanel>
+                                    <Button Content="复制链接" Style="{StaticResource PrimaryButtonStyle}" Margin="0,0,8,8" Click="CopyExportLinkButton_Click"/>
+                                    <Button Content="保存为文本" Style="{StaticResource DarkButtonStyle}" Margin="0,0,8,8" Click="SaveExportLinkButton_Click"/>
+                                </WrapPanel>
+                            </StackPanel>
+                            <Border Grid.Column="1" Background="{StaticResource Panel2Brush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" CornerRadius="14" Padding="16" Margin="18,0,0,0">
+                                <StackPanel>
+                                    <TextBlock Text="二维码" FontSize="20" FontWeight="Bold" Margin="0,0,0,12"/>
+                                    <Border Background="#FFFFFF" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" CornerRadius="10" Padding="12">
+                                        <Image x:Name="ExportQrImage" Width="220" Height="220" Stretch="Uniform"/>
+                                    </Border>
+                                </StackPanel>
+                            </Border>
+                        </Grid>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+
+            <ScrollViewer x:Name="UpdatePageScroll" Grid.Row="1" VerticalScrollBarVisibility="Auto" Visibility="Collapsed">
+                <StackPanel Margin="24,22,24,28">
+                    <Border Style="{StaticResource CardBorderStyle}">
+                        <StackPanel>
+                            <TextBlock Text="检查更新" FontSize="24" FontWeight="Bold" Margin="0,0,0,12"/>
+                            <TextBlock x:Name="UpdateStatusText" Text="点击按钮检查 GitHub Release 中的最新版本。" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,0,0,16"/>
+                            <WrapPanel>
+                                <Button Content="检查更新" Style="{StaticResource PrimaryButtonStyle}" Margin="0,0,8,8" Click="UpdatePageCheckButton_Click"/>
+                                <Button Content="打开发布页" Style="{StaticResource DarkButtonStyle}" Margin="0,0,8,8" Click="UpdatePageReleaseButton_Click"/>
+                            </WrapPanel>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+
+            <ScrollViewer x:Name="AboutPageScroll" Grid.Row="1" VerticalScrollBarVisibility="Auto" Visibility="Collapsed">
+                <StackPanel Margin="24,22,24,28">
+                    <Border Style="{StaticResource CardBorderStyle}" Margin="0,0,0,16">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Border Width="64" Height="64" CornerRadius="16" Background="#FFFFFF" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" ClipToBounds="True">
+                                <Image x:Name="AboutIconImage" Stretch="UniformToFill"/>
+                            </Border>
+                            <StackPanel Grid.Column="1" Margin="16,0,0,0" VerticalAlignment="Center">
+                                <TextBlock Text="NaiwaProxy" FontSize="28" FontWeight="Bold"/>
+                                <TextBlock Text="Windows · Xray Client" Foreground="{StaticResource MutedBrush}" Margin="0,4,0,0"/>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+
+                    <Border Style="{StaticResource CardBorderStyle}" Margin="0,0,0,16">
+                        <StackPanel>
+                            <TextBlock Text="应用信息" FontSize="20" FontWeight="Bold" Margin="0,0,0,12"/>
+                            <UniformGrid Columns="2">
+                                <Border Style="{StaticResource HealthItemStyle}">
+                                    <Grid>
+                                        <TextBlock Text="应用版本" Foreground="{StaticResource MutedBrush}"/>
+                                        <TextBlock x:Name="AboutAppVersionText" HorizontalAlignment="Right" FontWeight="SemiBold"/>
+                                    </Grid>
+                                </Border>
+                                <Border Style="{StaticResource HealthItemStyle}" Margin="0,0,0,8">
+                                    <Grid>
+                                        <TextBlock Text="构建时间" Foreground="{StaticResource MutedBrush}"/>
+                                        <TextBlock x:Name="AboutBuildTimeText" HorizontalAlignment="Right" FontWeight="SemiBold"/>
+                                    </Grid>
+                                </Border>
+                                <Border Style="{StaticResource HealthItemStyle}">
+                                    <Grid>
+                                        <TextBlock Text="Core 版本" Foreground="{StaticResource MutedBrush}"/>
+                                        <TextBlock x:Name="AboutCoreVersionText" HorizontalAlignment="Right" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                                    </Grid>
+                                </Border>
+                                <Border Style="{StaticResource HealthItemStyle}" Margin="0,0,0,8">
+                                    <Grid>
+                                        <TextBlock Text="TUN 运行时" Foreground="{StaticResource MutedBrush}"/>
+                                        <TextBlock x:Name="AboutTunRuntimeText" HorizontalAlignment="Right" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                                    </Grid>
+                                </Border>
+                            </UniformGrid>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{StaticResource CardBorderStyle}" Margin="0,0,0,16">
+                        <StackPanel>
+                            <TextBlock Text="目录信息" FontSize="20" FontWeight="Bold" Margin="0,0,0,12"/>
+                            <Border Style="{StaticResource HealthItemStyle}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="110"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="配置目录" Foreground="{StaticResource MutedBrush}"/>
+                                    <TextBlock Grid.Column="1" x:Name="AboutConfigDirectoryText" TextWrapping="Wrap"/>
+                                </Grid>
+                            </Border>
+                            <Border Style="{StaticResource HealthItemStyle}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="110"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="运行时目录" Foreground="{StaticResource MutedBrush}"/>
+                                    <TextBlock Grid.Column="1" x:Name="AboutRuntimeDirectoryText" TextWrapping="Wrap"/>
+                                </Grid>
+                            </Border>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{StaticResource CardBorderStyle}">
+                        <StackPanel>
+                            <TextBlock Text="许可信息" FontSize="20" FontWeight="Bold" Margin="0,0,0,12"/>
+                            <TextBlock x:Name="AboutLicenseText" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,0,0,16"/>
+                            <WrapPanel>
+                                <Button Content="配置目录" Style="{StaticResource DarkButtonStyle}" Margin="0,0,8,8" Click="AboutOpenConfigButton_Click"/>
+                                <Button Content="运行时目录" Style="{StaticResource DarkButtonStyle}" Margin="0,0,8,8" Click="AboutOpenRuntimeButton_Click"/>
+                            </WrapPanel>
                         </StackPanel>
                     </Border>
                 </StackPanel>

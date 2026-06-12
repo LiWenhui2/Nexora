@@ -2,10 +2,11 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="自定义路由规则"
-        Height="560" Width="760"
+        Height="640" Width="860" MinHeight="560" MinWidth="760"
         WindowStartupLocation="CenterOwner"
         Background="#F4F6FA"
         FontFamily="Segoe UI, Microsoft YaHei UI"
+        FontSize="14"
         ResizeMode="CanResize">
     <Window.Resources>
         <SolidColorBrush x:Key="PanelBrush" Color="#FFFFFF"/>
@@ -30,7 +31,7 @@
             <Setter Property="HorizontalScrollBarVisibility" Value="Auto"/>
         </Style>
         <Style x:Key="PrimaryButtonStyle" TargetType="Button">
-            <Setter Property="Height" Value="36"/>
+            <Setter Property="Height" Value="40"/>
             <Setter Property="MinWidth" Value="110"/>
             <Setter Property="Foreground" Value="#111827"/>
             <Setter Property="FontWeight" Value="Bold"/>
@@ -49,7 +50,7 @@
             </Setter>
         </Style>
         <Style x:Key="DarkButtonStyle" TargetType="Button">
-            <Setter Property="Height" Value="36"/>
+            <Setter Property="Height" Value="40"/>
             <Setter Property="MinWidth" Value="96"/>
             <Setter Property="Foreground" Value="#334155"/>
             <Setter Property="Background" Value="#FFFFFF"/>
@@ -75,8 +76,8 @@
                 <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
             <StackPanel Margin="0,0,0,14">
-                <TextBlock Text="自定义路由规则" FontSize="16" FontWeight="Bold"/>
-                <TextBlock Text="域名支持 example.com、domain:example.com、full:example.com、regexp:、geosite:；IP 支持 CIDR 和 geoip:" Foreground="{StaticResource MutedBrush}" FontSize="12" Margin="0,6,0,0"/>
+                <TextBlock Text="自定义路由规则" FontSize="18" FontWeight="Bold"/>
+                <TextBlock Text="域名支持 example.com、domain:example.com、full:example.com、regexp:、geosite:；IP 支持 CIDR 和 geoip:" Foreground="{StaticResource MutedBrush}" FontSize="13" Margin="0,6,0,0"/>
             </StackPanel>
             <Grid Grid.Row="1">
                 <Grid.ColumnDefinitions>

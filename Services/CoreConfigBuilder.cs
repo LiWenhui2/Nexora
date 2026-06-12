@@ -8,6 +8,7 @@ public static class CoreConfigBuilder
     public static string Build(AppSettings settings, VmessProfile profile)
     {
         var streamSettings = BuildStreamSettings(profile);
+        var proxyOutbound = BuildProxyOutbound(profile, streamSettings);
         var config = new
         {
             log = new
@@ -65,32 +66,7 @@ public static class CoreConfigBuilder
             },
             outbounds = new object[]
             {
-                new
-                {
-                    tag = "proxy",
-                    protocol = "vmess",
-                    settings = new
-                    {
-                        vnext = new object[]
-                        {
-                            new
-                            {
-                                address = profile.Address,
-                                port = profile.Port,
-                                users = new object[]
-                                {
-                                    new
-                                    {
-                                        id = profile.UserId,
-                                        alterId = profile.AlterId,
-                                        security = profile.Security
-                                    }
-                                }
-                            }
-                        }
-                    },
-                    streamSettings
-                },
+                proxyOutbound,
                 new
                 {
                     tag = "direct",
@@ -106,6 +82,141 @@ public static class CoreConfigBuilder
         };
 
         return JsonSerializer.Serialize(config, new JsonSerializerOptions { WriteIndented = true });
+    }
+
+    private static object BuildProxyOutbound(VmessProfile profile, object streamSettings)
+    {
+        return profile.Protocol.ToLowerInvariant() switch
+        {
+            "vless" => new
+            {
+                tag = "proxy",
+                protocol = "vless",
+                settings = new
+                {
+                    vnext = new object[]
+                    {
+                        new
+                        {
+                            address = profile.Address,
+                            port = profile.Port,
+                            users = new object[]
+                            {
+                                new
+                                {
+                                    id = profile.UserId,
+                                    encryption = string.IsNullOrWhiteSpace(profile.Security) ? "none" : profile.Security
+                                }
+                            }
+                        }
+                    }
+                },
+                streamSettings
+            },
+            "trojan" => new
+            {
+                tag = "proxy",
+                protocol = "trojan",
+                settings = new
+                {
+                    servers = new object[]
+                    {
+                        new
+                        {
+                            address = profile.Address,
+                            port = profile.Port,
+                            password = profile.Password
+                        }
+                    }
+                },
+                streamSettings
+            },
+            "shadowsocks" or "ss" => new
+            {
+                tag = "proxy",
+                protocol = "shadowsocks",
+                settings = new
+                {
+                    servers = new object[]
+                    {
+                        new
+                        {
+                            address = profile.Address,
+                            port = profile.Port,
+                            method = string.IsNullOrWhiteSpace(profile.Security) ? "aes-128-gcm" : profile.Security,
+                            password = profile.Password
+                        }
+                    }
+                }
+            },
+            "socks" or "socks5" => new
+            {
+                tag = "proxy",
+                protocol = "socks",
+                settings = new
+                {
+                    servers = BuildUserPassServers(profile)
+                }
+            },
+            "http" or "https" => new
+            {
+                tag = "proxy",
+                protocol = "http",
+                settings = new
+                {
+                    servers = BuildUserPassServers(profile)
+                }
+            },
+            _ => new
+            {
+                tag = "proxy",
+                protocol = "vmess",
+                settings = new
+                {
+                    vnext = new object[]
+                    {
+                        new
+                        {
+                            address = profile.Address,
+                            port = profile.Port,
+                            users = new object[]
+                            {
+                                new
+                                {
+                                    id = profile.UserId,
+                                    alterId = profile.AlterId,
+                                    security = profile.Security
+                                }
+                            }
+                        }
+                    }
+                },
+                streamSettings
+            }
+        };
+    }
+
+    private static object[] BuildUserPassServers(VmessProfile profile)
+    {
+        var server = new Dictionary<string, object>
+        {
+            ["address"] = profile.Address,
+            ["port"] = profile.Port
+        };
+
+        if (!string.IsNullOrWhiteSpace(profile.UserId))
+        {
+            server["users"] = new object[]
+            {
+                new
+                {
+                    user = profile.UserId,
+                    pass = profile.Password
+                }
+            };
+        }
+
+        return [server];
     }
 
     private static object BuildStreamSettings(VmessProfile profile)
