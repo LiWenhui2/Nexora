@@ -6,15 +6,16 @@ namespace NaiwaProxy.Services;
 
 public sealed class SettingsStore
 {
+    private readonly string _settingsDirectory;
     private readonly string _settingsPath;
 
     public SettingsStore()
     {
-        var directory = Path.Combine(
+        _settingsDirectory = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "NaiwaProxy");
-        Directory.CreateDirectory(directory);
-        _settingsPath = Path.Combine(directory, "settings.json");
+        Directory.CreateDirectory(_settingsDirectory);
+        _settingsPath = Path.Combine(_settingsDirectory, "settings.json");
     }
 
     public AppSettings Load()
@@ -24,14 +25,65 @@ public sealed class SettingsStore
             return new AppSettings();
         }
 
-        var json = File.ReadAllText(_settingsPath);
-        return JsonSerializer.Deserialize<AppSettings>(json, JsonOptions()) ?? new AppSettings();
+        try
+        {
+            var json = File.ReadAllText(_settingsPath);
+            if (IsCorruptedContent(json))
+            {
+                throw new JsonException("Settings file is empty or starts with an invalid value.");
+            }
+
+            return JsonSerializer.Deserialize<AppSettings>(json, JsonOptions()) ?? new AppSettings();
+        }
+        catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
+        {
+            var backupPath = BackupCorruptedSettings();
+            DiagnosticLogService.Warning(
+                $"Settings file could not be loaded and was reset. Backup: {backupPath ?? "unavailable"}");
+            DiagnosticLogService.Error("Failed to load settings.", ex);
+
+            var settings = new AppSettings();
+            Save(settings);
+            return settings;
+        }
     }
 
     public void Save(AppSettings settings)
     {
+        Directory.CreateDirectory(_settingsDirectory);
         var json = JsonSerializer.Serialize(settings, JsonOptions());
-        File.WriteAllText(_settingsPath, json);
+        var tempPath = $"{_settingsPath}.tmp";
+
+        File.WriteAllText(tempPath, json);
+        File.Move(tempPath, _settingsPath, overwrite: true);
+    }
+
+    private static bool IsCorruptedContent(string json)
+    {
+        return string.IsNullOrWhiteSpace(json) || json.TrimStart().StartsWith('\0');
+    }
+
+    private string? BackupCorruptedSettings()
+    {
+        if (!File.Exists(_settingsPath))
+        {
+            return null;
+        }
+
+        var backupPath = Path.Combine(
+            _settingsDirectory,
+            $"settings.corrupt-{DateTime.Now:yyyyMMddHHmmss}.json");
+
+        try
+        {
+            File.Copy(_settingsPath, backupPath, overwrite: true);
+            return backupPath;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            DiagnosticLogService.Warning($"Failed to backup corrupted settings: {ex.Message}");
+            return null;
+        }
     }
 
     private static JsonSerializerOptions JsonOptions()

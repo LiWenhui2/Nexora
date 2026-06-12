@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Text.Json.Serialization;
+using NaiwaProxy.Services;
 
 namespace NaiwaProxy.Models;
 
@@ -26,8 +27,10 @@ public sealed class VmessProfile : INotifyPropertyChanged
     public string Tls { get; set; } = "";
     public string Sni { get; set; } = "";
     public string Remark { get; set; } = "";
+    public string Region { get; set; } = "";
     public string SubscriptionName { get; set; } = "";
     public DateTime? SubscriptionUpdatedAt { get; set; }
+    public DateTime? UpdatedAt { get; set; }
 
     [JsonIgnore]
     public bool IsTcpLatencyTesting
@@ -55,7 +58,7 @@ public sealed class VmessProfile : INotifyPropertyChanged
     public string DisplayName => string.IsNullOrWhiteSpace(Name) ? $"{Address}:{Port}" : Name;
 
     [JsonIgnore]
-    public string ListDisplayName => IsActive ? $"★ {DisplayName}" : DisplayName;
+    public string ListDisplayName => DisplayName;
 
     [JsonIgnore]
     public string Endpoint => $"{Address}:{Port}";
@@ -72,7 +75,7 @@ public sealed class VmessProfile : INotifyPropertyChanged
     };
 
     [JsonIgnore]
-    public string RegionDisplay => "-";
+    public string RegionDisplay => string.IsNullOrWhiteSpace(Region) ? NodeRegionHelper.Resolve(this) : Region;
 
     [JsonIgnore]
     public string SubscriptionDisplay => string.IsNullOrWhiteSpace(SubscriptionName) ? "手动" : SubscriptionName;
@@ -82,12 +85,13 @@ public sealed class VmessProfile : INotifyPropertyChanged
     {
         get
         {
-            if (SubscriptionUpdatedAt is null)
+            var updatedAt = SubscriptionUpdatedAt ?? UpdatedAt;
+            if (updatedAt is null)
             {
                 return "-";
             }
 
-            var elapsed = DateTime.Now - SubscriptionUpdatedAt.Value;
+            var elapsed = DateTime.Now - updatedAt.Value;
             if (elapsed.TotalMinutes < 1)
             {
                 return "刚刚";
@@ -129,7 +133,17 @@ public sealed class VmessProfile : INotifyPropertyChanged
 
         _isActive = value;
         OnPropertyChanged(nameof(IsActive));
-        OnPropertyChanged(nameof(ListDisplayName));
+    }
+
+    public void SetRegion(string region)
+    {
+        if (Region == region)
+        {
+            return;
+        }
+
+        Region = region;
+        OnPropertyChanged(nameof(RegionDisplay));
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;

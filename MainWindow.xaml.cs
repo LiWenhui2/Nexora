@@ -19,6 +19,14 @@ using NaiwaProxy.Dialogs;
 using NaiwaProxy.Models;
 using NaiwaProxy.Services;
 using QRCoder;
+using Forms = System.Windows.Forms;
+using Drawing = System.Drawing;
+using Application = System.Windows.Application;
+using Clipboard = System.Windows.Clipboard;
+using Color = System.Windows.Media.Color;
+using MessageBox = System.Windows.MessageBox;
+using OpenFileDialog = Microsoft.Win32.OpenFileDialog;
+using SaveFileDialog = Microsoft.Win32.SaveFileDialog;
 
 namespace NaiwaProxy;
 
@@ -42,22 +50,36 @@ public partial class MainWindow : Window
     private bool _suppressSystemProxyComboEvent;
     private bool _suppressRoutingComboEvent;
     private bool _suppressTunToggleEvent;
+    private bool _suppressNodePickerComboEvent;
+    private bool _suppressRegionFilterComboEvent;
     private bool _isUiReady;
+    private bool _isExiting;
+    private Forms.NotifyIcon? _trayIcon;
+    private Forms.ContextMenuStrip? _trayMenu;
+    private string _lastDownSpeedText = "-";
+    private string _lastUpSpeedText = "-";
+    private CancellationTokenSource? _regionEnrichmentCancellation;
 
     public MainWindow()
     {
+        DiagnosticLogService.Startup("MainWindow constructor begin");
         InitializeComponent();
         LoadBrandIcon();
+        InitializeTray();
         _trafficTimer.Tick += TrafficTimer_Tick;
         _profilesView = CollectionViewSource.GetDefaultView(_profiles);
         _profilesView.Filter = FilterProfile;
         ProfilesGrid.ItemsSource = _profilesView;
-        SearchBox.Text = string.Empty;
         _isUiReady = true;
         LoadSettings();
         Loaded += MainWindow_Loaded;
+        DiagnosticLogService.Startup("MainWindow constructor complete");
+        Closing += MainWindow_Closing;
         Closed += (_, _) =>
         {
+            DisposeTray();
+            _regionEnrichmentCancellation?.Cancel();
+            _regionEnrichmentCancellation?.Dispose();
             _latencyTestCancellation?.Cancel();
             _latencyTestCancellation?.Dispose();
             _trafficTimer.Stop();
@@ -91,6 +113,201 @@ public partial class MainWindow : Window
         AboutIconImage.Source = bitmap;
     }
 
+    private void InitializeTray()
+    {
+        _trayMenu = new Forms.ContextMenuStrip();
+        _trayMenu.Opening += (_, _) => RebuildTrayMenu();
+
+        var iconPath = Path.Combine(AppContext.BaseDirectory, "assets", "app-icon.ico");
+        var processPath = Environment.ProcessPath;
+        var icon = File.Exists(iconPath)
+            ? new Drawing.Icon(iconPath)
+            : !string.IsNullOrWhiteSpace(processPath) && File.Exists(processPath)
+                ? Drawing.Icon.ExtractAssociatedIcon(processPath)
+                : Drawing.SystemIcons.Application;
+
+        _trayIcon = new Forms.NotifyIcon
+        {
+            Icon = icon ?? Drawing.SystemIcons.Application,
+            Visible = true,
+            Text = "NaiwaProxy",
+            ContextMenuStrip = _trayMenu
+        };
+        _trayIcon.DoubleClick += (_, _) => ShowMainWindow();
+        UpdateTrayStatus();
+    }
+
+    private void RebuildTrayMenu()
+    {
+        if (_trayMenu is null)
+        {
+            return;
+        }
+
+        _trayMenu.Items.Clear();
+        var active = GetCurrentProfileOrNull();
+        AddTrayStatusItem($"当前节点：{active?.DisplayName ?? "-"}");
+        AddTrayStatusItem($"运行状态：{(_coreService.IsRunning ? "运行中" : "已停止")}");
+        AddTrayStatusItem($"系统代理：{FormatSystemProxyMode(_settings.SystemProxyMode)}");
+        AddTrayStatusItem($"上传下载：↓ {_lastDownSpeedText} / ↑ {_lastUpSpeedText}");
+        _trayMenu.Items.Add(new Forms.ToolStripSeparator());
+
+        AddTrayMenuItem("启动代理", async () => await StartProxyFromTrayAsync(), !_coreService.IsRunning && _profiles.Count > 0);
+        AddTrayMenuItem("停止代理", StopProxyFromTray, _coreService.IsRunning);
+        AddTrayMenuItem("开启系统代理", EnableSystemProxyFromTray, _settings.SystemProxyMode != "Auto");
+        AddTrayMenuItem("关闭系统代理", DisableSystemProxyFromTray, _settings.SystemProxyMode != "Clear");
+
+        var nodeMenu = new Forms.ToolStripMenuItem("切换节点") { Enabled = _profiles.Count > 0 };
+        foreach (var profile in _profiles)
+        {
+            var item = new Forms.ToolStripMenuItem(profile.PickerDisplay)
+            {
+                Checked = profile.Id == _settings.SelectedProfileId
+            };
+            item.Click += async (_, _) => await Dispatcher.InvokeAsync(async () => await SwitchToProfileAsync(profile));
+            nodeMenu.DropDownItems.Add(item);
+        }
+
+        _trayMenu.Items.Add(nodeMenu);
+
+        var routingMenu = new Forms.ToolStripMenuItem("切换代理模式");
+        foreach (var mode in new[] { "Global", "BypassChina", "BypassLan", "Direct", "Custom" })
+        {
+            var item = new Forms.ToolStripMenuItem(FormatRoutingMode(mode))
+            {
+                Checked = _settings.RoutingMode == mode
+            };
+            item.Click += async (_, _) => await Dispatcher.InvokeAsync(async () => await SwitchRoutingModeAsync(mode));
+            routingMenu.DropDownItems.Add(item);
+        }
+
+        _trayMenu.Items.Add(routingMenu);
+        _trayMenu.Items.Add(new Forms.ToolStripSeparator());
+        AddTrayMenuItem("打开主窗口", ShowMainWindow);
+        AddTrayMenuItem("打开日志", DiagnosticLogService.OpenLogDirectory);
+        AddTrayMenuItem("退出程序", ExitApplication);
+    }
+
+    private void AddTrayStatusItem(string text)
+    {
+        _trayMenu?.Items.Add(new Forms.ToolStripMenuItem(text) { Enabled = false });
+    }
+
+    private void AddTrayMenuItem(string text, Action action, bool enabled = true)
+    {
+        var item = new Forms.ToolStripMenuItem(text) { Enabled = enabled };
+        item.Click += (_, _) => Dispatcher.Invoke(action);
+        _trayMenu?.Items.Add(item);
+    }
+
+    private void UpdateTrayStatus()
+    {
+        if (_trayIcon is null)
+        {
+            return;
+        }
+
+        var active = GetCurrentProfileOrNull();
+        var status = _coreService.IsRunning ? "运行中" : "已停止";
+        var text = $"NaiwaProxy | {status} | {active?.DisplayName ?? "无节点"}";
+        _trayIcon.Text = text.Length > 63 ? string.Concat(text.AsSpan(0, 60), "...") : text;
+    }
+
+    private void DisposeTray()
+    {
+        if (_trayIcon is not null)
+        {
+            _trayIcon.Visible = false;
+            _trayIcon.Dispose();
+            _trayIcon = null;
+        }
+
+        _trayMenu?.Dispose();
+        _trayMenu = null;
+    }
+
+    private void MainWindow_Closing(object? sender, CancelEventArgs e)
+    {
+        if (_isExiting)
+        {
+            return;
+        }
+
+        e.Cancel = true;
+        Hide();
+        ShowInTaskbar = false;
+        UpdateTrayStatus();
+    }
+
+    private void ShowMainWindow()
+    {
+        ShowInTaskbar = true;
+        Show();
+        if (WindowState == WindowState.Minimized)
+        {
+            WindowState = WindowState.Normal;
+        }
+
+        Activate();
+    }
+
+    private async Task StartProxyFromTrayAsync()
+    {
+        await StartProxyAsync();
+        SyncProxyToggleFromCoreState();
+    }
+
+    private void StopProxyFromTray()
+    {
+        StopProxy();
+        SyncProxyToggleFromCoreState();
+    }
+
+    private void EnableSystemProxyFromTray()
+    {
+        SelectSystemProxyCombo("Auto");
+        ApplySystemProxyMode("Auto", save: true);
+    }
+
+    private void DisableSystemProxyFromTray()
+    {
+        SelectSystemProxyCombo("Clear");
+        ApplySystemProxyMode("Clear", save: true);
+    }
+
+    private async Task SwitchToProfileAsync(VmessProfile profile)
+    {
+        SaveProfiles(profile.Id);
+        ProfilesGrid.SelectedItem = profile;
+        UpdateNodeStatusBar(profile);
+        if (_coreService.IsRunning)
+        {
+            await RestartCoreAsync();
+        }
+
+        UpdateTrayStatus();
+    }
+
+    private async Task SwitchRoutingModeAsync(string mode)
+    {
+        _settings.RoutingMode = mode;
+        _settingsStore.Save(_settings);
+        SelectRoutingCombo(mode);
+        UpdateRoutingEditorVisibility();
+        if (_coreService.IsRunning)
+        {
+            await RestartCoreAsync();
+        }
+
+        UpdateTrayStatus();
+    }
+
+    private void ExitApplication()
+    {
+        _isExiting = true;
+        Close();
+    }
+
     private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
     {
         Loaded -= MainWindow_Loaded;
@@ -99,13 +316,53 @@ public partial class MainWindow : Window
             return;
         }
 
-        await Dispatcher.InvokeAsync(() => { }, System.Windows.Threading.DispatcherPriority.ContextIdle);
+        try
+        {
+            await Dispatcher.InvokeAsync(() => { }, System.Windows.Threading.DispatcherPriority.ContextIdle);
+
+            if (!_coreService.IsRunning)
+            {
+                await StartProxyAsync();
+                SyncProxyToggleFromCoreState();
+            }
+        }
+        catch (Exception ex)
+        {
+            ShowError(ex);
+        }
+
+        _ = RunStartupLatencyTestsAsync();
+    }
+
+    private async Task RunStartupLatencyTestsAsync()
+    {
+        if (_profiles.Count == 0)
+        {
+            return;
+        }
+
+        DiagnosticLogService.Info($"Startup latency test started for {_profiles.Count} profiles.");
         await RunTcpLatencyTestsAsync(_profiles.ToList(), parallel: true);
+        DiagnosticLogService.Info("Startup latency test completed.");
     }
 
     private void LoadSettings()
     {
         _settings = _settingsStore.Load();
+        var metadataChanged = false;
+        foreach (var profile in _settings.Profiles)
+        {
+            if (ProfileMetadataHelper.Ensure(profile))
+            {
+                metadataChanged = true;
+            }
+        }
+
+        if (metadataChanged)
+        {
+            _settingsStore.Save(_settings);
+        }
+
         _profiles.Clear();
         foreach (var profile in _settings.Profiles)
         {
@@ -118,6 +375,12 @@ public partial class MainWindow : Window
         UpdateRoutingEditorVisibility();
 
         var selected = _profiles.FirstOrDefault(p => p.Id == _settings.SelectedProfileId) ?? _profiles.FirstOrDefault();
+        if (selected is not null && _settings.SelectedProfileId != selected.Id)
+        {
+            _settings.SelectedProfileId = selected.Id;
+            _settingsStore.Save(_settings);
+        }
+
         ProfilesGrid.SelectedItem = selected;
         NodePickerCombo.SelectedItem = selected;
         SyncTunToggleFromSettings();
@@ -126,19 +389,76 @@ public partial class MainWindow : Window
         UpdateNodeStatusBar(selected);
         UpdateSidebarStatus();
         UpdateTrafficStatsDisplay();
+        RefreshRegionFilterOptions();
+        ScheduleRegionEnrichment();
+    }
+
+    private void RefreshRegionFilterOptions()
+    {
+        if (!_isUiReady || RegionFilterCombo is null)
+        {
+            return;
+        }
+
+        var selected = (RegionFilterCombo.SelectedItem as ComboBoxItem)?.Content?.ToString() ?? "全部地区";
+        _suppressRegionFilterComboEvent = true;
+        RegionFilterCombo.Items.Clear();
+        RegionFilterCombo.Items.Add(new ComboBoxItem { Content = "全部地区" });
+
+        foreach (var region in _profiles
+                     .Select(p => p.RegionDisplay)
+                     .Where(r => !string.IsNullOrWhiteSpace(r) && r != "-")
+                     .Distinct(StringComparer.OrdinalIgnoreCase)
+                     .OrderBy(r => r, StringComparer.OrdinalIgnoreCase))
+        {
+            RegionFilterCombo.Items.Add(new ComboBoxItem { Content = region });
+        }
+
+        var matched = RegionFilterCombo.Items
+            .OfType<ComboBoxItem>()
+            .FirstOrDefault(item => string.Equals(item.Content?.ToString(), selected, StringComparison.OrdinalIgnoreCase));
+        RegionFilterCombo.SelectedItem = matched ?? RegionFilterCombo.Items[0];
+        _suppressRegionFilterComboEvent = false;
+    }
+
+    private void ScheduleRegionEnrichment(IEnumerable<VmessProfile>? profiles = null)
+    {
+        _regionEnrichmentCancellation?.Cancel();
+        _regionEnrichmentCancellation?.Dispose();
+        _regionEnrichmentCancellation = new CancellationTokenSource();
+        var token = _regionEnrichmentCancellation.Token;
+        var targets = profiles?.ToList() ?? _profiles.ToList();
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var updated = await RegionEnrichmentService.EnrichRegionsAsync(targets, token);
+                if (updated == 0 || token.IsCancellationRequested)
+                {
+                    return;
+                }
+
+                await Dispatcher.InvokeAsync(() =>
+                {
+                    RefreshRegionFilterOptions();
+                    ProfilesGrid.Items.Refresh();
+                    _settings.Profiles = _profiles.ToList();
+                    _settingsStore.Save(_settings);
+                });
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            catch
+            {
+            }
+        }, token);
     }
 
     private bool FilterProfile(object item)
     {
         if (item is not VmessProfile profile)
-        {
-            return false;
-        }
-
-        var keyword = SearchBox?.Text?.Trim();
-        if (!string.IsNullOrWhiteSpace(keyword) &&
-            !profile.DisplayName.Contains(keyword, StringComparison.OrdinalIgnoreCase) &&
-            !profile.Endpoint.Contains(keyword, StringComparison.OrdinalIgnoreCase))
         {
             return false;
         }
@@ -151,6 +471,14 @@ public partial class MainWindow : Window
             return false;
         }
 
+        var region = (RegionFilterCombo?.SelectedItem as ComboBoxItem)?.Content?.ToString();
+        if (!string.IsNullOrWhiteSpace(region) &&
+            region != "全部地区" &&
+            !string.Equals(profile.RegionDisplay, region, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
         if (AvailableOnlyCheck?.IsChecked == true && profile.TcpLatencyMs is null)
         {
             return false;
@@ -159,13 +487,13 @@ public partial class MainWindow : Window
         return true;
     }
 
-    private void SearchBox_TextChanged(object sender, TextChangedEventArgs e)
-    {
-        RefreshProfilesView();
-    }
-
     private void FilterChanged(object sender, SelectionChangedEventArgs e)
     {
+        if (!_isUiReady || (sender == RegionFilterCombo && _suppressRegionFilterComboEvent))
+        {
+            return;
+        }
+
         RefreshProfilesView();
     }
 
@@ -205,23 +533,23 @@ public partial class MainWindow : Window
     {
         if (ProfilesGrid.SelectedItem is VmessProfile profile)
         {
-            NodePickerCombo.SelectedItem = profile;
-            _settings.SelectedProfileId = profile.Id;
-            _settingsStore.Save(_settings);
-            UpdateActiveProfileMarkers(profile.Id);
             UpdateNodeStatusBar(profile);
         }
     }
 
     private void NodePickerCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (NodePickerCombo.SelectedItem is VmessProfile profile)
+        if (!_isUiReady || _suppressNodePickerComboEvent || NodePickerCombo.SelectedItem is not VmessProfile profile)
         {
-            ProfilesGrid.SelectedItem = profile;
-            _settings.SelectedProfileId = profile.Id;
-            _settingsStore.Save(_settings);
-            UpdateActiveProfileMarkers(profile.Id);
-            UpdateNodeStatusBar(profile);
+            return;
+        }
+
+        _settings.SelectedProfileId = profile.Id;
+        SaveProfiles(profile.Id);
+        UpdateNodeStatusBar(profile);
+        if (_coreService.IsRunning)
+        {
+            _ = RestartCoreAsync();
         }
     }
 
@@ -266,8 +594,6 @@ public partial class MainWindow : Window
         NodeAvailabilityTag.Background = (SolidColorBrush)new BrushConverter().ConvertFromString(tagBackground)!;
         NodeAvailabilityTag.BorderBrush = (SolidColorBrush)new BrushConverter().ConvertFromString(tagBorder)!;
         NodeAvailabilityText.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString(tagForeground)!;
-
-        SideNodeText.Text = $"节点：{profile.DisplayName} · {profile.ProtocolDisplay}";
     }
 
     private void UpdateActiveProfileMarkers(string? activeId)
@@ -278,6 +604,17 @@ public partial class MainWindow : Window
         }
 
         ProfilesGrid.Items.Refresh();
+
+        var active = _profiles.FirstOrDefault(p => p.Id == activeId);
+        if (active is not null)
+        {
+            SideNodeText.Text = $"节点：{active.DisplayName} · {active.ProtocolDisplay}";
+            _suppressNodePickerComboEvent = true;
+            NodePickerCombo.SelectedItem = active;
+            _suppressNodePickerComboEvent = false;
+        }
+
+        UpdateTrayStatus();
     }
 
     private void UpdateSidebarStatus()
@@ -297,6 +634,7 @@ public partial class MainWindow : Window
         ProxyToggleBorder.Background = running
             ? new SolidColorBrush(Color.FromRgb(0xFE, 0xF9, 0xC3))
             : new SolidColorBrush(Color.FromRgb(0xFF, 0xFF, 0xFF));
+        UpdateTrayStatus();
     }
 
     private void SyncProxyToggleFromCoreState()
@@ -419,11 +757,14 @@ public partial class MainWindow : Window
     private void UpdateTrafficStatsDisplay(double downSpeed = 0, double upSpeed = 0, bool running = false)
     {
         EnsureTodayTraffic();
+        _lastDownSpeedText = running ? $"{FormatBytes(downSpeed)}/s" : "-";
+        _lastUpSpeedText = running ? $"{FormatBytes(upSpeed)}/s" : "-";
         StatDownloadText.Text = running ? $"{FormatBytes(downSpeed)}/s" : "—";
         StatUploadText.Text = running ? $"{FormatBytes(upSpeed)}/s" : "—";
         StatTodayText.Text = FormatBytes(_settings.TodayUplinkBytes + _settings.TodayDownlinkBytes);
         StatTotalText.Text = FormatBytes(_settings.TotalDownlinkBytes + _settings.TotalUplinkBytes);
         StatRemainingText.Text = FormatSubscriptionRemaining();
+        UpdateTrayStatus();
     }
 
     private string FormatSubscriptionRemaining()
@@ -545,6 +886,7 @@ public partial class MainWindow : Window
                 UseShellExecute = true,
                 Verb = "runas"
             });
+            _isExiting = true;
             Application.Current.Shutdown();
         }
         catch (Win32Exception)
@@ -559,7 +901,7 @@ public partial class MainWindow : Window
     {
         try
         {
-            var profile = GetSelectedProfile();
+            var profile = GetActiveProfile();
             await _coreService.StartAsync(_settings, profile);
             SaveProfiles(profile.Id);
             ApplySystemProxyMode(_settings.SystemProxyMode, save: false);
@@ -598,7 +940,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        var profile = GetSelectedProfile();
+        var profile = GetActiveProfile();
         TunService.Stop();
         await _coreService.StartAsync(_settings, profile);
         ApplySystemProxyMode(_settings.SystemProxyMode, save: false);
@@ -823,15 +1165,16 @@ public partial class MainWindow : Window
 
     private async void CtxSetActiveNode_Click(object sender, RoutedEventArgs e)
     {
-        if (ProfilesGrid.SelectedItem is VmessProfile profile)
+        if (ProfilesGrid.SelectedItem is not VmessProfile profile)
         {
-            NodePickerCombo.SelectedItem = profile;
-            _settings.SelectedProfileId = profile.Id;
-            SaveProfiles(profile.Id);
-            if (_coreService.IsRunning)
-            {
-                await RestartCoreAsync();
-            }
+            return;
+        }
+
+        SaveProfiles(profile.Id);
+        UpdateNodeStatusBar(profile);
+        if (_coreService.IsRunning)
+        {
+            await RestartCoreAsync();
         }
     }
 
@@ -882,6 +1225,11 @@ public partial class MainWindow : Window
         }
         else
         {
+            if (!string.Equals(existing.Address, saved.Address, StringComparison.OrdinalIgnoreCase))
+            {
+                existing.SetRegion("");
+            }
+
             CopyProfile(saved, existing);
             existing.ResetLatency();
         }
@@ -890,6 +1238,7 @@ public partial class MainWindow : Window
         RefreshNodePicker();
         ProfilesGrid.Items.Refresh();
         ProfilesGrid.SelectedItem = _profiles.FirstOrDefault(p => p.Id == saved.Id);
+        ScheduleRegionEnrichment([existing ?? saved]);
     }
 
     private void OpenImportDialog()
@@ -915,6 +1264,9 @@ public partial class MainWindow : Window
         {
             ProfilesGrid.SelectedItem = last;
         }
+
+        ScheduleRegionEnrichment(dialog.ImportedProfiles);
+        RefreshRegionFilterOptions();
     }
 
     private void RefreshNodePicker()
@@ -980,7 +1332,7 @@ public partial class MainWindow : Window
         ShowPage(AboutPageScroll, AboutNavButton);
     }
 
-    private void ShowPage(ScrollViewer page, Button? activeButton)
+    private void ShowPage(ScrollViewer page, System.Windows.Controls.Button? activeButton)
     {
         NodePageScroll.Visibility = Visibility.Collapsed;
         NewNodePageScroll.Visibility = Visibility.Collapsed;
@@ -1010,8 +1362,11 @@ public partial class MainWindow : Window
             : "未安装";
         AboutConfigDirectoryText.Text = configDirectory;
         AboutRuntimeDirectoryText.Text = runtimeDirectory;
+        AboutLogDirectoryText.Text = DiagnosticLogService.LogDirectory;
         AboutLicenseText.Text = "NaiwaProxy: project license · Xray Core: MPL-2.0 · sing-box: GPL-3.0-or-later · Wintun: GPL-2.0 · Inno Setup: Inno Setup License";
     }
+
+    private void AboutOpenLogButton_Click(object sender, RoutedEventArgs e) => DiagnosticLogService.OpenLogDirectory();
 
     private void AboutOpenConfigButton_Click(object sender, RoutedEventArgs e)
     {
@@ -1059,6 +1414,7 @@ public partial class MainWindow : Window
                 FileName = installerPath,
                 UseShellExecute = true
             });
+            _isExiting = true;
             Application.Current.Shutdown();
         }
         catch (Exception ex)
@@ -1200,12 +1556,14 @@ public partial class MainWindow : Window
                 Sni = InlineSniBox.Text.Trim(),
                 Path = InlinePathBox.Text.Trim()
             };
+            ProfileMetadataHelper.ApplyNew(profile);
 
             _profiles.Add(profile);
             SaveProfiles(profile.Id);
             RefreshNodePicker();
             ProfilesGrid.SelectedItem = profile;
             ShowNodePage();
+            ScheduleRegionEnrichment([profile]);
         }
         catch (Exception ex)
         {
@@ -1255,6 +1613,8 @@ public partial class MainWindow : Window
             }
 
             ShowNodePage();
+            ScheduleRegionEnrichment(result.Profiles);
+            RefreshRegionFilterOptions();
         }
         catch (Exception ex)
         {
@@ -1316,6 +1676,133 @@ public partial class MainWindow : Window
     private void CtxExportNode_Click(object sender, RoutedEventArgs e)
     {
         ShowExportPage();
+    }
+
+    private void RemoveUnavailableButton_Click(object sender, RoutedEventArgs e)
+    {
+        RemoveUnavailableProfiles();
+    }
+
+    private void CtxRemoveUnavailableNodes_Click(object sender, RoutedEventArgs e)
+    {
+        RemoveUnavailableProfiles();
+    }
+
+    private void RemoveDuplicateButton_Click(object sender, RoutedEventArgs e)
+    {
+        RemoveDuplicateProfiles();
+    }
+
+    private void CtxRemoveDuplicateNodes_Click(object sender, RoutedEventArgs e)
+    {
+        RemoveDuplicateProfiles();
+    }
+
+    private void RemoveUnavailableProfiles()
+    {
+        if (_profiles.Count == 0)
+        {
+            MessageBox.Show("当前没有可移除的节点。", "NaiwaProxy", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var unavailable = _profiles.Where(IsUnavailableProfile).ToList();
+        if (unavailable.Count == 0)
+        {
+            MessageBox.Show("没有已测速为不可用的节点。请先执行 TCP 测速或等待启动自动测速完成。", "NaiwaProxy", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var result = MessageBox.Show(
+            $"将移除 {unavailable.Count} 个已测速为不可用的节点，是否继续？",
+            "移除不可用节点",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Question);
+        if (result != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        var selectedId = _settings.SelectedProfileId;
+        var removedActive = unavailable.Any(profile => profile.Id == selectedId);
+        foreach (var profile in unavailable)
+        {
+            _profiles.Remove(profile);
+        }
+
+        if (_profiles.All(profile => profile.Id != selectedId))
+        {
+            selectedId = _profiles.FirstOrDefault()?.Id;
+        }
+
+        SaveProfiles(selectedId);
+        RefreshNodePicker();
+        RefreshProfilesView();
+        RefreshRegionFilterOptions();
+        var selected = _profiles.FirstOrDefault(profile => profile.Id == selectedId);
+        ProfilesGrid.SelectedItem = selected;
+        UpdateNodeStatusBar(selected);
+
+        if (removedActive && _coreService.IsRunning && selected is not null)
+        {
+            _ = RestartCoreAsync();
+        }
+
+        MessageBox.Show($"已移除 {unavailable.Count} 个不可用节点，当前保留 {_profiles.Count} 个节点。", "NaiwaProxy", MessageBoxButton.OK, MessageBoxImage.Information);
+    }
+
+    private void RemoveDuplicateProfiles()
+    {
+        if (_profiles.Count == 0)
+        {
+            MessageBox.Show("当前没有可去重的节点。", "NaiwaProxy", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var duplicates = _profiles.Where(profile => !seen.Add(BuildProfileKey(profile))).ToList();
+        if (duplicates.Count == 0)
+        {
+            MessageBox.Show("没有发现重复节点。", "NaiwaProxy", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var result = MessageBox.Show(
+            $"将移除 {duplicates.Count} 个重复节点，并保留首次出现的节点，是否继续？",
+            "去除重复节点",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Question);
+        if (result != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        var selectedId = _settings.SelectedProfileId;
+        var removedActive = duplicates.Any(profile => profile.Id == selectedId);
+        foreach (var profile in duplicates)
+        {
+            _profiles.Remove(profile);
+        }
+
+        if (_profiles.All(profile => profile.Id != selectedId))
+        {
+            selectedId = _profiles.FirstOrDefault()?.Id;
+        }
+
+        SaveProfiles(selectedId);
+        RefreshNodePicker();
+        RefreshProfilesView();
+        RefreshRegionFilterOptions();
+        var selected = _profiles.FirstOrDefault(profile => profile.Id == selectedId);
+        ProfilesGrid.SelectedItem = selected;
+        UpdateNodeStatusBar(selected);
+
+        if (removedActive && _coreService.IsRunning && selected is not null)
+        {
+            _ = RestartCoreAsync();
+        }
+
+        MessageBox.Show($"已移除 {duplicates.Count} 个重复节点，当前保留 {_profiles.Count} 个节点。", "NaiwaProxy", MessageBoxButton.OK, MessageBoxImage.Information);
     }
 
     private void CtxMaintainNode_Click(object sender, RoutedEventArgs e)
@@ -1393,7 +1880,8 @@ public partial class MainWindow : Window
         }
 
         ProfilesGrid.SelectedItem = fastest;
-        NodePickerCombo.SelectedItem = fastest;
+        SaveProfiles(fastest.Id);
+        UpdateNodeStatusBar(fastest);
         if (_coreService.IsRunning)
         {
             await RestartCoreAsync();
@@ -1456,14 +1944,51 @@ public partial class MainWindow : Window
     {
         TestTcpLatencyButton.IsEnabled = enabled;
         SwitchFastestButton.IsEnabled = enabled;
+        RemoveUnavailableButton.IsEnabled = enabled;
+        RemoveDuplicateButton.IsEnabled = enabled;
         EditRoutingButton.IsEnabled = enabled;
     }
 
-    private VmessProfile GetSelectedProfile()
+    private static bool IsUnavailableProfile(VmessProfile profile)
     {
-        return ProfilesGrid.SelectedItem as VmessProfile
-            ?? NodePickerCombo.SelectedItem as VmessProfile
-            ?? throw new InvalidOperationException("请先选择一个节点。");
+        return profile.TcpLatencyDisplay == "Timeout";
+    }
+
+    private VmessProfile GetActiveProfile()
+    {
+        return GetCurrentProfileOrNull()
+            ?? throw new InvalidOperationException("请先添加节点。");
+    }
+
+    private VmessProfile? GetCurrentProfileOrNull()
+    {
+        return _profiles.FirstOrDefault(p => p.Id == _settings.SelectedProfileId)
+            ?? _profiles.FirstOrDefault();
+    }
+
+    private static string FormatSystemProxyMode(string mode)
+    {
+        return mode switch
+        {
+            "Clear" => "关闭",
+            "Auto" => "开启",
+            "Unchanged" => "不改变",
+            "Pac" => "PAC",
+            _ => "自动"
+        };
+    }
+
+    private static string FormatRoutingMode(string mode)
+    {
+        return mode switch
+        {
+            "Global" => "全局代理",
+            "BypassChina" => "绕过大陆",
+            "BypassLan" => "绕过局域网",
+            "Direct" => "直连模式",
+            "Custom" => "自定义规则",
+            _ => "绕过大陆"
+        };
     }
 
     private void SaveProfiles(string? selectedProfileId)
@@ -1491,8 +2016,10 @@ public partial class MainWindow : Window
         target.Tls = source.Tls;
         target.Sni = source.Sni;
         target.Remark = source.Remark;
+        target.Region = source.Region;
         target.SubscriptionName = source.SubscriptionName;
         target.SubscriptionUpdatedAt = source.SubscriptionUpdatedAt;
+        target.UpdatedAt = DateTime.Now;
     }
 
     private static string BuildProfileKey(VmessProfile profile)
@@ -1735,6 +2262,7 @@ public partial class MainWindow : Window
 
     private static void ShowError(Exception exception)
     {
+        DiagnosticLogService.Error(exception.Message, exception);
         MessageBox.Show(exception.Message, "NaiwaProxy", MessageBoxButton.OK, MessageBoxImage.Error);
     }
 }

@@ -16,37 +16,43 @@ public static class VmessLinkParser
         var trimmed = link.Trim();
         if (trimmed.StartsWith("vmess://", StringComparison.OrdinalIgnoreCase))
         {
-            return ParseVmess(trimmed);
+            return FinalizeProfile(ParseVmess(trimmed));
         }
 
         if (trimmed.StartsWith("vless://", StringComparison.OrdinalIgnoreCase))
         {
-            return ParseVless(trimmed);
+            return FinalizeProfile(ParseVless(trimmed));
         }
 
         if (trimmed.StartsWith("trojan://", StringComparison.OrdinalIgnoreCase))
         {
-            return ParseTrojan(trimmed);
+            return FinalizeProfile(ParseTrojan(trimmed));
         }
 
         if (trimmed.StartsWith("ss://", StringComparison.OrdinalIgnoreCase))
         {
-            return ParseShadowsocks(trimmed);
+            return FinalizeProfile(ParseShadowsocks(trimmed));
         }
 
         if (trimmed.StartsWith("socks://", StringComparison.OrdinalIgnoreCase) ||
             trimmed.StartsWith("socks5://", StringComparison.OrdinalIgnoreCase))
         {
-            return ParseSocks(trimmed);
+            return FinalizeProfile(ParseSocks(trimmed));
         }
 
         if (trimmed.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
             trimmed.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
         {
-            return ParseHttp(trimmed);
+            return FinalizeProfile(ParseHttp(trimmed));
         }
 
         throw new FormatException("仅支持 vmess://、vless://、trojan://、ss://、socks://、http:// 节点链接。");
+    }
+
+    private static VmessProfile FinalizeProfile(VmessProfile profile)
+    {
+        ProfileMetadataHelper.ApplyNew(profile);
+        return profile;
     }
 
     private static VmessProfile ParseVmess(string trimmed)

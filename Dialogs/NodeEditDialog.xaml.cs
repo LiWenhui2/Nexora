@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using NaiwaProxy.Models;
+using MessageBox = System.Windows.MessageBox;
 
 namespace NaiwaProxy.Dialogs;
 
@@ -116,7 +117,7 @@ public partial class NodeEditDialog : Window
         };
     }
 
-    private static void SelectCombo(ComboBox comboBox, string value)
+    private static void SelectCombo(System.Windows.Controls.ComboBox comboBox, string value)
     {
         foreach (ComboBoxItem item in comboBox.Items)
         {
@@ -130,7 +131,7 @@ public partial class NodeEditDialog : Window
         comboBox.SelectedIndex = 0;
     }
 
-    private static string SelectedComboValue(ComboBox comboBox, string fallback)
+    private static string SelectedComboValue(System.Windows.Controls.ComboBox comboBox, string fallback)
     {
         return (comboBox.SelectedItem as ComboBoxItem)?.Content?.ToString() ?? fallback;
     }

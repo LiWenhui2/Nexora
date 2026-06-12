@@ -3,6 +3,9 @@ using System.IO;
 using Microsoft.Win32;
 using NaiwaProxy.Models;
 using NaiwaProxy.Services;
+using Clipboard = System.Windows.Clipboard;
+using MessageBox = System.Windows.MessageBox;
+using OpenFileDialog = Microsoft.Win32.OpenFileDialog;
 
 namespace NaiwaProxy.Dialogs;
 

@@ -29,7 +29,7 @@ public static class SubscriptionImportService
 
         return new SubscriptionImportResult
         {
-            Profiles = ParseProfiles(trimmed, "", null)
+            Profiles = ParseProfiles(trimmed, "", DateTime.Now)
         };
     }
 
@@ -128,6 +128,8 @@ public static class SubscriptionImportService
             var profile = VmessLinkParser.Parse(candidate);
             profile.SubscriptionName = sourceName;
             profile.SubscriptionUpdatedAt = updatedAt;
+            profile.UpdatedAt = updatedAt ?? DateTime.Now;
+            profile.Region = NodeRegionHelper.Resolve(profile);
             profiles.Add(profile);
         }
 
