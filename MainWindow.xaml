@@ -101,6 +101,7 @@
         <Geometry x:Key="IconShield">M12,22 C12,22 20,18 20,12 L20,5 L12,2 L4,5 L4,12 C4,18 12,22 12,22</Geometry>
         <Geometry x:Key="IconInfo">M12,16 L12,12 M12,8 L12.01,8 M22,12 A10,10 0 1 1 2,12 A10,10 0 0 1 22,12</Geometry>
         <Geometry x:Key="IconGitHub">M12,.297c-6.63,0-12,5.373-12,12 0,5.303 3.438,9.8 8.205,11.385 .6,.113 .82,-.258 .82,-.577 0,-.285-.01,-1.04-.015,-2.04-3.338,.724-4.042,-1.61-4.042,-1.61C4.422,18.07 3.633,17.7 3.633,17.7c-1.087,-.744 .084,-.729 .084,-.729 1.205,.084 1.838,1.236 1.838,1.236 1.07,1.835 2.809,1.305 3.495,.998 .108,-.776 .417,-1.305 .76,-1.605-2.665,-.3-5.466,-1.332-5.466,-5.93 0,-1.31 .465,-2.38 1.235,-3.22-.135,-.303-.54,-1.523 .105,-3.176 0,0 1.005,-.322 3.3,1.23 .96,-.267 1.98,-.399 3,-.405 1.02,.006 2.04,.138 3,.405 2.28,-1.552 3.285,-1.23 3.285,-1.23 .645,1.653 .24,2.873 .12,3.176 .765,.84 1.23,1.91 1.23,3.22 0,4.61-2.805,5.625-5.475,5.92 .42,.36 .81,1.096 .81,2.22 0,1.606-.015,2.896-.015,3.286 0,.315 .21,.69 .825,.57C20.565,22.092 24,17.592 24,12.297c0,-6.627-5.373,-12-12,-12</Geometry>
+        <Geometry x:Key="IconFolder">M22,19 A2,2 0 0 1 20,21 L4,21 A2,2 0 0 1 2,19 L2,7 A2,2 0 0 1 4,5 L9,5 L11,3 L20,3 A2,2 0 0 1 22,5 Z</Geometry>
 
         <Style x:Key="NavLineIconStyle" TargetType="Path">
             <Setter Property="Width" Value="20"/>
@@ -117,6 +118,45 @@
         <Style x:Key="NavFillIconStyle" TargetType="Path" BasedOn="{StaticResource NavLineIconStyle}">
             <Setter Property="StrokeThickness" Value="0"/>
             <Setter Property="Fill" Value="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
+        </Style>
+
+        <Style x:Key="FolderIconButtonStyle" TargetType="Button">
+            <Setter Property="Width" Value="36"/>
+            <Setter Property="Height" Value="36"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Foreground" Value="#64748B"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderBrush" Value="{StaticResource LineBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Root" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="8">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Root" Property="Background" Value="#F1F5F9"/>
+                                <Setter Property="Foreground" Value="#B45309"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="FolderIconPathStyle" TargetType="Path">
+            <Setter Property="Width" Value="18"/>
+            <Setter Property="Height" Value="18"/>
+            <Setter Property="Stretch" Value="Uniform"/>
+            <Setter Property="Stroke" Value="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
+            <Setter Property="StrokeThickness" Value="1.8"/>
+            <Setter Property="StrokeStartLineCap" Value="Round"/>
+            <Setter Property="StrokeEndLineCap" Value="Round"/>
+            <Setter Property="StrokeLineJoin" Value="Round"/>
+            <Setter Property="Fill" Value="Transparent"/>
+            <Setter Property="Data" Value="{StaticResource IconFolder}"/>
         </Style>
 
         <Style x:Key="DarkButtonStyle" TargetType="Button">
@@ -299,6 +339,10 @@
             <Setter Property="Margin" Value="0,0,8,8"/>
         </Style>
 
+        <Style x:Key="AboutDirectoryItemStyle" TargetType="Border" BasedOn="{StaticResource HealthItemStyle}">
+            <Setter Property="Margin" Value="0,0,0,8"/>
+        </Style>
+
         <Style x:Key="ControlFieldBorderStyle" TargetType="Border">
             <Setter Property="Height" Value="42"/>
             <Setter Property="Padding" Value="12,0"/>
@@ -339,7 +383,7 @@
                         <TextBlock Text="Windows · Xray Client" FontSize="18" Foreground="{StaticResource MutedBrush}" Margin="0,4,0,0"/>
                     </StackPanel>
                 </StackPanel>
-                <Border Grid.Row="1" Height="42" Margin="16,0,16,10" CornerRadius="10" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" Background="{StaticResource Panel3Brush}">
+                <Border Grid.Row="1" Height="0" Margin="0" Visibility="Collapsed" CornerRadius="10" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" Background="{StaticResource Panel3Brush}">
                     <Grid>
                         <TextBlock Text="⌕" Foreground="{StaticResource MutedBrush}" FontSize="19" Margin="12,0" VerticalAlignment="Center"/>
                         <TextBlock Text="搜索菜单…" Foreground="{StaticResource MutedBrush}" FontSize="18" Margin="38,0,0,0" VerticalAlignment="Center"/>
@@ -374,7 +418,7 @@
                         </Button>
 
                         <TextBlock Style="{StaticResource NavGroupHeaderStyle}" Text="订阅管理"/>
-                        <Button Style="{StaticResource NavChildButtonStyle}" Click="ImportNodeNavButton_Click">
+                        <Button x:Name="SubscriptionImportNavButton" Style="{StaticResource NavChildButtonStyle}" Click="SubscriptionImportNavButton_Click">
                             <StackPanel Orientation="Horizontal">
                                 <Path Style="{StaticResource NavLineIconStyle}" Data="{StaticResource IconRss}"/>
                                 <TextBlock Text="订阅导入"/>
@@ -414,6 +458,12 @@
                         </Button>
 
                         <TextBlock Style="{StaticResource NavGroupHeaderStyle}" Text="系统"/>
+                        <Button x:Name="LogNavButton" Style="{StaticResource NavChildButtonStyle}" Click="LogNavButton_Click">
+                            <StackPanel Orientation="Horizontal">
+                                <Path Style="{StaticResource NavLineIconStyle}" Data="{StaticResource IconInfo}"/>
+                                <TextBlock Text="日志"/>
+                            </StackPanel>
+                        </Button>
                         <Button x:Name="AboutNavButton" Style="{StaticResource NavChildButtonStyle}" Click="AboutNavButton_Click">
                             <StackPanel Orientation="Horizontal">
                                 <Path Style="{StaticResource NavLineIconStyle}" Data="{StaticResource IconInfo}"/>
@@ -441,8 +491,7 @@
                             <TextBlock x:Name="SideStatusText" Text="运行中 · 系统代理已开启" FontSize="19" FontWeight="Bold" Margin="8,0,0,0"/>
                         </StackPanel>
                         <TextBlock x:Name="SideNodeText" Text="节点：-" Foreground="{StaticResource MutedBrush}" FontSize="18" Margin="0,8,0,0"/>
-                        <TextBlock x:Name="SidePortsText" Text="HTTP 127.0.0.1:10809 · SOCKS 10808" Foreground="{StaticResource MutedBrush}" FontSize="18" Margin="0,3,0,0"/>
-                        <TextBlock x:Name="SideCoreText" Text="Core 未运行" Foreground="{StaticResource MutedBrush}" FontSize="18" Margin="0,3,0,0"/>
+                        <TextBlock x:Name="SidePortsText" Text="" Visibility="Collapsed" Foreground="{StaticResource MutedBrush}" FontSize="18" Margin="0,3,0,0"/>
                     </StackPanel>
                 </Border>
             </Grid>
@@ -455,7 +504,7 @@
                 <RowDefinition Height="*"/>
             </Grid.RowDefinitions>
 
-            <Border Grid.Row="0" Background="#FFFFFF" BorderBrush="#E2E8F0" BorderThickness="0,0,0,1">
+            <Border Grid.Row="0" Background="#FFFFFF" BorderBrush="#E2E8F0" BorderThickness="0,0,0,1" PreviewMouseWheel="NodePageChild_PreviewMouseWheel">
                 <Grid Margin="24,0">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto"/>
@@ -477,7 +526,7 @@
                 </Grid>
             </Border>
 
-            <ScrollViewer x:Name="NodePageScroll" Grid.Row="1" VerticalScrollBarVisibility="Auto">
+            <ScrollViewer x:Name="NodePageScroll" Grid.Row="1" VerticalScrollBarVisibility="Auto" PreviewMouseWheel="NodePageScroll_PreviewMouseWheel">
                 <StackPanel Margin="24,22,24,28">
                     <!-- Node list module -->
                     <Border Style="{StaticResource CardBorderStyle}" Margin="0,0,0,16">
@@ -533,7 +582,7 @@
                                             <ComboBoxItem Content="SOCKS"/>
                                             <ComboBoxItem Content="HTTP"/>
                                         </ComboBox>
-                                        <ComboBox Width="150" Margin="0,0,8,0" IsEnabled="False">
+                                        <ComboBox x:Name="SubscriptionFilterCombo" Width="170" Margin="0,0,8,0" SelectionChanged="FilterChanged">
                                             <ComboBoxItem Content="全部订阅" IsSelected="True"/>
                                         </ComboBox>
                                         <ComboBox x:Name="SortCombo" Width="150" Margin="0,0,8,0" SelectionChanged="FilterChanged">
@@ -568,6 +617,29 @@
                                                 <MenuItem Header="删除节点" Click="CtxDeleteNode_Click"/>
                                             </ContextMenu>
                                         </DataGrid.ContextMenu>
+                                        <DataGrid.GroupStyle>
+                                            <GroupStyle>
+                                                <GroupStyle.ContainerStyle>
+                                                    <Style TargetType="{x:Type GroupItem}">
+                                                        <Setter Property="Template">
+                                                            <Setter.Value>
+                                                                <ControlTemplate TargetType="{x:Type GroupItem}">
+                                                                    <Expander IsExpanded="True" Margin="0,4,0,0">
+                                                                        <Expander.Header>
+                                                                            <StackPanel Orientation="Horizontal">
+                                                                                <TextBlock Text="{Binding Name}" FontWeight="SemiBold" Foreground="{StaticResource AccentTextBrush}" Margin="8,0,12,0"/>
+                                                                                <TextBlock Text="{Binding ItemCount, StringFormat=({0} 个节点)}" Foreground="{StaticResource MutedBrush}"/>
+                                                                            </StackPanel>
+                                                                        </Expander.Header>
+                                                                        <ItemsPresenter/>
+                                                                    </Expander>
+                                                                </ControlTemplate>
+                                                            </Setter.Value>
+                                                        </Setter>
+                                                    </Style>
+                                                </GroupStyle.ContainerStyle>
+                                            </GroupStyle>
+                                        </DataGrid.GroupStyle>
                                         <DataGrid.Columns>
                                             <DataGridTemplateColumn Header="名称" Width="SizeToCells" MinWidth="120">
                                                 <DataGridTemplateColumn.CellTemplate>
@@ -607,6 +679,11 @@
                                                 </DataGridTextColumn.ElementStyle>
                                             </DataGridTextColumn>
                                             <DataGridTextColumn Header="订阅" Binding="{Binding SubscriptionDisplay}" Width="SizeToCells" MinWidth="88">
+                                                <DataGridTextColumn.ElementStyle>
+                                                    <Style TargetType="TextBlock" BasedOn="{StaticResource DataGridCellCenterTextStyle}"/>
+                                                </DataGridTextColumn.ElementStyle>
+                                            </DataGridTextColumn>
+                                            <DataGridTextColumn Header="剩余流量" Binding="{Binding SubscriptionRemainingDisplay}" Width="SizeToCells" MinWidth="100">
                                                 <DataGridTextColumn.ElementStyle>
                                                     <Style TargetType="TextBlock" BasedOn="{StaticResource DataGridCellCenterTextStyle}"/>
                                                 </DataGridTextColumn.ElementStyle>
@@ -781,12 +858,31 @@
                 <StackPanel Margin="24,22,24,28">
                     <Border Style="{StaticResource CardBorderStyle}">
                         <StackPanel>
-                            <TextBlock Text="支持 vmess://、vless://、trojan://、ss://、socks://、http://，也支持订阅地址和多行批量导入。" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,0,0,14"/>
+                            <TextBlock Text="导入节点" FontSize="24" FontWeight="Bold" Margin="0,0,0,8"/>
+                            <TextBlock Text="支持 vmess://、vless://、trojan://、ss://、socks://、http:// 节点链接和多行批量导入。" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,0,0,14"/>
                             <TextBox x:Name="InlineImportBox" MinHeight="260" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" Margin="0,0,0,16"/>
                             <WrapPanel>
                                 <Button Content="从剪贴板粘贴" Style="{StaticResource DarkButtonStyle}" Margin="0,0,8,8" Click="InlinePasteImportButton_Click"/>
                                 <Button Content="读取文本文件" Style="{StaticResource DarkButtonStyle}" Margin="0,0,8,8" Click="InlineOpenImportFileButton_Click"/>
                                 <Button Content="导入" Style="{StaticResource PrimaryButtonStyle}" Margin="0,0,8,8" Click="InlineImportButton_Click"/>
+                            </WrapPanel>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+
+            <ScrollViewer x:Name="SubscriptionImportPageScroll" Grid.Row="1" VerticalScrollBarVisibility="Auto" Visibility="Collapsed">
+                <StackPanel Margin="24,22,24,28">
+                    <Border Style="{StaticResource CardBorderStyle}">
+                        <StackPanel>
+                            <TextBlock Text="订阅导入" FontSize="24" FontWeight="Bold" Margin="0,0,0,8"/>
+                            <TextBlock Text="支持复制订阅地址、订阅二维码图片、剪贴板二维码图片。订阅内容可以是一组节点，会批量解析并加入节点列表。" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,0,0,14"/>
+                            <TextBox x:Name="SubscriptionImportBox" MinHeight="220" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" Margin="0,0,0,16"/>
+                            <WrapPanel>
+                                <Button Content="粘贴订阅地址" Style="{StaticResource DarkButtonStyle}" Margin="0,0,8,8" Click="SubscriptionPasteButton_Click"/>
+                                <Button Content="扫描二维码图片" Style="{StaticResource DarkButtonStyle}" Margin="0,0,8,8" Click="SubscriptionOpenQrImageButton_Click"/>
+                                <Button Content="识别剪贴板二维码" Style="{StaticResource DarkButtonStyle}" Margin="0,0,8,8" Click="SubscriptionScanClipboardQrButton_Click"/>
+                                <Button Content="导入订阅" Style="{StaticResource PrimaryButtonStyle}" Margin="0,0,8,8" Click="SubscriptionImportButton_Click"/>
                             </WrapPanel>
                         </StackPanel>
                     </Border>
@@ -839,6 +935,34 @@
                             <WrapPanel>
                                 <Button x:Name="UpdatePageCheckButton" Content="检查更新" Style="{StaticResource PrimaryButtonStyle}" Margin="0,0,8,8" Click="UpdatePageCheckButton_Click"/>
                             </WrapPanel>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+
+            <ScrollViewer x:Name="LogPageScroll" Grid.Row="1" VerticalScrollBarVisibility="Auto" Visibility="Collapsed">
+                <StackPanel Margin="24,22,24,28">
+                    <Border Style="{StaticResource CardBorderStyle}">
+                        <StackPanel>
+                            <TextBlock Text="运行日志" FontSize="24" FontWeight="Bold" Margin="0,0,0,8"/>
+                            <TextBlock Text="系统日志记录应用事件；流量监控记录访问域名与出站方式（走代理 / 直连）。" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,0,0,12"/>
+                            <WrapPanel Margin="0,0,0,8">
+                                <TextBlock Text="级别" Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center" Margin="0,0,10,8"/>
+                                <CheckBox x:Name="LogFilterInfo" Content="INFO" IsChecked="True" Margin="0,0,12,8" VerticalAlignment="Center" Checked="LogFilter_Changed" Unchecked="LogFilter_Changed"/>
+                                <CheckBox x:Name="LogFilterWarn" Content="WARN" IsChecked="True" Margin="0,0,12,8" VerticalAlignment="Center" Checked="LogFilter_Changed" Unchecked="LogFilter_Changed"/>
+                                <CheckBox x:Name="LogFilterError" Content="ERROR" IsChecked="True" Margin="0,0,12,8" VerticalAlignment="Center" Checked="LogFilter_Changed" Unchecked="LogFilter_Changed"/>
+                                <CheckBox x:Name="LogFilterCrash" Content="CRASH" IsChecked="True" Margin="0,0,12,8" VerticalAlignment="Center" Checked="LogFilter_Changed" Unchecked="LogFilter_Changed"/>
+                            </WrapPanel>
+                            <WrapPanel Margin="0,0,0,12">
+                                <TextBlock Text="类型" Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center" Margin="0,0,10,8"/>
+                                <CheckBox x:Name="LogFilterSystem" Content="系统日志" IsChecked="True" Margin="0,0,12,8" VerticalAlignment="Center" Checked="LogFilter_Changed" Unchecked="LogFilter_Changed"/>
+                                <CheckBox x:Name="LogFilterTraffic" Content="流量监控" IsChecked="True" Margin="0,0,12,8" VerticalAlignment="Center" Checked="LogFilter_Changed" Unchecked="LogFilter_Changed"/>
+                            </WrapPanel>
+                            <TextBox x:Name="LogViewText" MinHeight="520" IsReadOnly="True" AcceptsReturn="True"
+                                     TextWrapping="NoWrap" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
+                                     FontFamily="Consolas, Cascadia Mono, Microsoft YaHei UI" FontSize="14"
+                                     Background="{StaticResource Panel2Brush}" BorderBrush="{StaticResource LineBrush}"
+                                     BorderThickness="1" Padding="12"/>
                         </StackPanel>
                     </Border>
                 </StackPanel>
@@ -897,35 +1021,32 @@
                     <Border Style="{StaticResource CardBorderStyle}" Margin="0,0,0,16">
                         <StackPanel>
                             <TextBlock Text="目录信息" FontSize="20" FontWeight="Bold" Margin="0,0,0,12"/>
-                            <Border Style="{StaticResource HealthItemStyle}">
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="110"/>
-                                        <ColumnDefinition Width="*"/>
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Text="配置目录" Foreground="{StaticResource MutedBrush}"/>
-                                    <TextBlock Grid.Column="1" x:Name="AboutConfigDirectoryText" TextWrapping="Wrap"/>
-                                </Grid>
+                            <Border Style="{StaticResource AboutDirectoryItemStyle}">
+                                <DockPanel LastChildFill="True">
+                                    <Button DockPanel.Dock="Right" Style="{StaticResource FolderIconButtonStyle}" ToolTip="打开配置目录" Click="AboutOpenConfigButton_Click">
+                                        <Path Style="{StaticResource FolderIconPathStyle}"/>
+                                    </Button>
+                                    <TextBlock DockPanel.Dock="Left" Text="配置目录" Width="110" Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center"/>
+                                    <TextBlock x:Name="AboutConfigDirectoryText" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" Margin="8,0,8,0"/>
+                                </DockPanel>
                             </Border>
-                            <Border Style="{StaticResource HealthItemStyle}">
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="110"/>
-                                        <ColumnDefinition Width="*"/>
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Text="运行时目录" Foreground="{StaticResource MutedBrush}"/>
-                                    <TextBlock Grid.Column="1" x:Name="AboutRuntimeDirectoryText" TextWrapping="Wrap"/>
-                                </Grid>
+                            <Border Style="{StaticResource AboutDirectoryItemStyle}">
+                                <DockPanel LastChildFill="True">
+                                    <Button DockPanel.Dock="Right" Style="{StaticResource FolderIconButtonStyle}" ToolTip="打开运行时目录" Click="AboutOpenRuntimeButton_Click">
+                                        <Path Style="{StaticResource FolderIconPathStyle}"/>
+                                    </Button>
+                                    <TextBlock DockPanel.Dock="Left" Text="运行时目录" Width="110" Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center"/>
+                                    <TextBlock x:Name="AboutRuntimeDirectoryText" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" Margin="8,0,8,0"/>
+                                </DockPanel>
                             </Border>
-                            <Border Style="{StaticResource HealthItemStyle}">
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="110"/>
-                                        <ColumnDefinition Width="*"/>
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Text="日志目录" Foreground="{StaticResource MutedBrush}"/>
-                                    <TextBlock Grid.Column="1" x:Name="AboutLogDirectoryText" TextWrapping="Wrap"/>
-                                </Grid>
+                            <Border Style="{StaticResource AboutDirectoryItemStyle}" Margin="0">
+                                <DockPanel LastChildFill="True">
+                                    <Button DockPanel.Dock="Right" Style="{StaticResource FolderIconButtonStyle}" ToolTip="打开日志目录" Click="AboutOpenLogButton_Click">
+                                        <Path Style="{StaticResource FolderIconPathStyle}"/>
+                                    </Button>
+                                    <TextBlock DockPanel.Dock="Left" Text="日志目录" Width="110" Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center"/>
+                                    <TextBlock x:Name="AboutLogDirectoryText" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" Margin="8,0,8,0"/>
+                                </DockPanel>
                             </Border>
                         </StackPanel>
                     </Border>
@@ -933,13 +1054,7 @@
                     <Border Style="{StaticResource CardBorderStyle}">
                         <StackPanel>
                             <TextBlock Text="许可信息" FontSize="20" FontWeight="Bold" Margin="0,0,0,12"/>
-                            <TextBlock Text="应用崩溃或无法启动时，请查看日志目录中的 app.log、startup.log、crash.log。" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,0,0,8"/>
                             <TextBlock x:Name="AboutLicenseText" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,0,0,16"/>
-                            <WrapPanel>
-                                <Button Content="配置目录" Style="{StaticResource DarkButtonStyle}" Margin="0,0,8,8" Click="AboutOpenConfigButton_Click"/>
-                                <Button Content="运行时目录" Style="{StaticResource DarkButtonStyle}" Margin="0,0,8,8" Click="AboutOpenRuntimeButton_Click"/>
-                                <Button Content="日志目录" Style="{StaticResource DarkButtonStyle}" Margin="0,0,8,8" Click="AboutOpenLogButton_Click"/>
-                            </WrapPanel>
                         </StackPanel>
                     </Border>
                 </StackPanel>

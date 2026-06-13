@@ -98,4 +98,93 @@ public static class CoreRunner
             }
         }
     }
+
+    public static bool IsPortListening(int port)
+    {
+        try
+        {
+            using var client = new TcpClient();
+            var connectTask = client.ConnectAsync(IPAddress.Loopback, port);
+            return connectTask.Wait(300) && client.Connected;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    public static void ReleasePorts(params int[] ports)
+    {
+        foreach (var port in ports.Distinct())
+        {
+            KillProcessListeningOnPort(port);
+        }
+    }
+
+    private static void KillProcessListeningOnPort(int port)
+    {
+        try
+        {
+            var suffix = $":{port}";
+            using var netstat = Process.Start(new ProcessStartInfo
+            {
+                FileName = "netstat",
+                Arguments = "-ano -p tcp",
+                RedirectStandardOutput = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            });
+
+            if (netstat is null)
+            {
+                return;
+            }
+
+            var output = netstat.StandardOutput.ReadToEnd();
+            netstat.WaitForExit(3000);
+
+            foreach (var line in output.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+            {
+                if (!line.Contains("LISTENING", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                var parts = line.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+                if (parts.Length < 5)
+                {
+                    continue;
+                }
+
+                var localEndpoint = parts[1];
+                if (!localEndpoint.EndsWith(suffix, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                if (!int.TryParse(parts[^1], out var pid) || pid <= 0 || pid == Environment.ProcessId)
+                {
+                    continue;
+                }
+
+                try
+                {
+                    using var process = Process.GetProcessById(pid);
+                    if (process.ProcessName.Contains("xray", StringComparison.OrdinalIgnoreCase))
+                    {
+                        process.Kill(entireProcessTree: true);
+                        process.WaitForExit(3000);
+                    }
+                }
+                catch
+                {
+                    // Process may already have exited.
+                }
+            }
+        }
+        catch
+        {
+            // Best effort cleanup for orphaned core listeners.
+        }
+    }
 }

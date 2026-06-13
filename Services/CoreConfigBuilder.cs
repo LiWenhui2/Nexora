@@ -13,6 +13,8 @@ public static class CoreConfigBuilder
         {
             log = new
             {
+                access = DiagnosticLogService.AccessLogPath,
+                error = DiagnosticLogService.CoreErrorLogPath,
                 loglevel = "warning"
             },
             api = new

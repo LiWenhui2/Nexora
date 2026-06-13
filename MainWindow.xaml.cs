@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
+using System.Net;
 using System.Net.Http;
 using System.Reflection;
 using System.Text;
@@ -19,6 +20,8 @@ using NaiwaProxy.Dialogs;
 using NaiwaProxy.Models;
 using NaiwaProxy.Services;
 using QRCoder;
+using ZXing;
+using ZXing.Common;
 using Forms = System.Windows.Forms;
 using Drawing = System.Drawing;
 using Application = System.Windows.Application;
@@ -34,7 +37,6 @@ public partial class MainWindow : Window
 {
     private const string ProjectUrl = "https://github.com/LiWenhui2/NaiwaProxy";
     private const string LatestReleaseApi = "https://api.github.com/repos/LiWenhui2/NaiwaProxy/releases/latest";
-    private static readonly HttpClient UpdateHttpClient = new();
     private readonly SettingsStore _settingsStore = new();
     private readonly CoreService _coreService = new();
     private readonly ObservableCollection<VmessProfile> _profiles = [];
@@ -64,19 +66,24 @@ public partial class MainWindow : Window
     {
         DiagnosticLogService.Startup("MainWindow constructor begin");
         InitializeComponent();
+        RefreshLogView();
         LoadBrandIcon();
         InitializeTray();
         _trafficTimer.Tick += TrafficTimer_Tick;
+        _coreService.CoreExited += CoreService_CoreExited;
         _profilesView = CollectionViewSource.GetDefaultView(_profiles);
         _profilesView.Filter = FilterProfile;
+        _profilesView.GroupDescriptions.Add(new PropertyGroupDescription(nameof(VmessProfile.SubscriptionDisplay)));
         ProfilesGrid.ItemsSource = _profilesView;
         _isUiReady = true;
         LoadSettings();
         Loaded += MainWindow_Loaded;
+        DiagnosticLogService.EntryAdded += DiagnosticLogService_EntryAdded;
         DiagnosticLogService.Startup("MainWindow constructor complete");
         Closing += MainWindow_Closing;
         Closed += (_, _) =>
         {
+            DiagnosticLogService.EntryAdded -= DiagnosticLogService_EntryAdded;
             DisposeTray();
             _regionEnrichmentCancellation?.Cancel();
             _regionEnrichmentCancellation?.Dispose();
@@ -85,7 +92,7 @@ public partial class MainWindow : Window
             _trafficTimer.Stop();
             _settingsStore.Save(_settings);
             TunService.Stop();
-            _coreService.Stop();
+            _coreService.Stop(_settings);
             ApplySystemProxyMode("Clear", save: false);
         };
     }
@@ -184,7 +191,7 @@ public partial class MainWindow : Window
         _trayMenu.Items.Add(routingMenu);
         _trayMenu.Items.Add(new Forms.ToolStripSeparator());
         AddTrayMenuItem("打开主窗口", ShowMainWindow);
-        AddTrayMenuItem("打开日志", DiagnosticLogService.OpenLogDirectory);
+        AddTrayMenuItem("查看日志", ShowLogPageFromTray);
         AddTrayMenuItem("退出程序", ExitApplication);
     }
 
@@ -390,6 +397,7 @@ public partial class MainWindow : Window
         UpdateSidebarStatus();
         UpdateTrafficStatsDisplay();
         RefreshRegionFilterOptions();
+        RefreshSubscriptionFilterOptions();
         ScheduleRegionEnrichment();
     }
 
@@ -421,6 +429,32 @@ public partial class MainWindow : Window
         _suppressRegionFilterComboEvent = false;
     }
 
+    private void RefreshSubscriptionFilterOptions()
+    {
+        if (!_isUiReady || SubscriptionFilterCombo is null)
+        {
+            return;
+        }
+
+        var selected = (SubscriptionFilterCombo.SelectedItem as ComboBoxItem)?.Content?.ToString() ?? "全部订阅";
+        SubscriptionFilterCombo.Items.Clear();
+        SubscriptionFilterCombo.Items.Add(new ComboBoxItem { Content = "全部订阅" });
+
+        foreach (var subscription in _profiles
+                     .Select(p => p.SubscriptionDisplay)
+                     .Where(s => !string.IsNullOrWhiteSpace(s))
+                     .Distinct(StringComparer.OrdinalIgnoreCase)
+                     .OrderBy(s => s, StringComparer.OrdinalIgnoreCase))
+        {
+            SubscriptionFilterCombo.Items.Add(new ComboBoxItem { Content = subscription });
+        }
+
+        var matched = SubscriptionFilterCombo.Items
+            .OfType<ComboBoxItem>()
+            .FirstOrDefault(item => string.Equals(item.Content?.ToString(), selected, StringComparison.OrdinalIgnoreCase));
+        SubscriptionFilterCombo.SelectedItem = matched ?? SubscriptionFilterCombo.Items[0];
+    }
+
     private void ScheduleRegionEnrichment(IEnumerable<VmessProfile>? profiles = null)
     {
         _regionEnrichmentCancellation?.Cancel();
@@ -442,6 +476,7 @@ public partial class MainWindow : Window
                 await Dispatcher.InvokeAsync(() =>
                 {
                     RefreshRegionFilterOptions();
+                    RefreshSubscriptionFilterOptions();
                     ProfilesGrid.Items.Refresh();
                     _settings.Profiles = _profiles.ToList();
                     _settingsStore.Save(_settings);
@@ -480,6 +515,14 @@ public partial class MainWindow : Window
         }
 
         if (AvailableOnlyCheck?.IsChecked == true && profile.TcpLatencyMs is null)
+        {
+            return false;
+        }
+
+        var subscription = (SubscriptionFilterCombo?.SelectedItem as ComboBoxItem)?.Content?.ToString();
+        if (!string.IsNullOrWhiteSpace(subscription) &&
+            subscription != "全部订阅" &&
+            !string.Equals(profile.SubscriptionDisplay, subscription, StringComparison.OrdinalIgnoreCase))
         {
             return false;
         }
@@ -620,10 +663,16 @@ public partial class MainWindow : Window
     private void UpdateSidebarStatus()
     {
         var running = _coreService.IsRunning;
+        var systemProxyActive = SystemProxyService.IsProxyActive(_settings.SystemProxyMode, _settings.HttpPort);
         SideStatusDot.Fill = running ? new SolidColorBrush(Color.FromRgb(0x16, 0xA3, 0x4A)) : new SolidColorBrush(Color.FromRgb(0x94, 0xA3, 0xB8));
-        SideStatusText.Text = running ? "运行中 · 系统代理已配置" : "已停止";
-        SidePortsText.Text = $"HTTP 127.0.0.1:{_settings.HttpPort} · SOCKS {_settings.SocksPort}";
-        SideCoreText.Text = running ? "Core 运行中" : "Core 未运行";
+        SideStatusText.Text = running
+            ? systemProxyActive
+                ? "运行中 · 系统代理已开启"
+                : _settings.SystemProxyMode is "Unchanged"
+                    ? "运行中 · 系统代理未接管"
+                    : "运行中 · 系统代理未开启"
+            : "已停止";
+        SidePortsText.Text = running ? $"HTTP 127.0.0.1:{_settings.HttpPort} · SOCKS {_settings.SocksPort}" : "";
         ProxyStateText.Text = running ? "运行中" : "已停止";
         ProxyStateText.Foreground = running
             ? new SolidColorBrush(Color.FromRgb(0x16, 0xA3, 0x4A))
@@ -637,12 +686,30 @@ public partial class MainWindow : Window
         UpdateTrayStatus();
     }
 
-    private void SyncProxyToggleFromCoreState()
+    private void ReconcileProxyUiState()
     {
         _suppressProxyToggleEvent = true;
         ProxyToggle.IsChecked = _coreService.IsRunning;
         _suppressProxyToggleEvent = false;
         UpdateSidebarStatus();
+    }
+
+    private void CoreService_CoreExited(object? sender, EventArgs e)
+    {
+        Dispatcher.Invoke(() =>
+        {
+            StopTrafficMonitor();
+            _suppressProxyToggleEvent = true;
+            ProxyToggle.IsChecked = false;
+            _suppressProxyToggleEvent = false;
+            UpdateSidebarStatus();
+            DiagnosticLogService.Warning("Core process exited unexpectedly.");
+        });
+    }
+
+    private void SyncProxyToggleFromCoreState()
+    {
+        ReconcileProxyUiState();
     }
 
     private void SyncTunToggleFromSettings()
@@ -662,7 +729,20 @@ public partial class MainWindow : Window
             return;
         }
 
-        TunService.Start(_settings);
+        try
+        {
+            TunService.Start(_settings);
+        }
+        catch (Exception ex)
+        {
+            _settings.IsTunEnabled = false;
+            _settingsStore.Save(_settings);
+            _suppressTunToggleEvent = true;
+            TunToggle.IsChecked = false;
+            _suppressTunToggleEvent = false;
+            DiagnosticLogService.Error("TUN failed to start; TUN has been disabled automatically.", ex);
+        }
+
         SyncTunToggleFromSettings();
     }
 
@@ -904,16 +984,20 @@ public partial class MainWindow : Window
             var profile = GetActiveProfile();
             await _coreService.StartAsync(_settings, profile);
             SaveProfiles(profile.Id);
-            ApplySystemProxyMode(_settings.SystemProxyMode, save: false);
+            EnsureSystemProxyForRunningCore();
+            ApplySystemProxyMode(_settings.SystemProxyMode, save: true);
             StartTunIfEnabled();
             StartTrafficMonitor();
-            UpdateSidebarStatus();
+            SyncProxyToggleFromCoreState();
         }
         catch (Exception ex)
         {
+            _coreService.Stop(_settings);
+            StopTrafficMonitor();
             _suppressProxyToggleEvent = true;
             ProxyToggle.IsChecked = false;
             _suppressProxyToggleEvent = false;
+            UpdateSidebarStatus();
             ShowError(ex);
         }
 
@@ -921,7 +1005,7 @@ public partial class MainWindow : Window
 
     private void StopProxy()
     {
-        _coreService.Stop();
+        _coreService.Stop(_settings);
         TunService.Stop();
         _settingsStore.Save(_settings);
         StopTrafficMonitor();
@@ -931,6 +1015,7 @@ public partial class MainWindow : Window
         }
 
         UpdateSidebarStatus();
+        SyncProxyToggleFromCoreState();
     }
 
     private async Task RestartCoreAsync()
@@ -943,7 +1028,8 @@ public partial class MainWindow : Window
         var profile = GetActiveProfile();
         TunService.Stop();
         await _coreService.StartAsync(_settings, profile);
-        ApplySystemProxyMode(_settings.SystemProxyMode, save: false);
+        EnsureSystemProxyForRunningCore();
+        ApplySystemProxyMode(_settings.SystemProxyMode, save: true);
         StartTunIfEnabled();
         StartTrafficMonitor();
         UpdateSidebarStatus();
@@ -958,6 +1044,22 @@ public partial class MainWindow : Window
 
         var mode = GetSystemProxyModeFromCombo();
         ApplySystemProxyMode(mode, save: true);
+    }
+
+    private HttpClient CreateProxiedHttpClient()
+    {
+        return new HttpClient(new HttpClientHandler
+        {
+            Proxy = new WebProxy($"http://127.0.0.1:{_settings.HttpPort}"),
+            UseProxy = true
+        });
+    }
+
+    private HttpClient CreateUpdateHttpClient()
+    {
+        return _coreService.IsRunning
+            ? CreateProxiedHttpClient()
+            : new HttpClient();
     }
 
     private async void RoutingCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -1058,6 +1160,16 @@ public partial class MainWindow : Window
         UpdateSidebarStatus();
     }
 
+    private void EnsureSystemProxyForRunningCore()
+    {
+        if (_settings.SystemProxyMode is "Clear")
+        {
+            _settings.SystemProxyMode = "Auto";
+            SelectSystemProxyCombo("Auto");
+            DiagnosticLogService.Info("System proxy mode was Clear; switched to Auto while starting core.");
+        }
+    }
+
     private string GetSystemProxyModeFromCombo()
     {
         return (SystemProxyCombo.SelectedItem as ComboBoxItem)?.Content?.ToString() switch
@@ -1156,11 +1268,89 @@ public partial class MainWindow : Window
 
     private void ProfilesGrid_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
     {
-        e.Handled = true;
-        NodePageScroll.RaiseEvent(new MouseWheelEventArgs(e.MouseDevice, e.Timestamp, e.Delta)
+        if (CanProfilesGridScroll(e.Delta))
         {
-            RoutedEvent = MouseWheelEvent
-        });
+            return;
+        }
+
+        ForwardNodePageMouseWheel(e);
+    }
+
+    private void NodePageChild_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
+    {
+        ForwardNodePageMouseWheel(e);
+    }
+
+    private void NodePageScroll_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
+    {
+        if (IsDescendantOf(ProfilesGrid, e.OriginalSource as DependencyObject) && CanProfilesGridScroll(e.Delta))
+        {
+            return;
+        }
+
+        ForwardNodePageMouseWheel(e);
+    }
+
+    private bool CanProfilesGridScroll(int delta)
+    {
+        var scrollViewer = FindVisualChild<ScrollViewer>(ProfilesGrid);
+        if (scrollViewer is null)
+        {
+            return false;
+        }
+
+        if (delta < 0)
+        {
+            return scrollViewer.VerticalOffset < scrollViewer.ScrollableHeight;
+        }
+
+        return scrollViewer.VerticalOffset > 0;
+    }
+
+    private static bool IsDescendantOf(DependencyObject ancestor, DependencyObject? node)
+    {
+        while (node is not null)
+        {
+            if (node == ancestor)
+            {
+                return true;
+            }
+
+            node = VisualTreeHelper.GetParent(node);
+        }
+
+        return false;
+    }
+
+    private static T? FindVisualChild<T>(DependencyObject parent) where T : DependencyObject
+    {
+        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(parent); i++)
+        {
+            var child = VisualTreeHelper.GetChild(parent, i);
+            if (child is T match)
+            {
+                return match;
+            }
+
+            var nested = FindVisualChild<T>(child);
+            if (nested is not null)
+            {
+                return nested;
+            }
+        }
+
+        return null;
+    }
+
+    private void ForwardNodePageMouseWheel(MouseWheelEventArgs e)
+    {
+        if (NodePageScroll.Visibility != Visibility.Visible)
+        {
+            return;
+        }
+
+        e.Handled = true;
+        NodePageScroll.ScrollToVerticalOffset(NodePageScroll.VerticalOffset - e.Delta);
     }
 
     private async void CtxSetActiveNode_Click(object sender, RoutedEventArgs e)
@@ -1198,6 +1388,7 @@ public partial class MainWindow : Window
         _profiles.Remove(profile);
         SaveProfiles(_profiles.FirstOrDefault()?.Id);
         RefreshNodePicker();
+        RefreshSubscriptionFilterOptions();
         ProfilesGrid.SelectedItem = _profiles.FirstOrDefault();
     }
 
@@ -1267,6 +1458,7 @@ public partial class MainWindow : Window
 
         ScheduleRegionEnrichment(dialog.ImportedProfiles);
         RefreshRegionFilterOptions();
+        RefreshSubscriptionFilterOptions();
     }
 
     private void RefreshNodePicker()
@@ -1279,7 +1471,9 @@ public partial class MainWindow : Window
 
     private void CtxImportNode_Click(object sender, RoutedEventArgs e) => ShowImportPage();
 
-    private void SubscriptionNavButton_Click(object sender, RoutedEventArgs e) => ShowImportPage();
+    private void SubscriptionNavButton_Click(object sender, RoutedEventArgs e) => ShowSubscriptionImportPage();
+
+    private void SubscriptionImportNavButton_Click(object sender, RoutedEventArgs e) => ShowSubscriptionImportPage();
 
     private void NodeListNavButton_Click(object sender, RoutedEventArgs e) => ShowNodePage();
 
@@ -1292,6 +1486,79 @@ public partial class MainWindow : Window
     private void UpdateNavButton_Click(object sender, RoutedEventArgs e) => ShowUpdatePage();
 
     private void GithubNavButton_Click(object sender, RoutedEventArgs e) => OpenPath(ProjectUrl);
+
+    private void LogNavButton_Click(object sender, RoutedEventArgs e) => ShowLogPage();
+
+    private void ShowLogPage()
+    {
+        RefreshLogView();
+        ShowPage(LogPageScroll, LogNavButton);
+    }
+
+    private void ShowLogPageFromTray()
+    {
+        Dispatcher.Invoke(() =>
+        {
+            ShowMainWindow();
+            ShowLogPage();
+        });
+    }
+
+    private void RefreshLogView()
+    {
+        if (LogViewText is null)
+        {
+            return;
+        }
+
+        LogViewText.Text = DiagnosticLogService.GetDisplayText(BuildLogFilter());
+        LogViewText.CaretIndex = LogViewText.Text.Length;
+    }
+
+    private LogFilter BuildLogFilter()
+    {
+        return new LogFilter
+        {
+            ShowInfo = LogFilterInfo?.IsChecked == true,
+            ShowWarn = LogFilterWarn?.IsChecked == true,
+            ShowError = LogFilterError?.IsChecked == true,
+            ShowCrash = LogFilterCrash?.IsChecked == true,
+            ShowSystem = LogFilterSystem?.IsChecked == true,
+            ShowTraffic = LogFilterTraffic?.IsChecked == true
+        };
+    }
+
+    private void LogFilter_Changed(object sender, RoutedEventArgs e)
+    {
+        RefreshLogView();
+    }
+
+    private void DiagnosticLogService_EntryAdded(LogEntry entry)
+    {
+        Dispatcher.Invoke(() =>
+        {
+            if (LogPageScroll.Visibility != Visibility.Visible)
+            {
+                return;
+            }
+
+            if (!entry.Matches(BuildLogFilter()))
+            {
+                return;
+            }
+
+            if (LogViewText.Text is "No logs match the current filters." or "No log records yet.")
+            {
+                LogViewText.Text = entry.DisplayLine;
+            }
+            else
+            {
+                LogViewText.AppendText(Environment.NewLine + entry.DisplayLine);
+            }
+
+            LogViewText.CaretIndex = LogViewText.Text.Length;
+        });
+    }
 
     private void AboutNavButton_Click(object sender, RoutedEventArgs e)
     {
@@ -1312,6 +1579,11 @@ public partial class MainWindow : Window
     private void ShowImportPage()
     {
         ShowPage(ImportPageScroll, ImportNodeNavButton);
+    }
+
+    private void ShowSubscriptionImportPage()
+    {
+        ShowPage(SubscriptionImportPageScroll, SubscriptionImportNavButton);
     }
 
     private void ShowExportPage()
@@ -1337,12 +1609,14 @@ public partial class MainWindow : Window
         NodePageScroll.Visibility = Visibility.Collapsed;
         NewNodePageScroll.Visibility = Visibility.Collapsed;
         ImportPageScroll.Visibility = Visibility.Collapsed;
+        SubscriptionImportPageScroll.Visibility = Visibility.Collapsed;
         ExportPageScroll.Visibility = Visibility.Collapsed;
         UpdatePageScroll.Visibility = Visibility.Collapsed;
         AboutPageScroll.Visibility = Visibility.Collapsed;
+        LogPageScroll.Visibility = Visibility.Collapsed;
         page.Visibility = Visibility.Visible;
 
-        foreach (var button in new[] { NodeListNavButton, NewNodeNavButton, ImportNodeNavButton, ExportNodeNavButton, AboutNavButton, UpdateNavButton })
+        foreach (var button in new[] { NodeListNavButton, NewNodeNavButton, ImportNodeNavButton, ExportNodeNavButton, SubscriptionImportNavButton, LogNavButton, AboutNavButton, UpdateNavButton })
         {
             button.Style = ReferenceEquals(button, activeButton)
                 ? (Style)FindResource("ActiveNavButtonStyle")
@@ -1419,7 +1693,8 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            UpdateStatusText.Text = $"检查更新失败：{ex.Message}";
+            DiagnosticLogService.Error("Update check or download failed.", ex);
+            UpdateStatusText.Text = $"检查更新失败：无法连接 GitHub Release 下载域名，可能是当前网络阻止了 release-assets.githubusercontent.com:443。请先启用代理并确认代理可用后重试。详细信息：{ex.Message}";
         }
         finally
         {
@@ -1427,11 +1702,12 @@ public partial class MainWindow : Window
         }
     }
 
-    private static async Task<ReleaseInfo> GetLatestReleaseAsync()
+    private async Task<ReleaseInfo> GetLatestReleaseAsync()
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, LatestReleaseApi);
         request.Headers.UserAgent.ParseAdd("NaiwaProxy");
-        using var response = await UpdateHttpClient.SendAsync(request);
+        using var client = CreateUpdateHttpClient();
+        using var response = await client.SendAsync(request);
         response.EnsureSuccessStatusCode();
 
         using var stream = await response.Content.ReadAsStreamAsync();
@@ -1459,7 +1735,7 @@ public partial class MainWindow : Window
         return new ReleaseInfo(tagName, htmlUrl, assets);
     }
 
-    private static async Task<string> DownloadInstallerAsync(ReleaseAsset asset, IProgress<DownloadProgress> progress)
+    private async Task<string> DownloadInstallerAsync(ReleaseAsset asset, IProgress<DownloadProgress> progress)
     {
         if (string.IsNullOrWhiteSpace(asset.DownloadUrl))
         {
@@ -1470,7 +1746,8 @@ public partial class MainWindow : Window
         Directory.CreateDirectory(directory);
         var targetPath = Path.Combine(directory, asset.Name);
 
-        using var response = await UpdateHttpClient.GetAsync(asset.DownloadUrl, HttpCompletionOption.ResponseHeadersRead);
+        using var client = CreateUpdateHttpClient();
+        using var response = await client.GetAsync(asset.DownloadUrl, HttpCompletionOption.ResponseHeadersRead);
         response.EnsureSuccessStatusCode();
         var totalBytes = response.Content.Headers.ContentLength ?? asset.Size;
         progress.Report(new DownloadProgress(0, totalBytes));
@@ -1592,34 +1869,167 @@ public partial class MainWindow : Window
         }
     }
 
-    private async void InlineImportButton_Click(object sender, RoutedEventArgs e)
+    private void InlineImportButton_Click(object sender, RoutedEventArgs e)
     {
         try
         {
-            var result = await SubscriptionImportService.ImportAsync(InlineImportBox.Text);
-            foreach (var profile in result.Profiles)
-            {
-                _profiles.Add(profile);
-            }
-
-            ApplySubscriptionTrafficInfo(result.TrafficInfo);
-            var last = result.Profiles.LastOrDefault();
-            SaveProfiles(last?.Id ?? _settings.SelectedProfileId);
-            RefreshNodePicker();
-            ProfilesGrid.Items.Refresh();
-            if (last is not null)
-            {
-                ProfilesGrid.SelectedItem = last;
-            }
-
-            ShowNodePage();
-            ScheduleRegionEnrichment(result.Profiles);
-            RefreshRegionFilterOptions();
+            ImportNodeContent(InlineImportBox.Text);
         }
         catch (Exception ex)
         {
             ShowError(ex);
         }
+    }
+
+    private void ImportNodeContent(string content)
+    {
+        InlineImportBox.Text = content;
+        var result = SubscriptionImportService.ImportNodeLinks(content);
+        AddImportedProfiles(result);
+    }
+
+    private async Task ImportSubscriptionContentAsync(string content, System.Windows.Controls.TextBox sourceBox)
+    {
+        sourceBox.Text = content;
+        var result = await SubscriptionImportService.ImportAsync(content);
+        AddImportedProfiles(result);
+    }
+
+    private void AddImportedProfiles(SubscriptionImportResult result)
+    {
+        foreach (var profile in result.Profiles)
+        {
+            if (result.TrafficInfo is not null && !string.IsNullOrWhiteSpace(profile.SubscriptionName))
+            {
+                profile.SubscriptionUploadBytes = result.TrafficInfo.UploadBytes;
+                profile.SubscriptionDownloadBytes = result.TrafficInfo.DownloadBytes;
+                profile.SubscriptionTotalBytes = result.TrafficInfo.TotalBytes;
+            }
+
+            _profiles.Add(profile);
+        }
+
+        ApplySubscriptionTrafficInfo(result.TrafficInfo);
+        var last = result.Profiles.LastOrDefault();
+        SaveProfiles(last?.Id ?? _settings.SelectedProfileId);
+        RefreshNodePicker();
+        ProfilesGrid.Items.Refresh();
+        if (last is not null)
+        {
+            ProfilesGrid.SelectedItem = last;
+        }
+
+        ShowNodePage();
+        ScheduleRegionEnrichment(result.Profiles);
+        RefreshRegionFilterOptions();
+        RefreshSubscriptionFilterOptions();
+    }
+
+    private void SubscriptionPasteButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (Clipboard.ContainsText())
+        {
+            SubscriptionImportBox.Text = Clipboard.GetText();
+        }
+    }
+
+    private async void SubscriptionImportButton_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            await ImportSubscriptionContentAsync(SubscriptionImportBox.Text, SubscriptionImportBox);
+        }
+        catch (Exception ex)
+        {
+            ShowError(ex);
+        }
+    }
+
+    private async void SubscriptionOpenQrImageButton_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new OpenFileDialog
+        {
+            Title = "选择订阅二维码图片",
+            Filter = "图片文件|*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.webp|所有文件|*.*"
+        };
+        if (dialog.ShowDialog(this) != true)
+        {
+            return;
+        }
+
+        try
+        {
+            var content = DecodeQrCodeFromFile(dialog.FileName);
+            await ImportSubscriptionContentAsync(content, SubscriptionImportBox);
+        }
+        catch (Exception ex)
+        {
+            ShowError(ex);
+        }
+    }
+
+    private async void SubscriptionScanClipboardQrButton_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            if (Clipboard.ContainsText())
+            {
+                await ImportSubscriptionContentAsync(Clipboard.GetText(), SubscriptionImportBox);
+                return;
+            }
+
+            if (!Clipboard.ContainsImage())
+            {
+                throw new InvalidOperationException("剪贴板中没有可识别的订阅地址或二维码图片。");
+            }
+
+            var image = Clipboard.GetImage() ?? throw new InvalidOperationException("无法读取剪贴板图片。");
+            var content = DecodeQrCodeFromBitmapSource(image);
+            await ImportSubscriptionContentAsync(content, SubscriptionImportBox);
+        }
+        catch (Exception ex)
+        {
+            ShowError(ex);
+        }
+    }
+
+    private static string DecodeQrCodeFromFile(string path)
+    {
+        var bitmap = new BitmapImage();
+        bitmap.BeginInit();
+        bitmap.CacheOption = BitmapCacheOption.OnLoad;
+        bitmap.UriSource = new Uri(path, UriKind.Absolute);
+        bitmap.EndInit();
+        bitmap.Freeze();
+        return DecodeQrCodeFromBitmapSource(bitmap);
+    }
+
+    private static string DecodeQrCodeFromBitmapSource(BitmapSource source)
+    {
+        var bitmap = source.Format == PixelFormats.Bgra32
+            ? source
+            : new FormatConvertedBitmap(source, PixelFormats.Bgra32, null, 0);
+        var stride = bitmap.PixelWidth * 4;
+        var pixels = new byte[stride * bitmap.PixelHeight];
+        bitmap.CopyPixels(pixels, stride, 0);
+
+        var reader = new BarcodeReaderGeneric
+        {
+            AutoRotate = true,
+            Options = new DecodingOptions
+            {
+                TryHarder = true,
+                PossibleFormats = [BarcodeFormat.QR_CODE]
+            }
+        };
+
+        var result = reader.Decode(pixels, bitmap.PixelWidth, bitmap.PixelHeight, RGBLuminanceSource.BitmapFormat.BGRA32);
+        if (result is null || string.IsNullOrWhiteSpace(result.Text))
+        {
+            throw new InvalidOperationException("没有从图片中识别到二维码内容。");
+        }
+
+        return result.Text.Trim();
     }
 
     private void RefreshExportProfiles()
@@ -1739,6 +2149,7 @@ public partial class MainWindow : Window
         RefreshNodePicker();
         RefreshProfilesView();
         RefreshRegionFilterOptions();
+        RefreshSubscriptionFilterOptions();
         var selected = _profiles.FirstOrDefault(profile => profile.Id == selectedId);
         ProfilesGrid.SelectedItem = selected;
         UpdateNodeStatusBar(selected);
@@ -1793,6 +2204,7 @@ public partial class MainWindow : Window
         RefreshNodePicker();
         RefreshProfilesView();
         RefreshRegionFilterOptions();
+        RefreshSubscriptionFilterOptions();
         var selected = _profiles.FirstOrDefault(profile => profile.Id == selectedId);
         ProfilesGrid.SelectedItem = selected;
         UpdateNodeStatusBar(selected);

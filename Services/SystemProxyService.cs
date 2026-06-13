@@ -45,6 +45,42 @@ public static class SystemProxyService
         NotifyProxySettingsChanged();
     }
 
+    public static bool IsHttpProxyEnabled(int httpPort)
+    {
+        using var key = Registry.CurrentUser.OpenSubKey(RegistryPath);
+        if (key is null)
+        {
+            return false;
+        }
+
+        var enabled = key.GetValue("ProxyEnable");
+        var server = key.GetValue("ProxyServer") as string;
+        return enabled is int value && value == 1 &&
+               string.Equals(server, $"127.0.0.1:{httpPort}", StringComparison.OrdinalIgnoreCase);
+    }
+
+    public static bool IsPacProxyEnabled()
+    {
+        using var key = Registry.CurrentUser.OpenSubKey(RegistryPath);
+        if (key is null)
+        {
+            return false;
+        }
+
+        var pacUrl = key.GetValue("AutoConfigURL") as string;
+        return !string.IsNullOrWhiteSpace(pacUrl);
+    }
+
+    public static bool IsProxyActive(string mode, int httpPort)
+    {
+        return mode switch
+        {
+            "Auto" => IsHttpProxyEnabled(httpPort),
+            "Pac" => IsPacProxyEnabled(),
+            _ => false
+        };
+    }
+
     private static string WritePacFile(int httpPort)
     {
         var directory = Path.Combine(

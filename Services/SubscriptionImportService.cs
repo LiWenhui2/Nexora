@@ -22,7 +22,7 @@ public static class SubscriptionImportService
         var trimmed = input.Trim();
         if (Uri.TryCreate(trimmed, UriKind.Absolute, out var uri) &&
             uri.Scheme is "http" or "https" &&
-            ShouldTreatAsSubscription(uri, trimmed))
+            ShouldTreatAsSubscriptionInput(uri, trimmed))
         {
             return await ImportFromUrlAsync(uri, cancellationToken);
         }
@@ -30,6 +30,19 @@ public static class SubscriptionImportService
         return new SubscriptionImportResult
         {
             Profiles = ParseProfiles(trimmed, "", DateTime.Now)
+        };
+    }
+
+    public static SubscriptionImportResult ImportNodeLinks(string input)
+    {
+        if (string.IsNullOrWhiteSpace(input))
+        {
+            throw new InvalidOperationException("请输入节点链接或本地文本内容。");
+        }
+
+        return new SubscriptionImportResult
+        {
+            Profiles = ParseProfiles(input.Trim(), "", DateTime.Now)
         };
     }
 
@@ -168,6 +181,16 @@ public static class SubscriptionImportService
         }
 
         if (!uri.IsDefaultPort)
+        {
+            return false;
+        }
+
+        return raw.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries).Length == 1;
+    }
+
+    private static bool ShouldTreatAsSubscriptionInput(Uri uri, string raw)
+    {
+        if (!string.IsNullOrWhiteSpace(uri.UserInfo))
         {
             return false;
         }

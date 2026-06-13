@@ -30,6 +30,9 @@ public sealed class VmessProfile : INotifyPropertyChanged
     public string Region { get; set; } = "";
     public string SubscriptionName { get; set; } = "";
     public DateTime? SubscriptionUpdatedAt { get; set; }
+    public long SubscriptionUploadBytes { get; set; }
+    public long SubscriptionDownloadBytes { get; set; }
+    public long? SubscriptionTotalBytes { get; set; }
     public DateTime? UpdatedAt { get; set; }
 
     [JsonIgnore]
@@ -79,6 +82,21 @@ public sealed class VmessProfile : INotifyPropertyChanged
 
     [JsonIgnore]
     public string SubscriptionDisplay => string.IsNullOrWhiteSpace(SubscriptionName) ? "手动" : SubscriptionName;
+
+    [JsonIgnore]
+    public string SubscriptionRemainingDisplay
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(SubscriptionName) || SubscriptionTotalBytes is not long total)
+            {
+                return "-";
+            }
+
+            var remaining = Math.Max(0, total - SubscriptionUploadBytes - SubscriptionDownloadBytes);
+            return FormatBytes(remaining);
+        }
+    }
 
     [JsonIgnore]
     public string UpdatedDisplay
@@ -206,6 +224,20 @@ public sealed class VmessProfile : INotifyPropertyChanged
         }
 
         return latencyMs is null ? "Timeout" : $"{latencyMs} ms";
+    }
+
+    private static string FormatBytes(double bytes)
+    {
+        string[] units = ["B", "KB", "MB", "GB", "TB"];
+        var value = bytes;
+        var unit = 0;
+        while (value >= 1024 && unit < units.Length - 1)
+        {
+            value /= 1024;
+            unit++;
+        }
+
+        return unit == 0 ? $"{value:0} {units[unit]}" : $"{value:0.##} {units[unit]}";
     }
 
     private void OnPropertyChanged([CallerMemberName] string? propertyName = null)
