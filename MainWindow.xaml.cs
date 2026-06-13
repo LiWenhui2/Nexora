@@ -1512,7 +1512,20 @@ public partial class MainWindow : Window
         }
 
         LogViewText.Text = DiagnosticLogService.GetDisplayText(BuildLogFilter());
+        ScrollLogToEnd();
+    }
+
+    private void ScrollLogToEnd()
+    {
+        if (LogViewText is null)
+        {
+            return;
+        }
+
         LogViewText.CaretIndex = LogViewText.Text.Length;
+        LogViewText.ScrollToEnd();
+        var scrollViewer = FindVisualChild<ScrollViewer>(LogViewText);
+        scrollViewer?.ScrollToEnd();
     }
 
     private LogFilter BuildLogFilter()
@@ -1556,7 +1569,7 @@ public partial class MainWindow : Window
                 LogViewText.AppendText(Environment.NewLine + entry.DisplayLine);
             }
 
-            LogViewText.CaretIndex = LogViewText.Text.Length;
+            ScrollLogToEnd();
         });
     }
 
@@ -1664,7 +1677,7 @@ public partial class MainWindow : Window
             var currentVersion = GetCurrentVersion();
             if (CompareVersionText(release.TagName, currentVersion) <= 0)
             {
-                UpdateStatusText.Text = $"当前已是最新版本：{currentVersion}。GitHub 最新版本：{release.TagName}";
+                UpdateStatusText.Text = $"当前已是最新版本：{currentVersion}。";
                 return;
             }
 
