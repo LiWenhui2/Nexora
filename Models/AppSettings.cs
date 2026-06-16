@@ -20,6 +20,8 @@ public sealed class AppSettings
     public long SubscriptionUploadBytes { get; set; }
     public long SubscriptionDownloadBytes { get; set; }
     public long? SubscriptionTotalBytes { get; set; }
+    public string AuthApiBaseUrl { get; set; } = "http://localhost:8080";
+    public bool RunAtStartup { get; set; }
 }
 
 public sealed class CustomRoutingSettings

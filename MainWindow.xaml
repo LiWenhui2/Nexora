@@ -100,8 +100,15 @@
         <Geometry x:Key="IconSettings">M12,15.5 A3.5,3.5 0 1 0 12,8.5 A3.5,3.5 0 0 0 12,15.5 M19.4,15 A1.65,1.65 0 0 0 19.7,16.8 L19.8,16.9 A2,2 0 0 1 17,19.7 L16.9,19.6 A1.65,1.65 0 0 0 15,19.4 A1.65,1.65 0 0 0 14,20.9 L14,21 A2,2 0 0 1 10,21 L10,20.9 A1.65,1.65 0 0 0 9,19.4 A1.65,1.65 0 0 0 7.1,19.6 L7,19.7 A2,2 0 0 1 4.2,16.9 L4.3,16.8 A1.65,1.65 0 0 0 4.6,15 A1.65,1.65 0 0 0 3.1,14 L3,14 A2,2 0 0 1 3,10 L3.1,10 A1.65,1.65 0 0 0 4.6,9 A1.65,1.65 0 0 0 4.3,7.2 L4.2,7.1 A2,2 0 0 1 7,4.3 L7.1,4.4 A1.65,1.65 0 0 0 9,4.6 A1.65,1.65 0 0 0 10,3.1 L10,3 A2,2 0 0 1 14,3 L14,3.1 A1.65,1.65 0 0 0 15,4.6 A1.65,1.65 0 0 0 16.9,4.4 L17,4.3 A2,2 0 0 1 19.8,7.1 L19.7,7.2 A1.65,1.65 0 0 0 19.4,9 A1.65,1.65 0 0 0 20.9,10 L21,10 A2,2 0 0 1 21,14 L20.9,14 A1.65,1.65 0 0 0 19.4,15</Geometry>
         <Geometry x:Key="IconShield">M12,22 C12,22 20,18 20,12 L20,5 L12,2 L4,5 L4,12 C4,18 12,22 12,22</Geometry>
         <Geometry x:Key="IconInfo">M12,16 L12,12 M12,8 L12.01,8 M22,12 A10,10 0 1 1 2,12 A10,10 0 0 1 22,12</Geometry>
+        <Geometry x:Key="IconLog">M14,2 L6,2 A2,2 0 0 0 4,4 L4,20 A2,2 0 0 0 6,22 L18,22 A2,2 0 0 0 20,20 L20,8 Z M14,2 L14,8 L20,8 M8,13 L16,13 M8,17 L13,17</Geometry>
+        <Geometry x:Key="IconAbout">M12,2 L15.09,8.26 L22,9.27 L17,14.14 L18.18,21.02 L12,17.77 L5.82,21.02 L7,14.14 L2,9.27 L8.91,8.26 Z</Geometry>
         <Geometry x:Key="IconGitHub">M12,.297c-6.63,0-12,5.373-12,12 0,5.303 3.438,9.8 8.205,11.385 .6,.113 .82,-.258 .82,-.577 0,-.285-.01,-1.04-.015,-2.04-3.338,.724-4.042,-1.61-4.042,-1.61C4.422,18.07 3.633,17.7 3.633,17.7c-1.087,-.744 .084,-.729 .084,-.729 1.205,.084 1.838,1.236 1.838,1.236 1.07,1.835 2.809,1.305 3.495,.998 .108,-.776 .417,-1.305 .76,-1.605-2.665,-.3-5.466,-1.332-5.466,-5.93 0,-1.31 .465,-2.38 1.235,-3.22-.135,-.303-.54,-1.523 .105,-3.176 0,0 1.005,-.322 3.3,1.23 .96,-.267 1.98,-.399 3,-.405 1.02,.006 2.04,.138 3,.405 2.28,-1.552 3.285,-1.23 3.285,-1.23 .645,1.653 .24,2.873 .12,3.176 .765,.84 1.23,1.91 1.23,3.22 0,4.61-2.805,5.625-5.475,5.92 .42,.36 .81,1.096 .81,2.22 0,1.606-.015,2.896-.015,3.286 0,.315 .21,.69 .825,.57C20.565,22.092 24,17.592 24,12.297c0,-6.627-5.373,-12-12,-12</Geometry>
         <Geometry x:Key="IconFolder">M22,19 A2,2 0 0 1 20,21 L4,21 A2,2 0 0 1 2,19 L2,7 A2,2 0 0 1 4,5 L9,5 L11,3 L20,3 A2,2 0 0 1 22,5 Z</Geometry>
+        <Geometry x:Key="IconUser">M20,21 A8,8 0 0 0 4,21 M16,7 A4,4 0 1 1 8,7 A4,4 0 0 1 16,7</Geometry>
+        <Geometry x:Key="IconMail">M4,4 L20,4 A2,2 0 0 1 22,6 L22,18 A2,2 0 0 1 20,20 L4,20 A2,2 0 0 1 2,18 L2,6 A2,2 0 0 1 4,4 M22,6 L12,13 L2,6</Geometry>
+        <Geometry x:Key="IconLock">M6,10 L6,20 L18,20 L18,10 Z M8,10 L8,7 A4,4 0 0 1 16,7 L16,10 M12,14 L12,16</Geometry>
+        <Geometry x:Key="IconKey">M21,2 L19,4 M15.5,7.5 L18,5 M7,14 A4,4 0 1 0 7,22 A4,4 0 0 0 7,14 M10,17 L21,6</Geometry>
+        <Geometry x:Key="IconClose">M6,6 L18,18 M18,6 L6,18</Geometry>
 
         <Style x:Key="NavLineIconStyle" TargetType="Path">
             <Setter Property="Width" Value="20"/>
@@ -228,6 +235,62 @@
             </Setter>
         </Style>
 
+        <Style x:Key="FieldPasswordBoxStyle" TargetType="PasswordBox">
+            <Setter Property="Height" Value="38"/>
+            <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+            <Setter Property="Background" Value="{StaticResource Panel3Brush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource LineBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="10,6"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="CaretBrush" Value="#FACC15"/>
+        </Style>
+
+        <Style x:Key="AuthFieldLabelStyle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource MutedBrush}"/>
+            <Setter Property="FontSize" Value="15"/>
+            <Setter Property="Margin" Value="0,0,0,6"/>
+        </Style>
+
+        <Style x:Key="AuthLinkButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Foreground" Value="{StaticResource AccentTextBrush}"/>
+            <Setter Property="FontSize" Value="15"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <ContentPresenter/>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="AuthInputIconStyle" TargetType="Path">
+            <Setter Property="Width" Value="20"/>
+            <Setter Property="Height" Value="20"/>
+            <Setter Property="Stretch" Value="Uniform"/>
+            <Setter Property="Stroke" Value="#B45309"/>
+            <Setter Property="StrokeThickness" Value="1.9"/>
+            <Setter Property="StrokeStartLineCap" Value="Round"/>
+            <Setter Property="StrokeEndLineCap" Value="Round"/>
+            <Setter Property="StrokeLineJoin" Value="Round"/>
+            <Setter Property="Fill" Value="Transparent"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="Margin" Value="0,0,10,0"/>
+        </Style>
+
+        <Style x:Key="AuthCloseButtonStyle" TargetType="Button" BasedOn="{StaticResource DarkButtonStyle}">
+            <Setter Property="Width" Value="34"/>
+            <Setter Property="Height" Value="34"/>
+            <Setter Property="MinWidth" Value="34"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Background" Value="#FFFFFF"/>
+            <Setter Property="Foreground" Value="#64748B"/>
+        </Style>
+
         <Style TargetType="DataGrid">
             <Setter Property="Background" Value="{StaticResource PanelBrush}"/>
             <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
@@ -343,6 +406,23 @@
             <Setter Property="Margin" Value="0,0,0,8"/>
         </Style>
 
+        <Style x:Key="WebsiteTestCardStyle" TargetType="Border" BasedOn="{StaticResource HealthItemStyle}">
+            <Setter Property="Width" Value="300"/>
+            <Setter Property="MinHeight" Value="118"/>
+            <Setter Property="Margin" Value="0,0,12,12"/>
+            <Setter Property="Padding" Value="14"/>
+        </Style>
+
+        <Style x:Key="SettingsToggleCardStyle" TargetType="Border">
+            <Setter Property="Width" Value="196"/>
+            <Setter Property="Height" Value="58"/>
+            <Setter Property="Padding" Value="16,0"/>
+            <Setter Property="CornerRadius" Value="11"/>
+            <Setter Property="Background" Value="{StaticResource Panel2Brush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource LineBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+        </Style>
+
         <Style x:Key="ControlFieldBorderStyle" TargetType="Border">
             <Setter Property="Height" Value="42"/>
             <Setter Property="Padding" Value="12,0"/>
@@ -416,6 +496,12 @@
                                 <TextBlock Text="导出节点"/>
                             </StackPanel>
                         </Button>
+                        <Button x:Name="NodeTestNavButton" Style="{StaticResource NavChildButtonStyle}" Click="NodeTestNavButton_Click">
+                            <StackPanel Orientation="Horizontal">
+                                <Path Style="{StaticResource NavLineIconStyle}" Data="{StaticResource IconShield}"/>
+                                <TextBlock Text="节点测试"/>
+                            </StackPanel>
+                        </Button>
 
                         <TextBlock Style="{StaticResource NavGroupHeaderStyle}" Text="订阅管理"/>
                         <Button x:Name="SubscriptionImportNavButton" Style="{StaticResource NavChildButtonStyle}" Click="SubscriptionImportNavButton_Click">
@@ -437,36 +523,22 @@
                             </StackPanel>
                         </Button>
 
-                        <TextBlock Style="{StaticResource NavGroupHeaderStyle}" Text="代理模式"/>
-                        <Button Style="{StaticResource NavChildButtonStyle}" Click="NodeListNavButton_Click">
+                        <TextBlock Style="{StaticResource NavGroupHeaderStyle}" Text="系统"/>
+                        <Button x:Name="SettingsNavButton" Style="{StaticResource NavChildButtonStyle}" Click="SettingsNavButton_Click">
                             <StackPanel Orientation="Horizontal">
                                 <Path Style="{StaticResource NavLineIconStyle}" Data="{StaticResource IconSettings}"/>
-                                <TextBlock Text="系统代理"/>
+                                <TextBlock Text="设置"/>
                             </StackPanel>
                         </Button>
-                        <Button Style="{StaticResource NavChildButtonStyle}" Click="NodeListNavButton_Click">
-                            <StackPanel Orientation="Horizontal">
-                                <Path Style="{StaticResource NavLineIconStyle}" Data="{StaticResource IconShield}"/>
-                                <TextBlock Text="TUN 模式"/>
-                            </StackPanel>
-                        </Button>
-                        <Button Style="{StaticResource NavChildButtonStyle}" Click="NodeListNavButton_Click">
-                            <StackPanel Orientation="Horizontal">
-                                <Path Style="{StaticResource NavLineIconStyle}" Data="{StaticResource IconList}"/>
-                                <TextBlock Text="路由规则"/>
-                            </StackPanel>
-                        </Button>
-
-                        <TextBlock Style="{StaticResource NavGroupHeaderStyle}" Text="系统"/>
                         <Button x:Name="LogNavButton" Style="{StaticResource NavChildButtonStyle}" Click="LogNavButton_Click">
                             <StackPanel Orientation="Horizontal">
-                                <Path Style="{StaticResource NavLineIconStyle}" Data="{StaticResource IconInfo}"/>
+                                <Path Style="{StaticResource NavLineIconStyle}" Data="{StaticResource IconLog}"/>
                                 <TextBlock Text="日志"/>
                             </StackPanel>
                         </Button>
                         <Button x:Name="AboutNavButton" Style="{StaticResource NavChildButtonStyle}" Click="AboutNavButton_Click">
                             <StackPanel Orientation="Horizontal">
-                                <Path Style="{StaticResource NavLineIconStyle}" Data="{StaticResource IconInfo}"/>
+                                <Path Style="{StaticResource NavLineIconStyle}" Data="{StaticResource IconAbout}"/>
                                 <TextBlock Text="关于"/>
                             </StackPanel>
                         </Button>
@@ -486,12 +558,23 @@
                 </ScrollViewer>
                 <Border Grid.Row="3" Margin="14,0,14,16" Padding="16" Background="{StaticResource Panel2Brush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" CornerRadius="14">
                     <StackPanel>
-                        <StackPanel Orientation="Horizontal">
-                            <Ellipse x:Name="SideStatusDot" Width="8" Height="8" Fill="#16A34A" VerticalAlignment="Center"/>
-                            <TextBlock x:Name="SideStatusText" Text="运行中 · 系统代理已开启" FontSize="19" FontWeight="Bold" Margin="8,0,0,0"/>
+                        <StackPanel x:Name="AuthGuestPanel">
+                            <StackPanel Orientation="Horizontal">
+                                <Path Style="{StaticResource NavLineIconStyle}" Data="{StaticResource IconUser}" Stroke="#B45309" Margin="0,0,8,0"/>
+                                <TextBlock Text="账号" FontSize="19" FontWeight="Bold"/>
+                            </StackPanel>
+                            <TextBlock Text="登录后可同步订阅与配置" Foreground="{StaticResource MutedBrush}" FontSize="15" Margin="0,6,0,10" TextWrapping="Wrap"/>
+                            <Button x:Name="SideLoginButton" Content="登录 / 注册" Style="{StaticResource PrimaryButtonStyle}" HorizontalAlignment="Stretch" Click="SideLoginButton_Click"/>
                         </StackPanel>
-                        <TextBlock x:Name="SideNodeText" Text="节点：-" Foreground="{StaticResource MutedBrush}" FontSize="18" Margin="0,8,0,0"/>
-                        <TextBlock x:Name="SidePortsText" Text="" Visibility="Collapsed" Foreground="{StaticResource MutedBrush}" FontSize="18" Margin="0,3,0,0"/>
+                        <StackPanel x:Name="AuthUserPanel" Visibility="Collapsed">
+                            <StackPanel Orientation="Horizontal">
+                                <Path Style="{StaticResource NavLineIconStyle}" Data="{StaticResource IconUser}" Stroke="#16A34A" Margin="0,0,8,0"/>
+                                <TextBlock Text="已登录" FontSize="19" FontWeight="Bold"/>
+                            </StackPanel>
+                            <TextBlock x:Name="SideAuthEmailText" Foreground="{StaticResource MutedBrush}" FontSize="15" Margin="0,6,0,10" TextTrimming="CharacterEllipsis"/>
+                            <Button x:Name="SideLogoutButton" Content="退出登录" Style="{StaticResource DarkButtonStyle}" HorizontalAlignment="Stretch" Click="SideLogoutButton_Click"/>
+                        </StackPanel>
+                        <TextBlock x:Name="SideNodeText" Text="节点：-" Foreground="{StaticResource MutedBrush}" FontSize="16" Margin="0,12,0,0" TextTrimming="CharacterEllipsis"/>
                     </StackPanel>
                 </Border>
             </Grid>
@@ -1082,6 +1165,218 @@
                     </Border>
                 </StackPanel>
             </ScrollViewer>
+
+            <ScrollViewer x:Name="NodeTestPageScroll" Grid.Row="1" VerticalScrollBarVisibility="Auto" Visibility="Collapsed">
+                <StackPanel Margin="24,22,24,28">
+                    <Border Style="{StaticResource CardBorderStyle}">
+                        <StackPanel>
+                            <WrapPanel Margin="0,0,0,14">
+                                <Border MinHeight="42" Padding="12,0" CornerRadius="11" Background="{StaticResource Panel2Brush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" Margin="0,0,12,8">
+                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                        <TextBlock Text="当前节点：" Foreground="{StaticResource MutedBrush}"/>
+                                        <TextBlock x:Name="NodeTestProfileText" Text="-" FontWeight="SemiBold" Margin="4,0,12,0"/>
+                                        <TextBlock Text="代理：" Foreground="{StaticResource MutedBrush}"/>
+                                        <TextBlock x:Name="NodeTestProxyStateText" Text="未运行" Foreground="{StaticResource MutedBrush}" FontWeight="SemiBold" Margin="4,0,0,0"/>
+                                    </StackPanel>
+                                </Border>
+                                <Button x:Name="RunAllWebsiteTestsButton" Content="全部测试" Style="{StaticResource PrimaryButtonStyle}" Margin="0,0,8,8" Click="RunAllWebsiteTestsButton_Click"/>
+                                <Button x:Name="ResetWebsiteTestsButton" Content="重置" Style="{StaticResource DarkButtonStyle}" Margin="0,0,0,8" Click="ResetWebsiteTestsButton_Click"/>
+                            </WrapPanel>
+                            <ItemsControl x:Name="WebsiteTestList">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <WrapPanel/>
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Style="{StaticResource WebsiteTestCardStyle}">
+                                            <Grid>
+                                                <Grid.RowDefinitions>
+                                                    <RowDefinition Height="Auto"/>
+                                                    <RowDefinition Height="Auto"/>
+                                                </Grid.RowDefinitions>
+                                                <Grid Grid.Row="0" Margin="0,0,0,10">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <Border Width="40" Height="40" CornerRadius="10" Background="#FFFFFF" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" ClipToBounds="True">
+                                                        <Image Source="{Binding LogoPath}" Width="28" Height="28" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                    </Border>
+                                                    <StackPanel Grid.Column="1" Margin="12,0,8,0" VerticalAlignment="Center">
+                                                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="17"/>
+                                                        <TextBlock Text="{Binding Url}" Foreground="{StaticResource MutedBrush}" FontSize="14" TextTrimming="CharacterEllipsis"/>
+                                                    </StackPanel>
+                                                    <TextBlock Grid.Column="2" Text="{Binding StatusDisplay}" VerticalAlignment="Center">
+                                                        <TextBlock.Style>
+                                                            <Style TargetType="TextBlock">
+                                                                <Setter Property="Foreground" Value="{StaticResource MutedBrush}"/>
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding State}" Value="Testing">
+                                                                        <Setter Property="Foreground" Value="#38BDF8"/>
+                                                                    </DataTrigger>
+                                                                    <DataTrigger Binding="{Binding State}" Value="Success">
+                                                                        <Setter Property="Foreground" Value="{StaticResource GreenBrush}"/>
+                                                                        <Setter Property="FontWeight" Value="SemiBold"/>
+                                                                    </DataTrigger>
+                                                                    <DataTrigger Binding="{Binding State}" Value="Failed">
+                                                                        <Setter Property="Foreground" Value="{StaticResource RedBrush}"/>
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </TextBlock.Style>
+                                                    </TextBlock>
+                                                </Grid>
+                                                <Button Grid.Row="1" Content="测试" Style="{StaticResource DarkButtonStyle}" HorizontalAlignment="Stretch" Height="36" Tag="{Binding}" Click="WebsiteTestItemButton_Click"/>
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+
+            <ScrollViewer x:Name="SettingsPageScroll" Grid.Row="1" VerticalScrollBarVisibility="Auto" Visibility="Collapsed">
+                <StackPanel Margin="24,22,24,28">
+                    <Border Style="{StaticResource CardBorderStyle}">
+                        <StackPanel>
+                            <Border Style="{StaticResource SettingsToggleCardStyle}" HorizontalAlignment="Left">
+                                <Grid VerticalAlignment="Center">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="开机自启" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                    <CheckBox Grid.Column="1" x:Name="RunAtStartupToggle" Style="{StaticResource ToggleSwitchStyle}" VerticalAlignment="Center" Margin="12,0,0,0" Checked="RunAtStartupToggle_Changed" Unchecked="RunAtStartupToggle_Changed"/>
+                                </Grid>
+                            </Border>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+
+            <Grid x:Name="AuthDialogOverlay" Grid.RowSpan="2" Visibility="Collapsed" Panel.ZIndex="40">
+                <Border Background="#990F172A" MouseDown="AuthDialogBackdrop_MouseDown"/>
+                <Border Width="520" MaxHeight="720" HorizontalAlignment="Center" VerticalAlignment="Center" Background="#FFFFFF" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="18" Padding="24" Margin="24">
+                    <Border.Effect>
+                        <DropShadowEffect Color="#0F172A" BlurRadius="38" ShadowDepth="10" Opacity="0.22"/>
+                    </Border.Effect>
+                    <Grid>
+                        <ScrollViewer x:Name="LoginPageScroll" VerticalScrollBarVisibility="Auto" Visibility="Collapsed">
+                            <StackPanel>
+                                <Grid Margin="0,0,0,22">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel>
+                                        <Border Width="48" Height="48" HorizontalAlignment="Left" Background="#FEF3C7" CornerRadius="14" Margin="0,0,0,14">
+                                            <Path Data="{StaticResource IconUser}" Style="{StaticResource AuthInputIconStyle}" Width="24" Height="24" Margin="0" HorizontalAlignment="Center"/>
+                                        </Border>
+                                        <TextBlock Text="账号登录" FontSize="28" FontWeight="Bold" Margin="0,0,0,2"/>
+                                    </StackPanel>
+                                    <Button Grid.Column="1" Style="{StaticResource AuthCloseButtonStyle}" Click="CloseAuthDialogButton_Click" ToolTip="关闭">
+                                        <Path Data="{StaticResource IconClose}" Style="{StaticResource AuthInputIconStyle}" Stroke="#64748B" Width="16" Height="16" Margin="0"/>
+                                    </Button>
+                                </Grid>
+                                <TextBlock Style="{StaticResource AuthFieldLabelStyle}" Text="邮箱"/>
+                                <Grid Margin="0,0,0,14">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Path Data="{StaticResource IconMail}" Style="{StaticResource AuthInputIconStyle}"/>
+                                    <TextBox x:Name="LoginEmailBox" Grid.Column="1" Height="42"/>
+                                </Grid>
+                                <TextBlock Style="{StaticResource AuthFieldLabelStyle}" Text="密码"/>
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Path Data="{StaticResource IconLock}" Style="{StaticResource AuthInputIconStyle}"/>
+                                    <PasswordBox x:Name="LoginPasswordBox" Grid.Column="1" Style="{StaticResource FieldPasswordBoxStyle}" Height="42"/>
+                                </Grid>
+                                <TextBlock x:Name="LoginMessageText" Foreground="{StaticResource RedBrush}" TextWrapping="Wrap" Margin="0,0,0,12" Visibility="Collapsed"/>
+                                <Button x:Name="LoginSubmitButton" Content="登录" Style="{StaticResource PrimaryButtonStyle}" HorizontalAlignment="Stretch" Height="46" Margin="0,4,0,18" Click="LoginSubmitButton_Click"/>
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                    <TextBlock Text="还没有账号？" Foreground="{StaticResource MutedBrush}" FontSize="15" VerticalAlignment="Center"/>
+                                    <Button Content="立即注册" Style="{StaticResource AuthLinkButtonStyle}" Margin="6,0,0,0" Click="GoToRegisterPageButton_Click"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </ScrollViewer>
+                        <ScrollViewer x:Name="RegisterPageScroll" VerticalScrollBarVisibility="Auto" Visibility="Collapsed">
+                            <StackPanel>
+                                <Grid Margin="0,0,0,22">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel>
+                                        <Border Width="48" Height="48" HorizontalAlignment="Left" Background="#FEF3C7" CornerRadius="14" Margin="0,0,0,14">
+                                            <Path Data="{StaticResource IconUser}" Style="{StaticResource AuthInputIconStyle}" Width="24" Height="24" Margin="0" HorizontalAlignment="Center"/>
+                                        </Border>
+                                        <TextBlock Text="创建账号" FontSize="28" FontWeight="Bold" Margin="0,0,0,4"/>
+                                        <TextBlock Text="验证邮箱后即可完成注册" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap"/>
+                                    </StackPanel>
+                                    <Button Grid.Column="1" Style="{StaticResource AuthCloseButtonStyle}" Click="CloseAuthDialogButton_Click" ToolTip="关闭">
+                                        <Path Data="{StaticResource IconClose}" Style="{StaticResource AuthInputIconStyle}" Stroke="#64748B" Width="16" Height="16" Margin="0"/>
+                                    </Button>
+                                </Grid>
+                                <TextBlock Style="{StaticResource AuthFieldLabelStyle}" Text="邮箱"/>
+                                <Grid Margin="0,0,0,14">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Path Data="{StaticResource IconMail}" Style="{StaticResource AuthInputIconStyle}"/>
+                                    <TextBox x:Name="RegisterEmailBox" Grid.Column="1" Height="42"/>
+                                </Grid>
+                                <TextBlock Style="{StaticResource AuthFieldLabelStyle}" Text="邮箱验证码"/>
+                                <Grid Margin="0,0,0,14">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Path Data="{StaticResource IconKey}" Style="{StaticResource AuthInputIconStyle}"/>
+                                    <TextBox x:Name="RegisterCodeBox" Grid.Column="1" Height="42" Margin="0,0,10,0"/>
+                                    <Button x:Name="SendRegisterCodeButton" Grid.Column="2" Content="发送验证码" Style="{StaticResource DarkButtonStyle}" MinWidth="120" Height="42" Click="SendRegisterCodeButton_Click"/>
+                                </Grid>
+                                <TextBlock Style="{StaticResource AuthFieldLabelStyle}" Text="密码"/>
+                                <Grid Margin="0,0,0,14">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Path Data="{StaticResource IconLock}" Style="{StaticResource AuthInputIconStyle}"/>
+                                    <PasswordBox x:Name="RegisterPasswordBox" Grid.Column="1" Style="{StaticResource FieldPasswordBoxStyle}" Height="42"/>
+                                </Grid>
+                                <TextBlock Style="{StaticResource AuthFieldLabelStyle}" Text="确认密码"/>
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Path Data="{StaticResource IconLock}" Style="{StaticResource AuthInputIconStyle}"/>
+                                    <PasswordBox x:Name="RegisterConfirmPasswordBox" Grid.Column="1" Style="{StaticResource FieldPasswordBoxStyle}" Height="42"/>
+                                </Grid>
+                                <TextBlock Text="密码至少 8 位" Foreground="{StaticResource MutedBrush}" FontSize="14" Margin="30,0,0,12"/>
+                                <TextBlock x:Name="RegisterMessageText" Foreground="{StaticResource RedBrush}" TextWrapping="Wrap" Margin="0,0,0,12" Visibility="Collapsed"/>
+                                <Button x:Name="RegisterSubmitButton" Content="注册" Style="{StaticResource PrimaryButtonStyle}" HorizontalAlignment="Stretch" Height="46" Margin="0,4,0,18" Click="RegisterSubmitButton_Click"/>
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                    <TextBlock Text="已有账号？" Foreground="{StaticResource MutedBrush}" FontSize="15" VerticalAlignment="Center"/>
+                                    <Button Content="返回登录" Style="{StaticResource AuthLinkButtonStyle}" Margin="6,0,0,0" Click="GoToLoginPageButton_Click"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </ScrollViewer>
+                    </Grid>
+                </Border>
+            </Grid>
         </Grid>
     </Grid>
 </Window>

@@ -1,5 +1,5 @@
 #define MyAppName "NaiwaProxy"
-#define MyAppVersion "1.0.3"
+#define MyAppVersion "1.0.4"
 #define MyAppPublisher "LiWenhui2"
 #define MyAppExeName "NaiwaProxy.exe"
 
@@ -17,8 +17,8 @@ SolidCompression=yes
 WizardStyle=modern
 SetupIconFile=..\assets\app-icon.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
-ArchitecturesAllowed=x64
-ArchitecturesInstallIn64BitMode=x64
+ArchitecturesAllowed=x64compatible
+ArchitecturesInstallIn64BitMode=x64compatible
 
 [Files]
 Source: "..\publish\win-x64\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs

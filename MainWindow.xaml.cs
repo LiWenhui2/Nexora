@@ -1,4 +1,4 @@
-using System.Collections.ObjectModel;
+﻿using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
@@ -39,7 +39,9 @@ public partial class MainWindow : Window
     private const string LatestReleaseApi = "https://api.github.com/repos/LiWenhui2/NaiwaProxy/releases/latest";
     private readonly SettingsStore _settingsStore = new();
     private readonly CoreService _coreService = new();
+    private readonly AuthService _authService = new();
     private readonly ObservableCollection<VmessProfile> _profiles = [];
+    private readonly ObservableCollection<WebsiteTestItem> _websiteTests = [];
     private readonly DispatcherTimer _trafficTimer = new() { Interval = TimeSpan.FromSeconds(1) };
     private ICollectionView? _profilesView;
     private AppSettings _settings = new();
@@ -54,6 +56,7 @@ public partial class MainWindow : Window
     private bool _suppressTunToggleEvent;
     private bool _suppressNodePickerComboEvent;
     private bool _suppressRegionFilterComboEvent;
+    private bool _suppressRunAtStartupToggleEvent;
     private bool _isUiReady;
     private bool _isExiting;
     private Forms.NotifyIcon? _trayIcon;
@@ -61,6 +64,9 @@ public partial class MainWindow : Window
     private string _lastDownSpeedText = "-";
     private string _lastUpSpeedText = "-";
     private CancellationTokenSource? _regionEnrichmentCancellation;
+    private CancellationTokenSource? _websiteTestCancellation;
+    private readonly DispatcherTimer _registerCodeCooldownTimer = new() { Interval = TimeSpan.FromSeconds(1) };
+    private int _registerCodeCooldownSeconds;
 
     public MainWindow()
     {
@@ -71,10 +77,13 @@ public partial class MainWindow : Window
         InitializeTray();
         _trafficTimer.Tick += TrafficTimer_Tick;
         _coreService.CoreExited += CoreService_CoreExited;
+        _authService.AuthStateChanged += AuthService_AuthStateChanged;
+        _registerCodeCooldownTimer.Tick += RegisterCodeCooldownTimer_Tick;
         _profilesView = CollectionViewSource.GetDefaultView(_profiles);
         _profilesView.Filter = FilterProfile;
         _profilesView.GroupDescriptions.Add(new PropertyGroupDescription(nameof(VmessProfile.SubscriptionDisplay)));
         ProfilesGrid.ItemsSource = _profilesView;
+        InitializeWebsiteTests();
         _isUiReady = true;
         LoadSettings();
         Loaded += MainWindow_Loaded;
@@ -84,11 +93,16 @@ public partial class MainWindow : Window
         Closed += (_, _) =>
         {
             DiagnosticLogService.EntryAdded -= DiagnosticLogService_EntryAdded;
+            _authService.AuthStateChanged -= AuthService_AuthStateChanged;
+            _registerCodeCooldownTimer.Stop();
+            _registerCodeCooldownTimer.Tick -= RegisterCodeCooldownTimer_Tick;
             DisposeTray();
             _regionEnrichmentCancellation?.Cancel();
             _regionEnrichmentCancellation?.Dispose();
             _latencyTestCancellation?.Cancel();
             _latencyTestCancellation?.Dispose();
+            _websiteTestCancellation?.Cancel();
+            _websiteTestCancellation?.Dispose();
             _trafficTimer.Stop();
             _settingsStore.Save(_settings);
             TunService.Stop();
@@ -394,11 +408,214 @@ public partial class MainWindow : Window
         SyncProxyToggleFromCoreState();
         UpdateActiveProfileMarkers(_settings.SelectedProfileId);
         UpdateNodeStatusBar(selected);
+        ConfigureAuthService();
+        UpdateAuthSidebar();
         UpdateSidebarStatus();
         UpdateTrafficStatsDisplay();
         RefreshRegionFilterOptions();
         RefreshSubscriptionFilterOptions();
         ScheduleRegionEnrichment();
+        SyncRunAtStartupFromSettings();
+        ApplyRunAtStartup(save: false);
+    }
+
+    private void InitializeWebsiteTests()
+    {
+        if (_websiteTests.Count > 0)
+        {
+            return;
+        }
+
+        foreach (var target in WebsiteConnectivityTestService.DefaultTargets)
+        {
+            _websiteTests.Add(new WebsiteTestItem(target.Name, target.Url, target.IconFileName));
+        }
+
+        WebsiteTestList.ItemsSource = _websiteTests;
+    }
+
+    private void UpdateNodeTestHeader()
+    {
+        if (!_isUiReady || NodeTestProfileText is null || NodeTestProxyStateText is null)
+        {
+            return;
+        }
+
+        var profile = GetCurrentProfileOrNull();
+        NodeTestProfileText.Text = profile?.DisplayName ?? "无节点";
+        if (_coreService.IsRunning)
+        {
+            NodeTestProxyStateText.Text = "运行中";
+            NodeTestProxyStateText.Foreground = GreenBrush();
+        }
+        else
+        {
+            NodeTestProxyStateText.Text = "未运行";
+            NodeTestProxyStateText.Foreground = new SolidColorBrush(Color.FromRgb(0x64, 0x74, 0x8B));
+        }
+    }
+
+    private void SetWebsiteTestButtonsEnabled(bool enabled)
+    {
+        if (!_isUiReady)
+        {
+            return;
+        }
+
+        RunAllWebsiteTestsButton.IsEnabled = enabled;
+        ResetWebsiteTestsButton.IsEnabled = enabled;
+    }
+
+    private async Task RunWebsiteTestAsync(WebsiteTestItem item)
+    {
+        if (!_coreService.IsRunning)
+        {
+            MessageBox.Show("请先启用代理后再进行网站连通性测试。", "NaiwaProxy", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        item.BeginTest();
+        var result = await WebsiteConnectivityTestService.TestAsync(item.Url, _settings.HttpPort);
+        if (result.Success && result.LatencyMs is not null)
+        {
+            item.CompleteSuccess(result.LatencyMs.Value);
+            return;
+        }
+
+        item.CompleteFailure(result.ErrorMessage);
+    }
+
+    private async Task RunAllWebsiteTestsAsync()
+    {
+        if (!_coreService.IsRunning)
+        {
+            MessageBox.Show("请先启用代理后再进行网站连通性测试。", "NaiwaProxy", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        _websiteTestCancellation?.Cancel();
+        _websiteTestCancellation?.Dispose();
+        _websiteTestCancellation = new CancellationTokenSource();
+        var cancellationToken = _websiteTestCancellation.Token;
+
+        SetWebsiteTestButtonsEnabled(false);
+        try
+        {
+            foreach (var item in _websiteTests)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                item.BeginTest();
+            }
+
+            await Task.WhenAll(_websiteTests.Select(async item =>
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var result = await WebsiteConnectivityTestService.TestAsync(item.Url, _settings.HttpPort, cancellationToken: cancellationToken);
+                await Dispatcher.InvokeAsync(() =>
+                {
+                    if (result.Success && result.LatencyMs is not null)
+                    {
+                        item.CompleteSuccess(result.LatencyMs.Value);
+                    }
+                    else
+                    {
+                        item.CompleteFailure(result.ErrorMessage);
+                    }
+                });
+            }));
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex)
+        {
+            ShowError(ex);
+        }
+        finally
+        {
+            SetWebsiteTestButtonsEnabled(true);
+        }
+    }
+
+    private void NodeTestNavButton_Click(object sender, RoutedEventArgs e) => ShowNodeTestPage();
+
+    private void ShowNodeTestPage()
+    {
+        UpdateNodeTestHeader();
+        ShowPage(NodeTestPageScroll, NodeTestNavButton);
+    }
+
+    private async void RunAllWebsiteTestsButton_Click(object sender, RoutedEventArgs e)
+    {
+        await RunAllWebsiteTestsAsync();
+    }
+
+    private async void WebsiteTestItemButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not System.Windows.Controls.Button { Tag: WebsiteTestItem item })
+        {
+            return;
+        }
+
+        SetWebsiteTestButtonsEnabled(false);
+        try
+        {
+            await RunWebsiteTestAsync(item);
+        }
+        finally
+        {
+            SetWebsiteTestButtonsEnabled(true);
+        }
+    }
+
+    private void ResetWebsiteTestsButton_Click(object sender, RoutedEventArgs e)
+    {
+        _websiteTestCancellation?.Cancel();
+        foreach (var item in _websiteTests)
+        {
+            item.Reset();
+        }
+    }
+
+    private void SyncRunAtStartupFromSettings()
+    {
+        if (!_isUiReady || RunAtStartupToggle is null)
+        {
+            return;
+        }
+
+        _suppressRunAtStartupToggleEvent = true;
+        RunAtStartupToggle.IsChecked = _settings.RunAtStartup;
+        _suppressRunAtStartupToggleEvent = false;
+    }
+
+    private void ApplyRunAtStartup(bool save)
+    {
+        try
+        {
+            StartupService.SetEnabled(_settings.RunAtStartup);
+            if (save)
+            {
+                _settingsStore.Save(_settings);
+            }
+        }
+        catch (Exception ex)
+        {
+            _settings.RunAtStartup = StartupService.IsEnabled();
+            SyncRunAtStartupFromSettings();
+            ShowError(ex);
+        }
+    }
+
+    private void RunAtStartupToggle_Changed(object sender, RoutedEventArgs e)
+    {
+        if (!_isUiReady || _suppressRunAtStartupToggleEvent)
+        {
+            return;
+        }
+
+        _settings.RunAtStartup = RunAtStartupToggle.IsChecked == true;
+        ApplyRunAtStartup(save: true);
     }
 
     private void RefreshRegionFilterOptions()
@@ -663,16 +880,6 @@ public partial class MainWindow : Window
     private void UpdateSidebarStatus()
     {
         var running = _coreService.IsRunning;
-        var systemProxyActive = SystemProxyService.IsProxyActive(_settings.SystemProxyMode, _settings.HttpPort);
-        SideStatusDot.Fill = running ? new SolidColorBrush(Color.FromRgb(0x16, 0xA3, 0x4A)) : new SolidColorBrush(Color.FromRgb(0x94, 0xA3, 0xB8));
-        SideStatusText.Text = running
-            ? systemProxyActive
-                ? "运行中 · 系统代理已开启"
-                : _settings.SystemProxyMode is "Unchanged"
-                    ? "运行中 · 系统代理未接管"
-                    : "运行中 · 系统代理未开启"
-            : "已停止";
-        SidePortsText.Text = running ? $"HTTP 127.0.0.1:{_settings.HttpPort} · SOCKS {_settings.SocksPort}" : "";
         ProxyStateText.Text = running ? "运行中" : "已停止";
         ProxyStateText.Foreground = running
             ? new SolidColorBrush(Color.FromRgb(0x16, 0xA3, 0x4A))
@@ -684,6 +891,206 @@ public partial class MainWindow : Window
             ? new SolidColorBrush(Color.FromRgb(0xFE, 0xF9, 0xC3))
             : new SolidColorBrush(Color.FromRgb(0xFF, 0xFF, 0xFF));
         UpdateTrayStatus();
+    }
+
+    private void ConfigureAuthService()
+    {
+        var apiBaseUrl = string.IsNullOrWhiteSpace(_settings.AuthApiBaseUrl)
+            ? "http://localhost:8080"
+            : _settings.AuthApiBaseUrl;
+        _authService.Configure(apiBaseUrl);
+    }
+
+    private void AuthService_AuthStateChanged()
+    {
+        Dispatcher.Invoke(UpdateAuthSidebar);
+    }
+
+    private void UpdateAuthSidebar()
+    {
+        if (!_isUiReady || AuthGuestPanel is null || AuthUserPanel is null)
+        {
+            return;
+        }
+
+        if (_authService.IsAuthenticated)
+        {
+            AuthGuestPanel.Visibility = Visibility.Collapsed;
+            AuthUserPanel.Visibility = Visibility.Visible;
+            SideAuthEmailText.Text = _authService.CurrentEmail ?? "";
+        }
+        else
+        {
+            AuthGuestPanel.Visibility = Visibility.Visible;
+            AuthUserPanel.Visibility = Visibility.Collapsed;
+        }
+    }
+
+    private void SideLoginButton_Click(object sender, RoutedEventArgs e) => ShowLoginPage();
+
+    private void SideLogoutButton_Click(object sender, RoutedEventArgs e)
+    {
+        _authService.Logout();
+        ClearAuthMessages();
+        MessageBox.Show("已退出登录。", "NaiwaProxy", MessageBoxButton.OK, MessageBoxImage.Information);
+    }
+
+    private void GoToRegisterPageButton_Click(object sender, RoutedEventArgs e) => ShowRegisterPage();
+
+    private void GoToLoginPageButton_Click(object sender, RoutedEventArgs e) => ShowLoginPage();
+
+    private void ShowLoginPage()
+    {
+        ClearAuthMessages();
+        AuthDialogOverlay.Visibility = Visibility.Visible;
+        LoginPageScroll.Visibility = Visibility.Visible;
+        RegisterPageScroll.Visibility = Visibility.Collapsed;
+        LoginEmailBox.Focus();
+    }
+
+    private void ShowRegisterPage()
+    {
+        ClearAuthMessages();
+        AuthDialogOverlay.Visibility = Visibility.Visible;
+        LoginPageScroll.Visibility = Visibility.Collapsed;
+        RegisterPageScroll.Visibility = Visibility.Visible;
+        RegisterEmailBox.Focus();
+    }
+
+    private void CloseAuthDialog()
+    {
+        AuthDialogOverlay.Visibility = Visibility.Collapsed;
+        LoginPageScroll.Visibility = Visibility.Collapsed;
+        RegisterPageScroll.Visibility = Visibility.Collapsed;
+    }
+
+    private void CloseAuthDialogButton_Click(object sender, RoutedEventArgs e) => CloseAuthDialog();
+
+    private void AuthDialogBackdrop_MouseDown(object sender, MouseButtonEventArgs e) => CloseAuthDialog();
+
+    private void ClearAuthMessages()
+    {
+        LoginMessageText.Text = "";
+        LoginMessageText.Visibility = Visibility.Collapsed;
+        RegisterMessageText.Text = "";
+        RegisterMessageText.Visibility = Visibility.Collapsed;
+    }
+
+    private void ShowAuthMessage(TextBlock target, string message, bool isSuccess = false)
+    {
+        target.Text = message;
+        target.Foreground = isSuccess ? GreenBrush() : new SolidColorBrush(Color.FromRgb(0xDC, 0x26, 0x26));
+        target.Visibility = string.IsNullOrWhiteSpace(message) ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    private async void LoginSubmitButton_Click(object sender, RoutedEventArgs e)
+    {
+        LoginSubmitButton.IsEnabled = false;
+        LoginSubmitButton.Content = "登录中…";
+        try
+        {
+            var result = await _authService.LoginAsync(LoginEmailBox.Text, LoginPasswordBox.Password);
+            if (!result.Success)
+            {
+                ShowAuthMessage(LoginMessageText, result.Message);
+                return;
+            }
+
+            LoginPasswordBox.Clear();
+            ShowAuthMessage(LoginMessageText, result.Message, isSuccess: true);
+            CloseAuthDialog();
+            ShowNodePage();
+        }
+        finally
+        {
+            LoginSubmitButton.IsEnabled = true;
+            LoginSubmitButton.Content = "登录";
+        }
+    }
+
+    private async void SendRegisterCodeButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_registerCodeCooldownSeconds > 0)
+        {
+            return;
+        }
+
+        SendRegisterCodeButton.IsEnabled = false;
+        SendRegisterCodeButton.Content = "发送中…";
+        try
+        {
+            var result = await _authService.SendRegisterCodeAsync(RegisterEmailBox.Text);
+            if (!result.Success)
+            {
+                ShowAuthMessage(RegisterMessageText, result.Message);
+                return;
+            }
+
+            ShowAuthMessage(RegisterMessageText, result.Message, isSuccess: true);
+            StartRegisterCodeCooldown();
+        }
+        finally
+        {
+            if (_registerCodeCooldownSeconds <= 0)
+            {
+                SendRegisterCodeButton.IsEnabled = true;
+                SendRegisterCodeButton.Content = "发送验证码";
+            }
+        }
+    }
+
+    private void StartRegisterCodeCooldown()
+    {
+        _registerCodeCooldownSeconds = 60;
+        SendRegisterCodeButton.IsEnabled = false;
+        SendRegisterCodeButton.Content = $"{_registerCodeCooldownSeconds}s";
+        _registerCodeCooldownTimer.Start();
+    }
+
+    private void RegisterCodeCooldownTimer_Tick(object? sender, EventArgs e)
+    {
+        _registerCodeCooldownSeconds--;
+        if (_registerCodeCooldownSeconds > 0)
+        {
+            SendRegisterCodeButton.Content = $"{_registerCodeCooldownSeconds}s";
+            return;
+        }
+
+        _registerCodeCooldownTimer.Stop();
+        SendRegisterCodeButton.IsEnabled = true;
+        SendRegisterCodeButton.Content = "发送验证码";
+    }
+
+    private async void RegisterSubmitButton_Click(object sender, RoutedEventArgs e)
+    {
+        RegisterSubmitButton.IsEnabled = false;
+        RegisterSubmitButton.Content = "注册中…";
+        try
+        {
+            var result = await _authService.RegisterAsync(
+                RegisterEmailBox.Text,
+                RegisterPasswordBox.Password,
+                RegisterConfirmPasswordBox.Password,
+                RegisterCodeBox.Text);
+
+            if (!result.Success)
+            {
+                ShowAuthMessage(RegisterMessageText, result.Message);
+                return;
+            }
+
+            RegisterPasswordBox.Clear();
+            RegisterConfirmPasswordBox.Clear();
+            RegisterCodeBox.Clear();
+            ShowAuthMessage(RegisterMessageText, result.Message, isSuccess: true);
+            CloseAuthDialog();
+            ShowNodePage();
+        }
+        finally
+        {
+            RegisterSubmitButton.IsEnabled = true;
+            RegisterSubmitButton.Content = "注册";
+        }
     }
 
     private void ReconcileProxyUiState()
@@ -1611,6 +2018,14 @@ public partial class MainWindow : Window
         ShowPage(UpdatePageScroll, UpdateNavButton);
     }
 
+    private void SettingsNavButton_Click(object sender, RoutedEventArgs e) => ShowSettingsPage();
+
+    private void ShowSettingsPage()
+    {
+        SyncRunAtStartupFromSettings();
+        ShowPage(SettingsPageScroll, SettingsNavButton);
+    }
+
     private void ShowAboutPage()
     {
         LoadAboutPageInfo();
@@ -1624,12 +2039,17 @@ public partial class MainWindow : Window
         ImportPageScroll.Visibility = Visibility.Collapsed;
         SubscriptionImportPageScroll.Visibility = Visibility.Collapsed;
         ExportPageScroll.Visibility = Visibility.Collapsed;
+        NodeTestPageScroll.Visibility = Visibility.Collapsed;
         UpdatePageScroll.Visibility = Visibility.Collapsed;
+        SettingsPageScroll.Visibility = Visibility.Collapsed;
         AboutPageScroll.Visibility = Visibility.Collapsed;
         LogPageScroll.Visibility = Visibility.Collapsed;
+        LoginPageScroll.Visibility = Visibility.Collapsed;
+        RegisterPageScroll.Visibility = Visibility.Collapsed;
+        AuthDialogOverlay.Visibility = Visibility.Collapsed;
         page.Visibility = Visibility.Visible;
 
-        foreach (var button in new[] { NodeListNavButton, NewNodeNavButton, ImportNodeNavButton, ExportNodeNavButton, SubscriptionImportNavButton, LogNavButton, AboutNavButton, UpdateNavButton })
+        foreach (var button in new[] { NodeListNavButton, NewNodeNavButton, ImportNodeNavButton, ExportNodeNavButton, NodeTestNavButton, SubscriptionImportNavButton, SettingsNavButton, LogNavButton, AboutNavButton, UpdateNavButton })
         {
             button.Style = ReferenceEquals(button, activeButton)
                 ? (Style)FindResource("ActiveNavButtonStyle")
