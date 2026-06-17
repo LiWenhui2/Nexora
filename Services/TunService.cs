@@ -19,7 +19,7 @@ public static class TunService
         {
             var directory = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                "NaiwaProxy");
+                "Nexora");
             Directory.CreateDirectory(directory);
             return Path.Combine(directory, "sing-box-tun.json");
         }
@@ -129,7 +129,7 @@ public static class TunService
                 {
                     type = "tun",
                     tag = "tun-in",
-                    interface_name = "NaiwaProxyTun",
+                    interface_name = "NexoraTun",
                     address = new[] { "172.19.0.1/30" },
                     auto_route = true,
                     strict_route = true,

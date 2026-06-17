@@ -49,7 +49,7 @@ public static class SubscriptionImportService
     private static async Task<SubscriptionImportResult> ImportFromUrlAsync(Uri uri, CancellationToken cancellationToken)
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, uri);
-        request.Headers.UserAgent.ParseAdd("NaiwaProxy/1.0");
+        request.Headers.UserAgent.ParseAdd("Nexora/1.0");
 
         using var response = await HttpClient.SendAsync(request, cancellationToken);
         response.EnsureSuccessStatusCode();

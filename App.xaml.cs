@@ -35,7 +35,7 @@ public partial class App : System.Windows.Application
             DiagnosticLogService.Crash(ex, "OnStartup");
             MessageBox.Show(
                 $"程序启动失败：{ex.Message}{Environment.NewLine}{Environment.NewLine}日志目录：{DiagnosticLogService.LogDirectory}",
-                "NaiwaProxy",
+                "Nexora",
                 MessageBoxButton.OK,
                 MessageBoxImage.Error);
             Shutdown(1);
@@ -47,7 +47,7 @@ public partial class App : System.Windows.Application
         DiagnosticLogService.Crash(e.Exception, "Dispatcher");
         MessageBox.Show(
             $"程序发生未处理错误：{e.Exception.Message}{Environment.NewLine}{Environment.NewLine}日志目录：{DiagnosticLogService.LogDirectory}",
-            "NaiwaProxy",
+            "Nexora",
             MessageBoxButton.OK,
             MessageBoxImage.Error);
         e.Handled = true;

@@ -13,7 +13,7 @@ public sealed class SettingsStore
     {
         _settingsDirectory = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "NaiwaProxy");
+            "Nexora");
         Directory.CreateDirectory(_settingsDirectory);
         _settingsPath = Path.Combine(_settingsDirectory, "settings.json");
     }

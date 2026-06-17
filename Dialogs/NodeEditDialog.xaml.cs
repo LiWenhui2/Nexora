@@ -26,7 +26,7 @@ public partial class NodeEditDialog : Window
         }
         catch (Exception ex)
         {
-            MessageBox.Show(ex.Message, "NaiwaProxy", MessageBoxButton.OK, MessageBoxImage.Error);
+            MessageBox.Show(ex.Message, "Nexora", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 

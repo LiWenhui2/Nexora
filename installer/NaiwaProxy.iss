@@ -1,7 +1,7 @@
-#define MyAppName "NaiwaProxy"
+#define MyAppName "Nexora"
 #define MyAppVersion "1.0.4"
 #define MyAppPublisher "LiWenhui2"
-#define MyAppExeName "NaiwaProxy.exe"
+#define MyAppExeName "Nexora.exe"
 
 [Setup]
 AppId={{7B4FA0BC-0DD5-4E0A-9A3A-D82D1B7FE591}}
@@ -11,7 +11,7 @@ AppPublisher={#MyAppPublisher}
 DefaultDirName={autopf}\{#MyAppName}
 DefaultGroupName={#MyAppName}
 OutputDir=..\dist
-OutputBaseFilename=NaiwaProxy-Setup-{#MyAppVersion}
+OutputBaseFilename=Nexora-Setup-{#MyAppVersion}
 Compression=lzma
 SolidCompression=yes
 WizardStyle=modern

@@ -25,7 +25,7 @@ public sealed partial class AuthService
     {
         var directory = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "NaiwaProxy");
+            "Nexora");
         Directory.CreateDirectory(directory);
         _sessionPath = Path.Combine(directory, "auth-session.json");
         _session = LoadSession();

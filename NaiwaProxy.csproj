@@ -9,7 +9,7 @@
     <UseWindowsForms>true</UseWindowsForms>
     <DisableWinFormsImplicitNamespaceImports>true</DisableWinFormsImplicitNamespaceImports>
     <ApplicationIcon>assets\app-icon.ico</ApplicationIcon>
-    <AssemblyName>NaiwaProxy</AssemblyName>
+    <AssemblyName>Nexora</AssemblyName>
     <RootNamespace>NaiwaProxy</RootNamespace>
     <Version>1.0.4</Version>
     <AssemblyVersion>1.0.4.0</AssemblyVersion>
@@ -24,14 +24,22 @@
     <Content Include="assets\app-icon.png">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>Always</CopyToPublishDirectory>
+      <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
+    </Content>
+    <Content Include="assets\app-icon.ico">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>Always</CopyToPublishDirectory>
+      <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
     </Content>
     <Content Include="assets\icons\*.svg">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>Always</CopyToPublishDirectory>
+      <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
     </Content>
     <Content Include="assets\site-icons\*.png">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>Always</CopyToPublishDirectory>
+      <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
     </Content>
     <None Include="cores\README.md" CopyToOutputDirectory="PreserveNewest" />
     <None Include="cores\geoip.dat" CopyToOutputDirectory="PreserveNewest" />

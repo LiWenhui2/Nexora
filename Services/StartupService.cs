@@ -6,7 +6,7 @@ namespace NaiwaProxy.Services;
 public static class StartupService
 {
     private const string RegistryPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
-    private const string ValueName = "NaiwaProxy";
+    private const string ValueName = "Nexora";
 
     public static bool IsEnabled()
     {

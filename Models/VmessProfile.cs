@@ -78,7 +78,8 @@ public sealed class VmessProfile : INotifyPropertyChanged
     };
 
     [JsonIgnore]
-    public string RegionDisplay => string.IsNullOrWhiteSpace(Region) ? NodeRegionHelper.Resolve(this) : Region;
+    public string RegionDisplay => NodeRegionHelper.FormatDisplay(
+        string.IsNullOrWhiteSpace(Region) ? NodeRegionHelper.Resolve(this) : Region);
 
     [JsonIgnore]
     public string SubscriptionDisplay => string.IsNullOrWhiteSpace(SubscriptionName) ? "手动" : SubscriptionName;

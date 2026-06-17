@@ -86,7 +86,7 @@ public static class DiagnosticLogService
 
         _logDirectory = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "NaiwaProxy",
+            "Nexora",
             "logs");
         Directory.CreateDirectory(_logDirectory);
 
@@ -150,7 +150,7 @@ public static class DiagnosticLogService
     private static void WriteStartupBanner()
     {
         var banner = new StringBuilder()
-            .AppendLine("======== NaiwaProxy startup ========")
+            .AppendLine("======== Nexora startup ========")
             .AppendLine($"Time: {DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}")
             .AppendLine($"Version: {GetAppVersion()}")
             .AppendLine($"OS: {RuntimeInformation.OSDescription}")

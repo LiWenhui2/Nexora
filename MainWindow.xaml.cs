@@ -1,4 +1,4 @@
-﻿using System.Collections.ObjectModel;
+using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
@@ -113,25 +113,127 @@ public partial class MainWindow : Window
 
     private void LoadBrandIcon()
     {
-        var iconPath = Path.Combine(AppContext.BaseDirectory, "assets", "app-icon.png");
-        if (!File.Exists(iconPath))
-        {
-            iconPath = Path.Combine(AppContext.BaseDirectory, "app-icon.png");
-        }
-
-        if (!File.Exists(iconPath))
+        var bitmap = TryLoadAppBitmap("assets/app-icon.png");
+        if (bitmap is null)
         {
             return;
         }
 
-        var bitmap = new BitmapImage();
-        bitmap.BeginInit();
-        bitmap.CacheOption = BitmapCacheOption.OnLoad;
-        bitmap.UriSource = new Uri(iconPath, UriKind.Absolute);
-        bitmap.EndInit();
-        bitmap.Freeze();
         BrandIconImage.Source = bitmap;
         AboutIconImage.Source = bitmap;
+        LoadWindowIcon();
+    }
+
+    private void LoadWindowIcon()
+    {
+        try
+        {
+            using var stream = OpenAppResourceStream("assets/app-icon.ico");
+            if (stream is not null)
+            {
+                Icon = BitmapFrame.Create(stream, BitmapCreateOptions.None, BitmapCacheOption.OnLoad);
+                return;
+            }
+
+            var iconPath = Path.Combine(AppContext.BaseDirectory, "assets", "app-icon.ico");
+            if (!File.Exists(iconPath))
+            {
+                return;
+            }
+
+            using var fileStream = File.OpenRead(iconPath);
+            Icon = BitmapFrame.Create(fileStream, BitmapCreateOptions.None, BitmapCacheOption.OnLoad);
+        }
+        catch
+        {
+            // Fall back to the executable icon if the bundled icon cannot be decoded.
+        }
+    }
+
+    private static BitmapImage? TryLoadAppBitmap(string resourcePath)
+    {
+        try
+        {
+            using var stream = OpenAppResourceStream(resourcePath);
+            if (stream is not null)
+            {
+                using var memory = new MemoryStream();
+                stream.CopyTo(memory);
+                memory.Position = 0;
+                var bitmap = new BitmapImage();
+                bitmap.BeginInit();
+                bitmap.CacheOption = BitmapCacheOption.OnLoad;
+                bitmap.StreamSource = memory;
+                bitmap.EndInit();
+                bitmap.Freeze();
+                return bitmap;
+            }
+        }
+        catch
+        {
+        }
+
+        var filePath = Path.Combine(AppContext.BaseDirectory, resourcePath.Replace('/', Path.DirectorySeparatorChar));
+        if (!File.Exists(filePath))
+        {
+            return null;
+        }
+
+        try
+        {
+            var bitmap = new BitmapImage();
+            bitmap.BeginInit();
+            bitmap.CacheOption = BitmapCacheOption.OnLoad;
+            bitmap.UriSource = new Uri(filePath, UriKind.Absolute);
+            bitmap.EndInit();
+            bitmap.Freeze();
+            return bitmap;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static Stream? OpenAppResourceStream(string resourcePath)
+    {
+        var packUri = new Uri($"pack://application:,,,/{resourcePath}", UriKind.Absolute);
+        return Application.GetResourceStream(packUri)?.Stream;
+    }
+
+    private static Drawing.Icon? TryLoadTrayIcon()
+    {
+        try
+        {
+            using var stream = OpenAppResourceStream("assets/app-icon.ico");
+            if (stream is not null)
+            {
+                return new Drawing.Icon(stream);
+            }
+        }
+        catch
+        {
+        }
+
+        var iconPath = Path.Combine(AppContext.BaseDirectory, "assets", "app-icon.ico");
+        if (File.Exists(iconPath))
+        {
+            try
+            {
+                return new Drawing.Icon(iconPath);
+            }
+            catch
+            {
+            }
+        }
+
+        var processPath = Environment.ProcessPath;
+        if (!string.IsNullOrWhiteSpace(processPath) && File.Exists(processPath))
+        {
+            return Drawing.Icon.ExtractAssociatedIcon(processPath);
+        }
+
+        return Drawing.SystemIcons.Application;
     }
 
     private void InitializeTray()
@@ -139,19 +241,13 @@ public partial class MainWindow : Window
         _trayMenu = new Forms.ContextMenuStrip();
         _trayMenu.Opening += (_, _) => RebuildTrayMenu();
 
-        var iconPath = Path.Combine(AppContext.BaseDirectory, "assets", "app-icon.ico");
-        var processPath = Environment.ProcessPath;
-        var icon = File.Exists(iconPath)
-            ? new Drawing.Icon(iconPath)
-            : !string.IsNullOrWhiteSpace(processPath) && File.Exists(processPath)
-                ? Drawing.Icon.ExtractAssociatedIcon(processPath)
-                : Drawing.SystemIcons.Application;
+        var icon = TryLoadTrayIcon() ?? Drawing.SystemIcons.Application;
 
         _trayIcon = new Forms.NotifyIcon
         {
-            Icon = icon ?? Drawing.SystemIcons.Application,
+            Icon = icon,
             Visible = true,
-            Text = "NaiwaProxy",
+            Text = "Nexora",
             ContextMenuStrip = _trayMenu
         };
         _trayIcon.DoubleClick += (_, _) => ShowMainWindow();
@@ -230,7 +326,7 @@ public partial class MainWindow : Window
 
         var active = GetCurrentProfileOrNull();
         var status = _coreService.IsRunning ? "运行中" : "已停止";
-        var text = $"NaiwaProxy | {status} | {active?.DisplayName ?? "无节点"}";
+        var text = $"Nexora | {status} | {active?.DisplayName ?? "无节点"}";
         _trayIcon.Text = text.Length > 63 ? string.Concat(text.AsSpan(0, 60), "...") : text;
     }
 
@@ -470,7 +566,7 @@ public partial class MainWindow : Window
     {
         if (!_coreService.IsRunning)
         {
-            MessageBox.Show("请先启用代理后再进行网站连通性测试。", "NaiwaProxy", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show("请先启用代理后再进行网站连通性测试。", "Nexora", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
 
@@ -489,7 +585,7 @@ public partial class MainWindow : Window
     {
         if (!_coreService.IsRunning)
         {
-            MessageBox.Show("请先启用代理后再进行网站连通性测试。", "NaiwaProxy", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show("请先启用代理后再进行网站连通性测试。", "Nexora", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
 
@@ -932,7 +1028,7 @@ public partial class MainWindow : Window
     {
         _authService.Logout();
         ClearAuthMessages();
-        MessageBox.Show("已退出登录。", "NaiwaProxy", MessageBoxButton.OK, MessageBoxImage.Information);
+        MessageBox.Show("已退出登录。", "Nexora", MessageBoxButton.OK, MessageBoxImage.Information);
     }
 
     private void GoToRegisterPageButton_Click(object sender, RoutedEventArgs e) => ShowRegisterPage();
@@ -1787,7 +1883,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (MessageBox.Show($"确定删除节点「{profile.DisplayName}」？", "NaiwaProxy", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
+        if (MessageBox.Show($"确定删除节点「{profile.DisplayName}」？", "Nexora", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
         {
             return;
         }
@@ -2070,7 +2166,7 @@ public partial class MainWindow : Window
         AboutConfigDirectoryText.Text = configDirectory;
         AboutRuntimeDirectoryText.Text = runtimeDirectory;
         AboutLogDirectoryText.Text = DiagnosticLogService.LogDirectory;
-        AboutLicenseText.Text = "NaiwaProxy: project license · Xray Core: MPL-2.0 · sing-box: GPL-3.0-or-later · Wintun: GPL-2.0 · Inno Setup: Inno Setup License";
+        AboutLicenseText.Text = "Nexora: project license · Xray Core: MPL-2.0 · sing-box: GPL-3.0-or-later · Wintun: GPL-2.0 · Inno Setup: Inno Setup License";
     }
 
     private void AboutOpenLogButton_Click(object sender, RoutedEventArgs e) => DiagnosticLogService.OpenLogDirectory();
@@ -2106,7 +2202,7 @@ public partial class MainWindow : Window
                                          asset.Name.Contains("Setup", StringComparison.OrdinalIgnoreCase));
             if (installer is null)
             {
-                UpdateStatusText.Text = $"发现新版本 {release.TagName}，但 Release Assets 中没有找到安装包。请上传 NaiwaProxy-Setup-{release.TagName.TrimStart('v', 'V')}.exe。";
+                UpdateStatusText.Text = $"发现新版本 {release.TagName}，但 Release Assets 中没有找到安装包。请上传 Nexora-Setup-{release.TagName.TrimStart('v', 'V')}.exe。";
                 return;
             }
 
@@ -2138,7 +2234,7 @@ public partial class MainWindow : Window
     private async Task<ReleaseInfo> GetLatestReleaseAsync()
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, LatestReleaseApi);
-        request.Headers.UserAgent.ParseAdd("NaiwaProxy");
+        request.Headers.UserAgent.ParseAdd("Nexora");
         using var client = CreateUpdateHttpClient();
         using var response = await client.SendAsync(request);
         response.EnsureSuccessStatusCode();
@@ -2175,7 +2271,7 @@ public partial class MainWindow : Window
             throw new InvalidOperationException("安装包下载地址为空。");
         }
 
-        var directory = Path.Combine(Path.GetTempPath(), "NaiwaProxy", "updates");
+        var directory = Path.Combine(Path.GetTempPath(), "Nexora", "updates");
         Directory.CreateDirectory(directory);
         var targetPath = Path.Combine(directory, asset.Name);
 
@@ -2545,14 +2641,14 @@ public partial class MainWindow : Window
     {
         if (_profiles.Count == 0)
         {
-            MessageBox.Show("当前没有可移除的节点。", "NaiwaProxy", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show("当前没有可移除的节点。", "Nexora", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
 
         var unavailable = _profiles.Where(IsUnavailableProfile).ToList();
         if (unavailable.Count == 0)
         {
-            MessageBox.Show("没有已测速为不可用的节点。请先执行 TCP 测速或等待启动自动测速完成。", "NaiwaProxy", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show("没有已测速为不可用的节点。请先执行 TCP 测速或等待启动自动测速完成。", "Nexora", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
 
@@ -2592,14 +2688,14 @@ public partial class MainWindow : Window
             _ = RestartCoreAsync();
         }
 
-        MessageBox.Show($"已移除 {unavailable.Count} 个不可用节点，当前保留 {_profiles.Count} 个节点。", "NaiwaProxy", MessageBoxButton.OK, MessageBoxImage.Information);
+        MessageBox.Show($"已移除 {unavailable.Count} 个不可用节点，当前保留 {_profiles.Count} 个节点。", "Nexora", MessageBoxButton.OK, MessageBoxImage.Information);
     }
 
     private void RemoveDuplicateProfiles()
     {
         if (_profiles.Count == 0)
         {
-            MessageBox.Show("当前没有可去重的节点。", "NaiwaProxy", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show("当前没有可去重的节点。", "Nexora", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
 
@@ -2607,7 +2703,7 @@ public partial class MainWindow : Window
         var duplicates = _profiles.Where(profile => !seen.Add(BuildProfileKey(profile))).ToList();
         if (duplicates.Count == 0)
         {
-            MessageBox.Show("没有发现重复节点。", "NaiwaProxy", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show("没有发现重复节点。", "Nexora", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
 
@@ -2647,14 +2743,14 @@ public partial class MainWindow : Window
             _ = RestartCoreAsync();
         }
 
-        MessageBox.Show($"已移除 {duplicates.Count} 个重复节点，当前保留 {_profiles.Count} 个节点。", "NaiwaProxy", MessageBoxButton.OK, MessageBoxImage.Information);
+        MessageBox.Show($"已移除 {duplicates.Count} 个重复节点，当前保留 {_profiles.Count} 个节点。", "Nexora", MessageBoxButton.OK, MessageBoxImage.Information);
     }
 
     private void CtxMaintainNode_Click(object sender, RoutedEventArgs e)
     {
         if (_profiles.Count == 0)
         {
-            MessageBox.Show("当前没有需要维护的节点。", "NaiwaProxy", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show("当前没有需要维护的节点。", "Nexora", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
 
@@ -2687,7 +2783,7 @@ public partial class MainWindow : Window
         RefreshNodePicker();
         RefreshProfilesView();
         ProfilesGrid.SelectedItem = _profiles.FirstOrDefault(profile => profile.Id == selectedId);
-        MessageBox.Show($"维护完成：清理 {before - _profiles.Count} 个节点，保留 {_profiles.Count} 个节点。", "NaiwaProxy", MessageBoxButton.OK, MessageBoxImage.Information);
+        MessageBox.Show($"维护完成：清理 {before - _profiles.Count} 个节点，保留 {_profiles.Count} 个节点。", "Nexora", MessageBoxButton.OK, MessageBoxImage.Information);
     }
 
     private void CtxAllTcpTest_Click(object sender, RoutedEventArgs e)
@@ -2704,7 +2800,7 @@ public partial class MainWindow : Window
     {
         if (ProfilesGrid.SelectedItem is not VmessProfile profile)
         {
-            MessageBox.Show("请先选择一个节点。", "NaiwaProxy", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show("请先选择一个节点。", "Nexora", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
 
@@ -2720,7 +2816,7 @@ public partial class MainWindow : Window
 
         if (fastest is null)
         {
-            MessageBox.Show("没有可用的测速结果，请先执行 TCP 测速。", "NaiwaProxy", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show("没有可用的测速结果，请先执行 TCP 测速。", "Nexora", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
 
@@ -2892,7 +2988,7 @@ public partial class MainWindow : Window
     {
         var invalidChars = Path.GetInvalidFileNameChars();
         var sanitized = new string(value.Select(ch => invalidChars.Contains(ch) ? '_' : ch).ToArray()).Trim();
-        return string.IsNullOrWhiteSpace(sanitized) ? "NaiwaProxy-Node" : sanitized;
+        return string.IsNullOrWhiteSpace(sanitized) ? "Nexora-Node" : sanitized;
     }
 
     private static string BuildShareLink(VmessProfile profile)
@@ -2980,7 +3076,7 @@ public partial class MainWindow : Window
 
     private static string GetConfigDirectory()
     {
-        return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "NaiwaProxy");
+        return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Nexora");
     }
 
     private static string GetCurrentVersion()
@@ -3095,7 +3191,7 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            MessageBox.Show(ex.Message, "NaiwaProxy", MessageBoxButton.OK, MessageBoxImage.Error);
+            MessageBox.Show(ex.Message, "Nexora", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 
@@ -3108,6 +3204,6 @@ public partial class MainWindow : Window
     private static void ShowError(Exception exception)
     {
         DiagnosticLogService.Error(exception.Message, exception);
-        MessageBox.Show(exception.Message, "NaiwaProxy", MessageBoxButton.OK, MessageBoxImage.Error);
+        MessageBox.Show(exception.Message, "Nexora", MessageBoxButton.OK, MessageBoxImage.Error);
     }
 }

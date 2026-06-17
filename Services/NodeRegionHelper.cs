@@ -6,8 +6,8 @@ public static class NodeRegionHelper
 {
     private static readonly (string[] Keywords, string Label)[] RegionRules =
     [
-        (["香港", "HK", "Hong Kong", "HongKong", "🇭🇰"], "香港"),
-        (["台湾", "台灣", "TW", "Taiwan", "🇹🇼"], "台湾"),
+        (["香港", "HK", "Hong Kong", "HongKong", "🇭🇰"], "中国·香港"),
+        (["台湾", "台灣", "TW", "Taiwan", "🇹🇼"], "中国·台湾"),
         (["澳门", "澳門", "MO", "Macao", "Macau", "🇲🇴"], "澳门"),
         (["日本", "JP", "Japan", "东京", "東京", "大阪", "🇯🇵"], "日本"),
         (["韩国", "韓國", "KR", "Korea", "首尔", "首爾", "🇰🇷"], "韩国"),
@@ -32,8 +32,8 @@ public static class NodeRegionHelper
 
     private static readonly (string[] Tokens, string Label)[] DomainRules =
     [
-        ([".hk", "-hk.", "-hk-", "_hk_", "hongkong"], "香港"),
-        ([".tw", "-tw.", "-tw-", "_tw_", "taiwan"], "台湾"),
+        ([".hk", "-hk.", "-hk-", "_hk_", "hongkong"], "中国·香港"),
+        ([".tw", "-tw.", "-tw-", "_tw_", "taiwan"], "中国·台湾"),
         ([".mo", "macau", "macao"], "澳门"),
         ([".jp", "-jp.", "-jp-", "_jp_", ".japan"], "日本"),
         ([".kr", "-kr.", "-kr-", "_kr_", "korea"], "韩国"),
@@ -88,6 +88,43 @@ public static class NodeRegionHelper
         }
 
         return "-";
+    }
+
+    public static string FormatDisplay(string? region)
+    {
+        if (string.IsNullOrWhiteSpace(region) || region == "-")
+        {
+            return "-";
+        }
+
+        var value = region.Trim();
+        if (IsHongKong(value))
+        {
+            return "中国·香港";
+        }
+
+        if (IsTaiwan(value))
+        {
+            return "中国·台湾";
+        }
+
+        return value;
+    }
+
+    private static bool IsHongKong(string value)
+    {
+        return value.Contains("香港", StringComparison.OrdinalIgnoreCase)
+            || value.Contains("Hong Kong", StringComparison.OrdinalIgnoreCase)
+            || value.Contains("HongKong", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(value, "HK", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsTaiwan(string value)
+    {
+        return value.Contains("台湾", StringComparison.OrdinalIgnoreCase)
+            || value.Contains("台灣", StringComparison.OrdinalIgnoreCase)
+            || value.Contains("Taiwan", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(value, "TW", StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool ContainsToken(string source, string keyword)

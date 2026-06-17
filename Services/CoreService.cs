@@ -21,7 +21,7 @@ public sealed class CoreService
         {
             var directory = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                "NaiwaProxy");
+                "Nexora");
             Directory.CreateDirectory(directory);
             return Path.Combine(directory, "config.json");
         }

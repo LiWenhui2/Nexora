@@ -3,6 +3,7 @@ using System.Net;
 using System.Net.Http;
 using System.Net.Sockets;
 using System.Text.Json;
+using NaiwaProxy.Services;
 
 namespace NaiwaProxy.Services;
 
@@ -86,7 +87,7 @@ public static class IpRegionService
         var country = root.TryGetProperty("country", out var countryElement) ? countryElement.GetString() : null;
         var regionName = root.TryGetProperty("regionName", out var regionElement) ? regionElement.GetString() : null;
         var city = root.TryGetProperty("city", out var cityElement) ? cityElement.GetString() : null;
-        return FormatLocation(country, regionName, city);
+        return NodeRegionHelper.FormatDisplay(FormatLocation(country, regionName, city));
     }
 
     private static string? FormatLocation(string? country, string? regionName, string? city)
