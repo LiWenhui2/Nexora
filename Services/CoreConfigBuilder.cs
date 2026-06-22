@@ -5,7 +5,7 @@ namespace NaiwaProxy.Services;
 
 public static class CoreConfigBuilder
 {
-    public static string Build(AppSettings settings, VmessProfile profile)
+    public static string Build(AppSettings settings, VmessProfile profile, string accessLogPath, string errorLogPath)
     {
         var streamSettings = BuildStreamSettings(profile);
         var proxyOutbound = BuildProxyOutbound(profile, streamSettings);
@@ -13,8 +13,8 @@ public static class CoreConfigBuilder
         {
             log = new
             {
-                access = DiagnosticLogService.AccessLogPath,
-                error = DiagnosticLogService.CoreErrorLogPath,
+                access = accessLogPath,
+                error = errorLogPath,
                 loglevel = "warning"
             },
             api = new
@@ -50,7 +50,7 @@ public static class CoreConfigBuilder
                 {
                     tag = "socks",
                     port = settings.SocksPort,
-                    listen = "127.0.0.1",
+                    listen = GetInboundListenAddress(settings),
                     protocol = "socks",
                     settings = new
                     {
@@ -62,7 +62,7 @@ public static class CoreConfigBuilder
                 {
                     tag = "http",
                     port = settings.HttpPort,
-                    listen = "127.0.0.1",
+                    listen = GetInboundListenAddress(settings),
                     protocol = "http"
                 }
             },
@@ -408,4 +408,7 @@ public static class CoreConfigBuilder
             outboundTag = "direct"
         };
     }
+
+    private static string GetInboundListenAddress(AppSettings settings) =>
+        settings.AllowLanAccess ? "0.0.0.0" : "127.0.0.1";
 }

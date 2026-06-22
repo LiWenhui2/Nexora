@@ -22,6 +22,8 @@ public sealed class AppSettings
     public long? SubscriptionTotalBytes { get; set; }
     public string AuthApiBaseUrl { get; set; } = "http://localhost:8080";
     public bool RunAtStartup { get; set; }
+    public bool RunAtStartupSilent { get; set; }
+    public bool AllowLanAccess { get; set; }
 }
 
 public sealed class CustomRoutingSettings

@@ -122,6 +122,18 @@ public static class DiagnosticLogService
         Add(LogCategory.Traffic, "INFO", line, "traffic-monitor.log");
     }
 
+    public static string CreateCoreAccessLogPath()
+    {
+        if (!_initialized)
+        {
+            Initialize();
+        }
+
+        CleanupOldCoreAccessLogs();
+        var fileName = $"access-{DateTime.Now:yyyyMMdd-HHmmss}-{Environment.ProcessId}.log";
+        return Path.Combine(_logDirectory, fileName);
+    }
+
     public static IReadOnlyList<LogEntry> GetRecentEntries(LogFilter? filter = null)
     {
         lock (Sync)
@@ -224,6 +236,31 @@ public static class DiagnosticLogService
         lock (Sync)
         {
             File.AppendAllText(Path.Combine(_logDirectory, fileName), line, Encoding.UTF8);
+        }
+    }
+
+    private static void CleanupOldCoreAccessLogs()
+    {
+        try
+        {
+            var directory = new DirectoryInfo(_logDirectory);
+            if (!directory.Exists)
+            {
+                return;
+            }
+
+            var cutoff = DateTime.Now.AddDays(-7);
+            foreach (var file in directory.GetFiles("access-*.log"))
+            {
+                if (file.LastWriteTime < cutoff)
+                {
+                    file.Delete();
+                }
+            }
+        }
+        catch
+        {
+            // Cleanup is best effort; logging must never block Core startup.
         }
     }
 

@@ -33,12 +33,36 @@ public static class CoreRunner
                 Arguments = $"-config \"{configPath}\"",
                 WorkingDirectory = Path.GetDirectoryName(corePath) ?? AppContext.BaseDirectory,
                 UseShellExecute = false,
-                CreateNoWindow = true
+                CreateNoWindow = true,
+                RedirectStandardError = true,
+                RedirectStandardOutput = true
             },
             EnableRaisingEvents = true
         };
         process.Start();
         return process;
+    }
+
+    public static string ReadExitedOutput(Process process)
+    {
+        if (!process.HasExited)
+        {
+            return "";
+        }
+
+        try
+        {
+            var stdout = process.StandardOutput.ReadToEnd();
+            var stderr = process.StandardError.ReadToEnd();
+            return string.Join(
+                    Environment.NewLine,
+                    new[] { stdout.Trim(), stderr.Trim() }.Where(part => !string.IsNullOrWhiteSpace(part)))
+                .Trim();
+        }
+        catch
+        {
+            return "";
+        }
     }
 
     public static void Stop(Process? process)

@@ -35,6 +35,8 @@ namespace NaiwaProxy;
 
 public partial class MainWindow : Window
 {
+    private const double AboutTwoColumnBreakpoint = 980;
+    private static readonly DateTime AppStartTime = DateTime.Now;
     private const string ProjectUrl = "https://github.com/LiWenhui2/NaiwaProxy";
     private const string LatestReleaseApi = "https://api.github.com/repos/LiWenhui2/NaiwaProxy/releases/latest";
     private readonly SettingsStore _settingsStore = new();
@@ -57,6 +59,9 @@ public partial class MainWindow : Window
     private bool _suppressNodePickerComboEvent;
     private bool _suppressRegionFilterComboEvent;
     private bool _suppressRunAtStartupToggleEvent;
+    private bool _suppressRunAtStartupSilentToggleEvent;
+    private bool _suppressAllowLanAccessToggleEvent;
+    private bool _startSilent;
     private bool _isUiReady;
     private bool _isExiting;
     private Forms.NotifyIcon? _trayIcon;
@@ -66,19 +71,23 @@ public partial class MainWindow : Window
     private CancellationTokenSource? _regionEnrichmentCancellation;
     private CancellationTokenSource? _websiteTestCancellation;
     private readonly DispatcherTimer _registerCodeCooldownTimer = new() { Interval = TimeSpan.FromSeconds(1) };
+    private readonly DispatcherTimer _aboutRuntimeTimer = new() { Interval = TimeSpan.FromSeconds(1) };
     private int _registerCodeCooldownSeconds;
 
-    public MainWindow()
+    public MainWindow(bool startSilent = false)
     {
+        _startSilent = startSilent;
         DiagnosticLogService.Startup("MainWindow constructor begin");
         InitializeComponent();
         RefreshLogView();
         LoadBrandIcon();
+        LoadInfoHintIcons();
         InitializeTray();
         _trafficTimer.Tick += TrafficTimer_Tick;
         _coreService.CoreExited += CoreService_CoreExited;
         _authService.AuthStateChanged += AuthService_AuthStateChanged;
         _registerCodeCooldownTimer.Tick += RegisterCodeCooldownTimer_Tick;
+        _aboutRuntimeTimer.Tick += AboutRuntimeTimer_Tick;
         _profilesView = CollectionViewSource.GetDefaultView(_profiles);
         _profilesView.Filter = FilterProfile;
         _profilesView.GroupDescriptions.Add(new PropertyGroupDescription(nameof(VmessProfile.SubscriptionDisplay)));
@@ -87,6 +96,7 @@ public partial class MainWindow : Window
         _isUiReady = true;
         LoadSettings();
         Loaded += MainWindow_Loaded;
+        SizeChanged += MainWindow_SizeChanged;
         DiagnosticLogService.EntryAdded += DiagnosticLogService_EntryAdded;
         DiagnosticLogService.Startup("MainWindow constructor complete");
         Closing += MainWindow_Closing;
@@ -96,6 +106,8 @@ public partial class MainWindow : Window
             _authService.AuthStateChanged -= AuthService_AuthStateChanged;
             _registerCodeCooldownTimer.Stop();
             _registerCodeCooldownTimer.Tick -= RegisterCodeCooldownTimer_Tick;
+            _aboutRuntimeTimer.Stop();
+            _aboutRuntimeTimer.Tick -= AboutRuntimeTimer_Tick;
             DisposeTray();
             _regionEnrichmentCancellation?.Cancel();
             _regionEnrichmentCancellation?.Dispose();
@@ -120,8 +132,20 @@ public partial class MainWindow : Window
         }
 
         BrandIconImage.Source = bitmap;
-        AboutIconImage.Source = bitmap;
         LoadWindowIcon();
+    }
+
+    private void LoadInfoHintIcons()
+    {
+        var bitmap = TryLoadAppBitmap("assets/about-info.png");
+        if (bitmap is null)
+        {
+            return;
+        }
+
+        RunAtStartupSilentInfoIcon.Source = bitmap;
+        AboutHttpProxyInfoIcon.Source = bitmap;
+        AllowLanAccessInfoIcon.Source = bitmap;
     }
 
     private void LoadWindowIcon()
@@ -428,6 +452,19 @@ public partial class MainWindow : Window
     private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
     {
         Loaded -= MainWindow_Loaded;
+
+        if (_profiles.Count > 0)
+        {
+            _ = RunStartupLatencyTestsAsync();
+        }
+
+        if (_startSilent)
+        {
+            Hide();
+            ShowInTaskbar = false;
+            UpdateTrayStatus();
+        }
+
         if (_profiles.Count == 0)
         {
             return;
@@ -447,8 +484,6 @@ public partial class MainWindow : Window
         {
             ShowError(ex);
         }
-
-        _ = RunStartupLatencyTestsAsync();
     }
 
     private async Task RunStartupLatencyTestsAsync()
@@ -512,7 +547,8 @@ public partial class MainWindow : Window
         RefreshSubscriptionFilterOptions();
         ScheduleRegionEnrichment();
         SyncRunAtStartupFromSettings();
-        ApplyRunAtStartup(save: false);
+        SyncAllowLanAccessFromSettings();
+        ApplyStartupSettings(save: false);
     }
 
     private void InitializeWebsiteTests()
@@ -675,21 +711,24 @@ public partial class MainWindow : Window
 
     private void SyncRunAtStartupFromSettings()
     {
-        if (!_isUiReady || RunAtStartupToggle is null)
+        if (!_isUiReady || RunAtStartupToggle is null || RunAtStartupSilentToggle is null)
         {
             return;
         }
 
         _suppressRunAtStartupToggleEvent = true;
+        _suppressRunAtStartupSilentToggleEvent = true;
         RunAtStartupToggle.IsChecked = _settings.RunAtStartup;
+        RunAtStartupSilentToggle.IsChecked = _settings.RunAtStartupSilent;
         _suppressRunAtStartupToggleEvent = false;
+        _suppressRunAtStartupSilentToggleEvent = false;
     }
 
-    private void ApplyRunAtStartup(bool save)
+    private void ApplyStartupSettings(bool save)
     {
         try
         {
-            StartupService.SetEnabled(_settings.RunAtStartup);
+            StartupService.SetStartup(_settings.RunAtStartup, _settings.RunAtStartupSilent);
             if (save)
             {
                 _settingsStore.Save(_settings);
@@ -698,6 +737,7 @@ public partial class MainWindow : Window
         catch (Exception ex)
         {
             _settings.RunAtStartup = StartupService.IsEnabled();
+            _settings.RunAtStartupSilent = StartupService.IsSilentEnabled();
             SyncRunAtStartupFromSettings();
             ShowError(ex);
         }
@@ -711,7 +751,69 @@ public partial class MainWindow : Window
         }
 
         _settings.RunAtStartup = RunAtStartupToggle.IsChecked == true;
-        ApplyRunAtStartup(save: true);
+        if (!_settings.RunAtStartup)
+        {
+            _settings.RunAtStartupSilent = false;
+            _suppressRunAtStartupSilentToggleEvent = true;
+            RunAtStartupSilentToggle.IsChecked = false;
+            _suppressRunAtStartupSilentToggleEvent = false;
+        }
+
+        ApplyStartupSettings(save: true);
+    }
+
+    private void RunAtStartupSilentToggle_Changed(object sender, RoutedEventArgs e)
+    {
+        if (!_isUiReady || _suppressRunAtStartupSilentToggleEvent)
+        {
+            return;
+        }
+
+        _settings.RunAtStartupSilent = RunAtStartupSilentToggle.IsChecked == true;
+        if (_settings.RunAtStartupSilent)
+        {
+            _settings.RunAtStartup = true;
+            _suppressRunAtStartupToggleEvent = true;
+            RunAtStartupToggle.IsChecked = true;
+            _suppressRunAtStartupToggleEvent = false;
+        }
+
+        ApplyStartupSettings(save: true);
+    }
+
+    private void SyncAllowLanAccessFromSettings()
+    {
+        if (!_isUiReady || AllowLanAccessToggle is null)
+        {
+            return;
+        }
+
+        _suppressAllowLanAccessToggleEvent = true;
+        AllowLanAccessToggle.IsChecked = _settings.AllowLanAccess;
+        _suppressAllowLanAccessToggleEvent = false;
+    }
+
+    private async void AllowLanAccessToggle_Changed(object sender, RoutedEventArgs e)
+    {
+        if (!_isUiReady || _suppressAllowLanAccessToggleEvent)
+        {
+            return;
+        }
+
+        _settings.AllowLanAccess = AllowLanAccessToggle.IsChecked == true;
+        _settingsStore.Save(_settings);
+
+        if (_coreService.IsRunning)
+        {
+            try
+            {
+                await RestartCoreAsync();
+            }
+            catch (Exception ex)
+            {
+                ShowError(ex);
+            }
+        }
     }
 
     private void RefreshRegionFilterOptions()
@@ -1970,19 +2072,15 @@ public partial class MainWindow : Window
         NodePickerCombo.ItemsSource = _profiles;
     }
 
+    private void NodeListNavButton_Click(object sender, RoutedEventArgs e) => ShowNodePage();
+
     private void CtxNewNode_Click(object sender, RoutedEventArgs e) => ShowNewNodePage();
 
     private void CtxImportNode_Click(object sender, RoutedEventArgs e) => ShowImportPage();
 
-    private void SubscriptionNavButton_Click(object sender, RoutedEventArgs e) => ShowSubscriptionImportPage();
-
-    private void SubscriptionImportNavButton_Click(object sender, RoutedEventArgs e) => ShowSubscriptionImportPage();
-
-    private void NodeListNavButton_Click(object sender, RoutedEventArgs e) => ShowNodePage();
+    private void ImportNodeNavButton_Click(object sender, RoutedEventArgs e) => ShowImportPage();
 
     private void NewNodeNavButton_Click(object sender, RoutedEventArgs e) => ShowNewNodePage();
-
-    private void ImportNodeNavButton_Click(object sender, RoutedEventArgs e) => ShowImportPage();
 
     private void ExportNodeNavButton_Click(object sender, RoutedEventArgs e) => ShowExportPage();
 
@@ -2097,11 +2195,6 @@ public partial class MainWindow : Window
         ShowPage(ImportPageScroll, ImportNodeNavButton);
     }
 
-    private void ShowSubscriptionImportPage()
-    {
-        ShowPage(SubscriptionImportPageScroll, SubscriptionImportNavButton);
-    }
-
     private void ShowExportPage()
     {
         RefreshExportProfiles();
@@ -2119,6 +2212,7 @@ public partial class MainWindow : Window
     private void ShowSettingsPage()
     {
         SyncRunAtStartupFromSettings();
+        SyncAllowLanAccessFromSettings();
         ShowPage(SettingsPageScroll, SettingsNavButton);
     }
 
@@ -2126,6 +2220,23 @@ public partial class MainWindow : Window
     {
         LoadAboutPageInfo();
         ShowPage(AboutPageScroll, AboutNavButton);
+        UpdateAboutResponsiveLayout(GetAboutContentWidth());
+        _aboutRuntimeTimer.Start();
+    }
+
+    private void AboutRuntimeTimer_Tick(object? sender, EventArgs e)
+    {
+        UpdateAboutRuntimeText();
+    }
+
+    private void UpdateAboutRuntimeText()
+    {
+        if (!_isUiReady || AboutRuntimeText is null)
+        {
+            return;
+        }
+
+        AboutRuntimeText.Text = FormatRuntimeClock();
     }
 
     private void ShowPage(ScrollViewer page, System.Windows.Controls.Button? activeButton)
@@ -2133,7 +2244,6 @@ public partial class MainWindow : Window
         NodePageScroll.Visibility = Visibility.Collapsed;
         NewNodePageScroll.Visibility = Visibility.Collapsed;
         ImportPageScroll.Visibility = Visibility.Collapsed;
-        SubscriptionImportPageScroll.Visibility = Visibility.Collapsed;
         ExportPageScroll.Visibility = Visibility.Collapsed;
         NodeTestPageScroll.Visibility = Visibility.Collapsed;
         UpdatePageScroll.Visibility = Visibility.Collapsed;
@@ -2145,7 +2255,12 @@ public partial class MainWindow : Window
         AuthDialogOverlay.Visibility = Visibility.Collapsed;
         page.Visibility = Visibility.Visible;
 
-        foreach (var button in new[] { NodeListNavButton, NewNodeNavButton, ImportNodeNavButton, ExportNodeNavButton, NodeTestNavButton, SubscriptionImportNavButton, SettingsNavButton, LogNavButton, AboutNavButton, UpdateNavButton })
+        if (!ReferenceEquals(page, AboutPageScroll))
+        {
+            _aboutRuntimeTimer.Stop();
+        }
+
+        foreach (var button in new[] { NodeListNavButton, NewNodeNavButton, ImportNodeNavButton, ExportNodeNavButton, NodeTestNavButton, SettingsNavButton, LogNavButton, AboutNavButton, UpdateNavButton })
         {
             button.Style = ReferenceEquals(button, activeButton)
                 ? (Style)FindResource("ActiveNavButtonStyle")
@@ -2158,15 +2273,112 @@ public partial class MainWindow : Window
         var configDirectory = GetConfigDirectory();
         var runtimeDirectory = Path.Combine(AppContext.BaseDirectory, "cores");
         AboutAppVersionText.Text = GetCurrentVersion();
-        AboutBuildTimeText.Text = GetBuildTime();
+        UpdateAboutRuntimeText();
         AboutCoreVersionText.Text = GetExecutableVersion(CoreRunner.ResolveCorePath("xray.exe"), "version");
         AboutTunRuntimeText.Text = File.Exists(TunService.SingBoxPath)
             ? GetExecutableVersion(TunService.SingBoxPath, "version")
             : "未安装";
-        AboutConfigDirectoryText.Text = configDirectory;
-        AboutRuntimeDirectoryText.Text = runtimeDirectory;
-        AboutLogDirectoryText.Text = DiagnosticLogService.LogDirectory;
-        AboutLicenseText.Text = "Nexora: project license · Xray Core: MPL-2.0 · sing-box: GPL-3.0-or-later · Wintun: GPL-2.0 · Inno Setup: Inno Setup License";
+        AboutOperatingSystemText.Text = SystemInfoService.GetOperatingSystemDescription();
+        AboutSystemProxyText.Text = SystemInfoService.GetSystemProxyAddress();
+        AboutHttpProxyAddressText.Text = SystemInfoService.GetHttpProxyAddressDisplay(_settings.HttpPort, _settings.AllowLanAccess);
+        AboutHttpProxyInfoIcon.ToolTip = _settings.AllowLanAccess
+            ? $"本地 HTTP 入站地址。虚拟机可使用主机局域网 IP 和端口 {_settings.HttpPort} 访问。"
+            : "Nexora 本地 HTTP 入站地址，系统代理与网站连通性测试均通过此地址访问。";
+        AboutLocalPublicIpText.Text = "检测中...";
+        SetAboutDirectoryText(AboutConfigDirectoryText, configDirectory);
+        SetAboutDirectoryText(AboutRuntimeDirectoryText, runtimeDirectory);
+        SetAboutDirectoryText(AboutLogDirectoryText, DiagnosticLogService.LogDirectory);
+        UpdateAboutResponsiveLayout(GetAboutContentWidth());
+        _ = LoadAboutPublicIpAsync();
+    }
+
+    private void AboutPageScroll_SizeChanged(object sender, SizeChangedEventArgs e) =>
+        UpdateAboutResponsiveLayout(e.NewSize.Width);
+
+    private void MainWindow_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        if (AboutPageScroll.Visibility == Visibility.Visible)
+        {
+            UpdateAboutResponsiveLayout(GetAboutContentWidth());
+        }
+    }
+
+    private double GetAboutContentWidth()
+    {
+        if (AboutPageScroll is null)
+        {
+            return ActualWidth;
+        }
+
+        return AboutPageScroll.ViewportWidth > 0
+            ? AboutPageScroll.ViewportWidth
+            : AboutPageScroll.ActualWidth;
+    }
+
+    private void UpdateAboutResponsiveLayout(double availableWidth)
+    {
+        if (!_isUiReady || AboutSummaryGrid is null || AboutFooterGrid is null)
+        {
+            return;
+        }
+
+        var stacked = availableWidth < AboutTwoColumnBreakpoint;
+        ApplyAboutTwoColumnLayout(AboutSummaryGrid, AboutSummaryLeftPanel, AboutSummaryRightPanel, stacked, leftColumnWeight: 1);
+        ApplyAboutTwoColumnLayout(AboutFooterGrid, AboutDirectoryPanel, AboutLicensePanel, stacked, leftColumnWeight: 1);
+    }
+
+    private static void ApplyAboutTwoColumnLayout(
+        Grid grid,
+        FrameworkElement leftPanel,
+        FrameworkElement rightPanel,
+        bool stacked,
+        int leftColumnWeight)
+    {
+        if (grid.ColumnDefinitions.Count < 3)
+        {
+            return;
+        }
+
+        if (stacked)
+        {
+            Grid.SetColumn(leftPanel, 0);
+            Grid.SetRow(leftPanel, 0);
+            Grid.SetColumn(rightPanel, 0);
+            Grid.SetRow(rightPanel, 1);
+            grid.ColumnDefinitions[0].Width = new GridLength(1, GridUnitType.Star);
+            grid.ColumnDefinitions[1].Width = new GridLength(0);
+            grid.ColumnDefinitions[2].Width = new GridLength(0);
+            leftPanel.Margin = new Thickness(0, 0, 0, 16);
+            rightPanel.Margin = new Thickness(0);
+            return;
+        }
+
+        Grid.SetColumn(leftPanel, 0);
+        Grid.SetRow(leftPanel, 0);
+        Grid.SetColumn(rightPanel, 2);
+        Grid.SetRow(rightPanel, 0);
+        grid.ColumnDefinitions[0].Width = new GridLength(leftColumnWeight, GridUnitType.Star);
+        grid.ColumnDefinitions[1].Width = new GridLength(24);
+        grid.ColumnDefinitions[2].Width = new GridLength(1, GridUnitType.Star);
+        leftPanel.Margin = new Thickness(0);
+        rightPanel.Margin = new Thickness(0);
+    }
+
+    private static void SetAboutDirectoryText(TextBlock textBlock, string path)
+    {
+        textBlock.Text = path;
+        textBlock.ToolTip = path;
+    }
+
+    private async Task LoadAboutPublicIpAsync()
+    {
+        var ip = await SystemInfoService.GetLocalPublicIpAsync();
+        if (!_isUiReady || AboutLocalPublicIpText is null)
+        {
+            return;
+        }
+
+        AboutLocalPublicIpText.Text = ip;
     }
 
     private void AboutOpenLogButton_Click(object sender, RoutedEventArgs e) => DiagnosticLogService.OpenLogDirectory();
@@ -2398,11 +2610,11 @@ public partial class MainWindow : Window
         }
     }
 
-    private void InlineImportButton_Click(object sender, RoutedEventArgs e)
+    private async void InlineImportButton_Click(object sender, RoutedEventArgs e)
     {
         try
         {
-            ImportNodeContent(InlineImportBox.Text);
+            await ImportContentAsync(InlineImportBox.Text);
         }
         catch (Exception ex)
         {
@@ -2410,18 +2622,59 @@ public partial class MainWindow : Window
         }
     }
 
-    private void ImportNodeContent(string content)
+    private async Task ImportContentAsync(string content)
     {
         InlineImportBox.Text = content;
-        var result = SubscriptionImportService.ImportNodeLinks(content);
+        var result = await SubscriptionImportService.ImportAsync(content);
         AddImportedProfiles(result);
     }
 
-    private async Task ImportSubscriptionContentAsync(string content, System.Windows.Controls.TextBox sourceBox)
+    private async void InlineOpenQrImageButton_Click(object sender, RoutedEventArgs e)
     {
-        sourceBox.Text = content;
-        var result = await SubscriptionImportService.ImportAsync(content);
-        AddImportedProfiles(result);
+        var dialog = new OpenFileDialog
+        {
+            Title = "选择二维码图片",
+            Filter = "图片文件|*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.webp|所有文件|*.*"
+        };
+        if (dialog.ShowDialog(this) != true)
+        {
+            return;
+        }
+
+        try
+        {
+            var content = DecodeQrCodeFromFile(dialog.FileName);
+            await ImportContentAsync(content);
+        }
+        catch (Exception ex)
+        {
+            ShowError(ex);
+        }
+    }
+
+    private async void InlineScanClipboardQrButton_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            if (Clipboard.ContainsText())
+            {
+                await ImportContentAsync(Clipboard.GetText());
+                return;
+            }
+
+            if (!Clipboard.ContainsImage())
+            {
+                throw new InvalidOperationException("剪贴板中没有可识别的链接或二维码图片。");
+            }
+
+            var image = Clipboard.GetImage() ?? throw new InvalidOperationException("无法读取剪贴板图片。");
+            var content = DecodeQrCodeFromBitmapSource(image);
+            await ImportContentAsync(content);
+        }
+        catch (Exception ex)
+        {
+            ShowError(ex);
+        }
     }
 
     private void AddImportedProfiles(SubscriptionImportResult result)
@@ -2452,74 +2705,6 @@ public partial class MainWindow : Window
         ScheduleRegionEnrichment(result.Profiles);
         RefreshRegionFilterOptions();
         RefreshSubscriptionFilterOptions();
-    }
-
-    private void SubscriptionPasteButton_Click(object sender, RoutedEventArgs e)
-    {
-        if (Clipboard.ContainsText())
-        {
-            SubscriptionImportBox.Text = Clipboard.GetText();
-        }
-    }
-
-    private async void SubscriptionImportButton_Click(object sender, RoutedEventArgs e)
-    {
-        try
-        {
-            await ImportSubscriptionContentAsync(SubscriptionImportBox.Text, SubscriptionImportBox);
-        }
-        catch (Exception ex)
-        {
-            ShowError(ex);
-        }
-    }
-
-    private async void SubscriptionOpenQrImageButton_Click(object sender, RoutedEventArgs e)
-    {
-        var dialog = new OpenFileDialog
-        {
-            Title = "选择订阅二维码图片",
-            Filter = "图片文件|*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.webp|所有文件|*.*"
-        };
-        if (dialog.ShowDialog(this) != true)
-        {
-            return;
-        }
-
-        try
-        {
-            var content = DecodeQrCodeFromFile(dialog.FileName);
-            await ImportSubscriptionContentAsync(content, SubscriptionImportBox);
-        }
-        catch (Exception ex)
-        {
-            ShowError(ex);
-        }
-    }
-
-    private async void SubscriptionScanClipboardQrButton_Click(object sender, RoutedEventArgs e)
-    {
-        try
-        {
-            if (Clipboard.ContainsText())
-            {
-                await ImportSubscriptionContentAsync(Clipboard.GetText(), SubscriptionImportBox);
-                return;
-            }
-
-            if (!Clipboard.ContainsImage())
-            {
-                throw new InvalidOperationException("剪贴板中没有可识别的订阅地址或二维码图片。");
-            }
-
-            var image = Clipboard.GetImage() ?? throw new InvalidOperationException("无法读取剪贴板图片。");
-            var content = DecodeQrCodeFromBitmapSource(image);
-            await ImportSubscriptionContentAsync(content, SubscriptionImportBox);
-        }
-        catch (Exception ex)
-        {
-            ShowError(ex);
-        }
     }
 
     private static string DecodeQrCodeFromFile(string path)
@@ -3088,15 +3273,10 @@ public partial class MainWindow : Window
         return version.Split('+')[0];
     }
 
-    private static string GetBuildTime()
+    private static string FormatRuntimeClock()
     {
-        var executablePath = Environment.ProcessPath;
-        if (!string.IsNullOrWhiteSpace(executablePath) && File.Exists(executablePath))
-        {
-            return File.GetLastWriteTime(executablePath).ToString("yyyy-MM-dd HH:mm");
-        }
-
-        return DateTime.Now.ToString("yyyy-MM-dd HH:mm");
+        var elapsed = DateTime.Now - AppStartTime;
+        return $"{(int)elapsed.TotalHours:00}:{elapsed.Minutes:00}:{elapsed.Seconds:00}";
     }
 
     private static string GetExecutableVersion(string executablePath, string arguments)

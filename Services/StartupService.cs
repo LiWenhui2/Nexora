@@ -7,6 +7,7 @@ public static class StartupService
 {
     private const string RegistryPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
     private const string ValueName = "Nexora";
+    public const string SilentArgument = "--silent";
 
     public static bool IsEnabled()
     {
@@ -23,10 +24,25 @@ public static class StartupService
             return false;
         }
 
-        return string.Equals(NormalizePath(Unquote(value)), NormalizePath(exePath), StringComparison.OrdinalIgnoreCase);
+        var registryExePath = ExtractExecutablePath(value);
+        return !string.IsNullOrWhiteSpace(registryExePath) &&
+               string.Equals(NormalizePath(registryExePath), NormalizePath(exePath), StringComparison.OrdinalIgnoreCase);
     }
 
-    public static void SetEnabled(bool enabled)
+    public static bool IsSilentEnabled()
+    {
+        if (!IsEnabled())
+        {
+            return false;
+        }
+
+        using var key = Registry.CurrentUser.OpenSubKey(RegistryPath);
+        var value = key?.GetValue(ValueName) as string;
+        return !string.IsNullOrWhiteSpace(value) &&
+               value.Contains(SilentArgument, StringComparison.OrdinalIgnoreCase);
+    }
+
+    public static void SetStartup(bool enabled, bool silent)
     {
         using var key = Registry.CurrentUser.OpenSubKey(RegistryPath, writable: true)
             ?? throw new InvalidOperationException("无法打开 Windows 启动项注册表。");
@@ -40,7 +56,10 @@ public static class StartupService
         var exePath = GetExecutablePath()
             ?? throw new InvalidOperationException("无法定位当前程序路径，不能设置开机自启。");
 
-        key.SetValue(ValueName, $"\"{exePath}\"", RegistryValueKind.String);
+        var command = silent
+            ? $"\"{exePath}\" {SilentArgument}"
+            : $"\"{exePath}\"";
+        key.SetValue(ValueName, command, RegistryValueKind.String);
     }
 
     private static string? GetExecutablePath()
@@ -49,15 +68,20 @@ public static class StartupService
         return string.IsNullOrWhiteSpace(path) ? null : path;
     }
 
-    private static string Unquote(string value)
+    private static string? ExtractExecutablePath(string value)
     {
         var trimmed = value.Trim();
-        if (trimmed.Length >= 2 && trimmed.StartsWith('"') && trimmed.EndsWith('"'))
+        if (trimmed.Length >= 2 && trimmed.StartsWith('"'))
         {
-            return trimmed[1..^1];
+            var endQuote = trimmed.IndexOf('"', 1);
+            if (endQuote > 1)
+            {
+                return trimmed[1..endQuote];
+            }
         }
 
-        return trimmed;
+        var spaceIndex = trimmed.IndexOf(' ');
+        return spaceIndex > 0 ? trimmed[..spaceIndex] : trimmed;
     }
 
     private static string NormalizePath(string path)

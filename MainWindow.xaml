@@ -401,8 +401,20 @@
             <Setter Property="Margin" Value="0,0,8,8"/>
         </Style>
 
+        <Style x:Key="AboutInfoItemStyle" TargetType="Border" BasedOn="{StaticResource HealthItemStyle}">
+            <Setter Property="MinHeight" Value="48"/>
+            <Setter Property="Margin" Value="0,0,0,8"/>
+        </Style>
+
+        <Style x:Key="AboutLicenseItemStyle" TargetType="Border" BasedOn="{StaticResource HealthItemStyle}">
+            <Setter Property="MinHeight" Value="48"/>
+            <Setter Property="Margin" Value="0,0,0,8"/>
+        </Style>
+
         <Style x:Key="AboutDirectoryItemStyle" TargetType="Border" BasedOn="{StaticResource HealthItemStyle}">
             <Setter Property="Margin" Value="0,0,0,8"/>
+            <Setter Property="Padding" Value="12"/>
+            <Setter Property="MinHeight" Value="48"/>
         </Style>
 
         <Style x:Key="WebsiteTestCardStyle" TargetType="Border" BasedOn="{StaticResource HealthItemStyle}">
@@ -413,13 +425,21 @@
         </Style>
 
         <Style x:Key="SettingsToggleCardStyle" TargetType="Border">
-            <Setter Property="Width" Value="196"/>
-            <Setter Property="Height" Value="58"/>
-            <Setter Property="Padding" Value="16,0"/>
+            <Setter Property="MinWidth" Value="240"/>
+            <Setter Property="Padding" Value="16,14"/>
             <Setter Property="CornerRadius" Value="11"/>
             <Setter Property="Background" Value="{StaticResource Panel2Brush}"/>
             <Setter Property="BorderBrush" Value="{StaticResource LineBrush}"/>
             <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Margin" Value="0,0,12,12"/>
+        </Style>
+
+        <Style x:Key="InfoHintIconStyle" TargetType="Image">
+            <Setter Property="Width" Value="16"/>
+            <Setter Property="Height" Value="16"/>
+            <Setter Property="Margin" Value="6,0,0,0"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="Cursor" Value="Hand"/>
         </Style>
 
         <Style x:Key="ControlFieldBorderStyle" TargetType="Border">
@@ -499,26 +519,6 @@
                             <StackPanel Orientation="Horizontal">
                                 <Path Style="{StaticResource NavLineIconStyle}" Data="{StaticResource IconShield}"/>
                                 <TextBlock Text="节点测试"/>
-                            </StackPanel>
-                        </Button>
-
-                        <TextBlock Style="{StaticResource NavGroupHeaderStyle}" Text="订阅管理"/>
-                        <Button x:Name="SubscriptionImportNavButton" Style="{StaticResource NavChildButtonStyle}" Click="SubscriptionImportNavButton_Click">
-                            <StackPanel Orientation="Horizontal">
-                                <Path Style="{StaticResource NavLineIconStyle}" Data="{StaticResource IconRss}"/>
-                                <TextBlock Text="订阅导入"/>
-                            </StackPanel>
-                        </Button>
-                        <Button Style="{StaticResource NavChildButtonStyle}" IsEnabled="False">
-                            <StackPanel Orientation="Horizontal">
-                                <Path Style="{StaticResource NavLineIconStyle}" Data="{StaticResource IconRefresh}"/>
-                                <TextBlock Text="订阅更新"/>
-                            </StackPanel>
-                        </Button>
-                        <Button Style="{StaticResource NavChildButtonStyle}" IsEnabled="False">
-                            <StackPanel Orientation="Horizontal">
-                                <Path Style="{StaticResource NavLineIconStyle}" Data="{StaticResource IconSettings}"/>
-                                <TextBlock Text="订阅策略"/>
                             </StackPanel>
                         </Button>
 
@@ -941,30 +941,14 @@
                     <Border Style="{StaticResource CardBorderStyle}">
                         <StackPanel>
                             <TextBlock Text="导入节点" FontSize="24" FontWeight="Bold" Margin="0,0,0,8"/>
-                            <TextBlock Text="支持 vmess://、vless://、trojan://、ss://、socks://、http:// 节点链接和多行批量导入。" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,0,0,14"/>
+                            <TextBlock Text="支持节点链接、订阅地址、Base64 订阅内容与多行批量导入，系统会自动识别节点或订阅。" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,0,0,14"/>
                             <TextBox x:Name="InlineImportBox" MinHeight="260" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" Margin="0,0,0,16"/>
                             <WrapPanel>
                                 <Button Content="从剪贴板粘贴" Style="{StaticResource DarkButtonStyle}" Margin="0,0,8,8" Click="InlinePasteImportButton_Click"/>
                                 <Button Content="读取文本文件" Style="{StaticResource DarkButtonStyle}" Margin="0,0,8,8" Click="InlineOpenImportFileButton_Click"/>
+                                <Button Content="扫描二维码图片" Style="{StaticResource DarkButtonStyle}" Margin="0,0,8,8" Click="InlineOpenQrImageButton_Click"/>
+                                <Button Content="识别剪贴板二维码" Style="{StaticResource DarkButtonStyle}" Margin="0,0,8,8" Click="InlineScanClipboardQrButton_Click"/>
                                 <Button Content="导入" Style="{StaticResource PrimaryButtonStyle}" Margin="0,0,8,8" Click="InlineImportButton_Click"/>
-                            </WrapPanel>
-                        </StackPanel>
-                    </Border>
-                </StackPanel>
-            </ScrollViewer>
-
-            <ScrollViewer x:Name="SubscriptionImportPageScroll" Grid.Row="1" VerticalScrollBarVisibility="Auto" Visibility="Collapsed">
-                <StackPanel Margin="24,22,24,28">
-                    <Border Style="{StaticResource CardBorderStyle}">
-                        <StackPanel>
-                            <TextBlock Text="订阅导入" FontSize="24" FontWeight="Bold" Margin="0,0,0,8"/>
-                            <TextBlock Text="支持复制订阅地址、订阅二维码图片、剪贴板二维码图片。订阅内容可以是一组节点，会批量解析并加入节点列表。" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,0,0,14"/>
-                            <TextBox x:Name="SubscriptionImportBox" MinHeight="220" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" Margin="0,0,0,16"/>
-                            <WrapPanel>
-                                <Button Content="粘贴订阅地址" Style="{StaticResource DarkButtonStyle}" Margin="0,0,8,8" Click="SubscriptionPasteButton_Click"/>
-                                <Button Content="扫描二维码图片" Style="{StaticResource DarkButtonStyle}" Margin="0,0,8,8" Click="SubscriptionOpenQrImageButton_Click"/>
-                                <Button Content="识别剪贴板二维码" Style="{StaticResource DarkButtonStyle}" Margin="0,0,8,8" Click="SubscriptionScanClipboardQrButton_Click"/>
-                                <Button Content="导入订阅" Style="{StaticResource PrimaryButtonStyle}" Margin="0,0,8,8" Click="SubscriptionImportButton_Click"/>
                             </WrapPanel>
                         </StackPanel>
                     </Border>
@@ -1073,94 +1057,174 @@
                 </Border>
             </ScrollViewer>
 
-            <ScrollViewer x:Name="AboutPageScroll" Grid.Row="1" VerticalScrollBarVisibility="Auto" Visibility="Collapsed">
-                <StackPanel Margin="24,22,24,28">
+            <ScrollViewer x:Name="AboutPageScroll" Grid.Row="1" VerticalScrollBarVisibility="Auto" Visibility="Collapsed" SizeChanged="AboutPageScroll_SizeChanged">
+                <StackPanel x:Name="AboutPagePanel" Margin="24,22,24,28">
                     <Border Style="{StaticResource CardBorderStyle}" Margin="0,0,0,16">
-                        <Grid>
+                        <Grid x:Name="AboutSummaryGrid">
                             <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="24"/>
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
-                            <Border Width="64" Height="64" CornerRadius="16" Background="#FFFFFF" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" ClipToBounds="True">
-                                <Image x:Name="AboutIconImage" Stretch="UniformToFill"/>
-                            </Border>
-                            <StackPanel Grid.Column="1" Margin="16,0,0,0" VerticalAlignment="Center">
-                                <TextBlock Text="Nexora" FontSize="28" FontWeight="Bold"/>
-                                <TextBlock Text="Windows · Xray Client" Foreground="{StaticResource MutedBrush}" Margin="0,4,0,0"/>
-                            </StackPanel>
-                        </Grid>
-                    </Border>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
 
-                    <Border Style="{StaticResource CardBorderStyle}" Margin="0,0,0,16">
-                        <StackPanel>
-                            <TextBlock Text="应用信息" FontSize="20" FontWeight="Bold" Margin="0,0,0,12"/>
-                            <UniformGrid Columns="2">
-                                <Border Style="{StaticResource HealthItemStyle}">
+                            <StackPanel x:Name="AboutSummaryLeftPanel" Grid.Column="0" Grid.Row="0">
+                                <TextBlock Text="应用信息" FontSize="20" FontWeight="Bold" Margin="0,0,0,12"/>
+                                <Border Style="{StaticResource AboutInfoItemStyle}">
                                     <Grid>
                                         <TextBlock Text="应用版本" Foreground="{StaticResource MutedBrush}"/>
                                         <TextBlock x:Name="AboutAppVersionText" HorizontalAlignment="Right" FontWeight="SemiBold"/>
                                     </Grid>
                                 </Border>
-                                <Border Style="{StaticResource HealthItemStyle}" Margin="0,0,0,8">
+                                <Border Style="{StaticResource AboutInfoItemStyle}">
                                     <Grid>
-                                        <TextBlock Text="构建时间" Foreground="{StaticResource MutedBrush}"/>
-                                        <TextBlock x:Name="AboutBuildTimeText" HorizontalAlignment="Right" FontWeight="SemiBold"/>
+                                        <TextBlock Text="运行时间" Foreground="{StaticResource MutedBrush}"/>
+                                        <TextBlock x:Name="AboutRuntimeText" HorizontalAlignment="Right" FontWeight="SemiBold" FontFamily="Consolas, Cascadia Mono, Microsoft YaHei UI"/>
                                     </Grid>
                                 </Border>
-                                <Border Style="{StaticResource HealthItemStyle}">
+                                <Border Style="{StaticResource AboutInfoItemStyle}">
                                     <Grid>
                                         <TextBlock Text="Core 版本" Foreground="{StaticResource MutedBrush}"/>
                                         <TextBlock x:Name="AboutCoreVersionText" HorizontalAlignment="Right" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
                                     </Grid>
                                 </Border>
-                                <Border Style="{StaticResource HealthItemStyle}" Margin="0,0,0,8">
+                                <Border Style="{StaticResource AboutInfoItemStyle}" Margin="0">
                                     <Grid>
                                         <TextBlock Text="TUN 运行时" Foreground="{StaticResource MutedBrush}"/>
                                         <TextBlock x:Name="AboutTunRuntimeText" HorizontalAlignment="Right" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
                                     </Grid>
                                 </Border>
-                            </UniformGrid>
-                        </StackPanel>
-                    </Border>
+                            </StackPanel>
 
-                    <Border Style="{StaticResource CardBorderStyle}" Margin="0,0,0,16">
-                        <StackPanel>
-                            <TextBlock Text="目录信息" FontSize="20" FontWeight="Bold" Margin="0,0,0,12"/>
-                            <Border Style="{StaticResource AboutDirectoryItemStyle}">
-                                <DockPanel LastChildFill="True">
-                                    <Button DockPanel.Dock="Right" Style="{StaticResource FolderIconButtonStyle}" ToolTip="打开配置目录" Click="AboutOpenConfigButton_Click">
-                                        <Path Style="{StaticResource FolderIconPathStyle}"/>
-                                    </Button>
-                                    <TextBlock DockPanel.Dock="Left" Text="配置目录" Width="110" Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center"/>
-                                    <TextBlock x:Name="AboutConfigDirectoryText" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" Margin="8,0,8,0"/>
-                                </DockPanel>
-                            </Border>
-                            <Border Style="{StaticResource AboutDirectoryItemStyle}">
-                                <DockPanel LastChildFill="True">
-                                    <Button DockPanel.Dock="Right" Style="{StaticResource FolderIconButtonStyle}" ToolTip="打开运行时目录" Click="AboutOpenRuntimeButton_Click">
-                                        <Path Style="{StaticResource FolderIconPathStyle}"/>
-                                    </Button>
-                                    <TextBlock DockPanel.Dock="Left" Text="运行时目录" Width="110" Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center"/>
-                                    <TextBlock x:Name="AboutRuntimeDirectoryText" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" Margin="8,0,8,0"/>
-                                </DockPanel>
-                            </Border>
-                            <Border Style="{StaticResource AboutDirectoryItemStyle}" Margin="0">
-                                <DockPanel LastChildFill="True">
-                                    <Button DockPanel.Dock="Right" Style="{StaticResource FolderIconButtonStyle}" ToolTip="打开日志目录" Click="AboutOpenLogButton_Click">
-                                        <Path Style="{StaticResource FolderIconPathStyle}"/>
-                                    </Button>
-                                    <TextBlock DockPanel.Dock="Left" Text="日志目录" Width="110" Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center"/>
-                                    <TextBlock x:Name="AboutLogDirectoryText" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" Margin="8,0,8,0"/>
-                                </DockPanel>
-                            </Border>
-                        </StackPanel>
+                            <StackPanel x:Name="AboutSummaryRightPanel" Grid.Column="2" Grid.Row="0">
+                                <TextBlock Text="系统信息" FontSize="20" FontWeight="Bold" Margin="0,0,0,12"/>
+                                <Border Style="{StaticResource AboutInfoItemStyle}">
+                                    <Grid>
+                                        <TextBlock Text="操作系统" Foreground="{StaticResource MutedBrush}"/>
+                                        <TextBlock x:Name="AboutOperatingSystemText" HorizontalAlignment="Right" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" TextAlignment="Right"/>
+                                    </Grid>
+                                </Border>
+                                <Border Style="{StaticResource AboutInfoItemStyle}">
+                                    <Grid>
+                                        <TextBlock Text="系统代理地址" Foreground="{StaticResource MutedBrush}"/>
+                                        <TextBlock x:Name="AboutSystemProxyText" HorizontalAlignment="Right" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" TextAlignment="Right"/>
+                                    </Grid>
+                                </Border>
+                                <Border Style="{StaticResource AboutInfoItemStyle}">
+                                    <Grid>
+                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                            <TextBlock Text="HTTP 代理地址" Foreground="{StaticResource MutedBrush}"/>
+                                            <Image x:Name="AboutHttpProxyInfoIcon" Style="{StaticResource InfoHintIconStyle}"
+                                                   ToolTipService.ToolTip="Nexora 本地 HTTP 入站地址，系统代理与网站连通性测试均通过此地址访问。"/>
+                                        </StackPanel>
+                                        <TextBlock x:Name="AboutHttpProxyAddressText" HorizontalAlignment="Right" FontWeight="SemiBold"/>
+                                    </Grid>
+                                </Border>
+                                <Border Style="{StaticResource AboutInfoItemStyle}" Margin="0">
+                                    <Grid>
+                                        <TextBlock Text="本机公网 IP" Foreground="{StaticResource MutedBrush}"/>
+                                        <TextBlock x:Name="AboutLocalPublicIpText" HorizontalAlignment="Right" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" TextAlignment="Right"/>
+                                    </Grid>
+                                </Border>
+                            </StackPanel>
+                        </Grid>
                     </Border>
 
                     <Border Style="{StaticResource CardBorderStyle}">
-                        <StackPanel>
-                            <TextBlock Text="许可信息" FontSize="20" FontWeight="Bold" Margin="0,0,0,12"/>
-                            <TextBlock x:Name="AboutLicenseText" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,0,0,16"/>
-                        </StackPanel>
+                        <Grid x:Name="AboutFooterGrid">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="24"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+
+                            <StackPanel x:Name="AboutDirectoryPanel" Grid.Column="0" Grid.Row="0">
+                                <TextBlock Text="目录信息" FontSize="20" FontWeight="Bold" Margin="0,0,0,12"/>
+                                <Border Style="{StaticResource AboutDirectoryItemStyle}">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="88"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="配置目录" Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="1" x:Name="AboutConfigDirectoryText" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" VerticalAlignment="Center" Margin="8,0,8,0"/>
+                                        <Button Grid.Column="2" Style="{StaticResource FolderIconButtonStyle}" ToolTip="打开配置目录" Click="AboutOpenConfigButton_Click" VerticalAlignment="Center">
+                                            <Path Style="{StaticResource FolderIconPathStyle}"/>
+                                        </Button>
+                                    </Grid>
+                                </Border>
+                                <Border Style="{StaticResource AboutDirectoryItemStyle}">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="88"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="运行时目录" Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="1" x:Name="AboutRuntimeDirectoryText" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" VerticalAlignment="Center" Margin="8,0,8,0"/>
+                                        <Button Grid.Column="2" Style="{StaticResource FolderIconButtonStyle}" ToolTip="打开运行时目录" Click="AboutOpenRuntimeButton_Click" VerticalAlignment="Center">
+                                            <Path Style="{StaticResource FolderIconPathStyle}"/>
+                                        </Button>
+                                    </Grid>
+                                </Border>
+                                <Border Style="{StaticResource AboutDirectoryItemStyle}" Margin="0">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="88"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="日志目录" Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="1" x:Name="AboutLogDirectoryText" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" VerticalAlignment="Center" Margin="8,0,8,0"/>
+                                        <Button Grid.Column="2" Style="{StaticResource FolderIconButtonStyle}" ToolTip="打开日志目录" Click="AboutOpenLogButton_Click" VerticalAlignment="Center">
+                                            <Path Style="{StaticResource FolderIconPathStyle}"/>
+                                        </Button>
+                                    </Grid>
+                                </Border>
+                            </StackPanel>
+
+                            <StackPanel x:Name="AboutLicensePanel" Grid.Column="2" Grid.Row="0">
+                                <TextBlock Text="许可信息" FontSize="20" FontWeight="Bold" Margin="0,0,0,12"/>
+                                <Border Style="{StaticResource AboutLicenseItemStyle}">
+                                    <Grid>
+                                        <TextBlock Text="Nexora" Foreground="{StaticResource MutedBrush}"/>
+                                        <TextBlock Text="project license" HorizontalAlignment="Right" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                                    </Grid>
+                                </Border>
+                                <Border Style="{StaticResource AboutLicenseItemStyle}">
+                                    <Grid>
+                                        <TextBlock Text="Xray Core" Foreground="{StaticResource MutedBrush}"/>
+                                        <TextBlock Text="MPL-2.0" HorizontalAlignment="Right" FontWeight="SemiBold"/>
+                                    </Grid>
+                                </Border>
+                                <Border Style="{StaticResource AboutLicenseItemStyle}">
+                                    <Grid>
+                                        <TextBlock Text="sing-box" Foreground="{StaticResource MutedBrush}"/>
+                                        <TextBlock Text="GPL-3.0-or-later" HorizontalAlignment="Right" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                                    </Grid>
+                                </Border>
+                                <Border Style="{StaticResource AboutLicenseItemStyle}">
+                                    <Grid>
+                                        <TextBlock Text="Wintun" Foreground="{StaticResource MutedBrush}"/>
+                                        <TextBlock Text="GPL-2.0" HorizontalAlignment="Right" FontWeight="SemiBold"/>
+                                    </Grid>
+                                </Border>
+                                <Border Style="{StaticResource AboutLicenseItemStyle}" Margin="0">
+                                    <Grid>
+                                        <TextBlock Text="Inno Setup" Foreground="{StaticResource MutedBrush}"/>
+                                        <TextBlock Text="Inno Setup License" HorizontalAlignment="Right" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                                    </Grid>
+                                </Border>
+                            </StackPanel>
+                        </Grid>
                     </Border>
                 </StackPanel>
             </ScrollViewer>
@@ -1242,18 +1306,46 @@
             <ScrollViewer x:Name="SettingsPageScroll" Grid.Row="1" VerticalScrollBarVisibility="Auto" Visibility="Collapsed">
                 <StackPanel Margin="24,22,24,28">
                     <Border Style="{StaticResource CardBorderStyle}">
-                        <StackPanel>
-                            <Border Style="{StaticResource SettingsToggleCardStyle}" HorizontalAlignment="Left">
+                        <WrapPanel Orientation="Horizontal">
+                            <Border Style="{StaticResource SettingsToggleCardStyle}">
                                 <Grid VerticalAlignment="Center">
                                     <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
                                         <ColumnDefinition Width="Auto"/>
                                     </Grid.ColumnDefinitions>
-                                    <TextBlock Text="开机自启" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center"/>
-                                    <CheckBox Grid.Column="1" x:Name="RunAtStartupToggle" Style="{StaticResource ToggleSwitchStyle}" VerticalAlignment="Center" Margin="12,0,0,0" Checked="RunAtStartupToggle_Changed" Unchecked="RunAtStartupToggle_Changed"/>
+                                    <TextBlock Text="开机自启" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                                    <CheckBox Grid.Column="1" x:Name="RunAtStartupToggle" Style="{StaticResource ToggleSwitchStyle}" VerticalAlignment="Center" Checked="RunAtStartupToggle_Changed" Unchecked="RunAtStartupToggle_Changed"/>
                                 </Grid>
                             </Border>
-                        </StackPanel>
+                            <Border Style="{StaticResource SettingsToggleCardStyle}">
+                                <Grid VerticalAlignment="Center">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,12,0">
+                                        <TextBlock Text="开机静默启动" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                        <Image x:Name="RunAtStartupSilentInfoIcon" Style="{StaticResource InfoHintIconStyle}"
+                                               ToolTipService.ToolTip="开机后自动启动 Nexora 并最小化到系统托盘，不显示主窗口。开启后将同时启用开机自启。"/>
+                                    </StackPanel>
+                                    <CheckBox Grid.Column="1" x:Name="RunAtStartupSilentToggle" Style="{StaticResource ToggleSwitchStyle}" VerticalAlignment="Center" Checked="RunAtStartupSilentToggle_Changed" Unchecked="RunAtStartupSilentToggle_Changed"/>
+                                </Grid>
+                            </Border>
+                            <Border Style="{StaticResource SettingsToggleCardStyle}">
+                                <Grid VerticalAlignment="Center">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,12,0">
+                                        <TextBlock Text="允许局域网访问" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                        <Image x:Name="AllowLanAccessInfoIcon" Style="{StaticResource InfoHintIconStyle}"
+                                               ToolTipService.ToolTip="开启后 HTTP/SOCKS 入站监听局域网地址，虚拟机可通过主机 IP 和代理端口访问。请确保防火墙已放行对应端口。"/>
+                                    </StackPanel>
+                                    <CheckBox Grid.Column="1" x:Name="AllowLanAccessToggle" Style="{StaticResource ToggleSwitchStyle}" VerticalAlignment="Center" Checked="AllowLanAccessToggle_Changed" Unchecked="AllowLanAccessToggle_Changed"/>
+                                </Grid>
+                            </Border>
+                        </WrapPanel>
                     </Border>
                 </StackPanel>
             </ScrollViewer>

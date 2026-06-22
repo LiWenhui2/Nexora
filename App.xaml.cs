@@ -1,4 +1,5 @@
 using System.IO;
+using System.Threading;
 using System.Windows;
 using System.Windows.Threading;
 using NaiwaProxy.Services;
@@ -8,6 +9,9 @@ namespace NaiwaProxy;
 
 public partial class App : System.Windows.Application
 {
+    private const string SingleInstanceMutexName = @"Local\Nexora.Desktop.SingleInstance";
+    private Mutex? _singleInstanceMutex;
+
     public App()
     {
         DiagnosticLogService.Initialize();
@@ -17,6 +21,15 @@ public partial class App : System.Windows.Application
     protected override void OnStartup(StartupEventArgs e)
     {
         DiagnosticLogService.Startup("OnStartup begin");
+        _singleInstanceMutex = new Mutex(initiallyOwned: true, SingleInstanceMutexName, out var isFirstInstance);
+        if (!isFirstInstance)
+        {
+            DiagnosticLogService.Warning("Another Nexora instance is already running. Current process will exit.");
+            MessageBox.Show("Nexora 已在运行，请勿重复打开。", "Nexora", MessageBoxButton.OK, MessageBoxImage.Information);
+            Shutdown();
+            return;
+        }
+
         DispatcherUnhandledException += OnDispatcherUnhandledException;
         AppDomain.CurrentDomain.UnhandledException += OnUnhandledException;
         TaskScheduler.UnobservedTaskException += OnUnobservedTaskException;
@@ -25,10 +38,11 @@ public partial class App : System.Windows.Application
         {
             base.OnStartup(e);
             DiagnosticLogService.Startup("Creating MainWindow");
-            var mainWindow = new MainWindow();
+            var startSilent = e.Args.Any(arg => string.Equals(arg, StartupService.SilentArgument, StringComparison.OrdinalIgnoreCase));
+            var mainWindow = new MainWindow(startSilent);
             MainWindow = mainWindow;
             mainWindow.Show();
-            DiagnosticLogService.Startup("MainWindow shown");
+            DiagnosticLogService.Startup(startSilent ? "MainWindow started silently to tray" : "MainWindow shown");
         }
         catch (Exception ex)
         {
@@ -40,6 +54,24 @@ public partial class App : System.Windows.Application
                 MessageBoxImage.Error);
             Shutdown(1);
         }
+    }
+
+    protected override void OnExit(ExitEventArgs e)
+    {
+        try
+        {
+            _singleInstanceMutex?.ReleaseMutex();
+        }
+        catch
+        {
+        }
+        finally
+        {
+            _singleInstanceMutex?.Dispose();
+            _singleInstanceMutex = null;
+        }
+
+        base.OnExit(e);
     }
 
     private static void OnDispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)
