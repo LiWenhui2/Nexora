@@ -3145,6 +3145,13 @@ public partial class MainWindow : Window
         target.Region = source.Region;
         target.SubscriptionName = source.SubscriptionName;
         target.SubscriptionUpdatedAt = source.SubscriptionUpdatedAt;
+        target.SubscriptionUploadBytes = source.SubscriptionUploadBytes;
+        target.SubscriptionDownloadBytes = source.SubscriptionDownloadBytes;
+        target.SubscriptionTotalBytes = source.SubscriptionTotalBytes;
+        target.XpanelExpiryTime = source.XpanelExpiryTime;
+        target.XpanelTotalBytes = source.XpanelTotalBytes;
+        target.XpanelUsedBytes = source.XpanelUsedBytes;
+        target.XpanelRemainingBytes = source.XpanelRemainingBytes;
         target.UpdatedAt = DateTime.Now;
     }
 

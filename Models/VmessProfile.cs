@@ -33,6 +33,10 @@ public sealed class VmessProfile : INotifyPropertyChanged
     public long SubscriptionUploadBytes { get; set; }
     public long SubscriptionDownloadBytes { get; set; }
     public long? SubscriptionTotalBytes { get; set; }
+    public DateTime? XpanelExpiryTime { get; set; }
+    public long? XpanelTotalBytes { get; set; }
+    public long? XpanelUsedBytes { get; set; }
+    public long? XpanelRemainingBytes { get; set; }
     public DateTime? UpdatedAt { get; set; }
 
     [JsonIgnore]
@@ -98,6 +102,35 @@ public sealed class VmessProfile : INotifyPropertyChanged
             return FormatBytes(remaining);
         }
     }
+
+    [JsonIgnore]
+    public string ExpiryDisplay => FormatExpiryDisplay(XpanelExpiryTime);
+
+    [JsonIgnore]
+    public string TotalTrafficDisplay => FormatTotalTrafficDisplay(XpanelTotalBytes);
+
+    [JsonIgnore]
+    public string RemainingTrafficDisplay
+    {
+        get
+        {
+            if (HasXpanelTrafficMetadata())
+            {
+                return FormatRemainingTrafficDisplay(
+                    XpanelRemainingBytes,
+                    XpanelTotalBytes,
+                    XpanelUsedBytes);
+            }
+
+            return SubscriptionRemainingDisplay;
+        }
+    }
+
+    private bool HasXpanelTrafficMetadata() =>
+        XpanelExpiryTime is not null ||
+        XpanelTotalBytes is not null ||
+        XpanelUsedBytes is not null ||
+        XpanelRemainingBytes is not null;
 
     [JsonIgnore]
     public string UpdatedDisplay
@@ -225,6 +258,58 @@ public sealed class VmessProfile : INotifyPropertyChanged
         }
 
         return latencyMs is null ? "Timeout" : $"{latencyMs} ms";
+    }
+
+    private static string FormatExpiryDisplay(DateTime? expiryUtc)
+    {
+        if (expiryUtc is null)
+        {
+            return "-";
+        }
+
+        var local = expiryUtc.Value.ToLocalTime();
+        if (local.Year >= 2099)
+        {
+            return "永久";
+        }
+
+        var formatted = local.ToString("yyyy-MM-dd HH:mm");
+        return local <= DateTime.Now ? $"{formatted}（已过期）" : formatted;
+    }
+
+    private static string FormatTotalTrafficDisplay(long? totalBytes)
+    {
+        if (totalBytes is null)
+        {
+            return "-";
+        }
+
+        return totalBytes == 0 ? "无限制" : FormatBytes(totalBytes.Value);
+    }
+
+    private static string FormatRemainingTrafficDisplay(long? remainingBytes, long? totalBytes, long? usedBytes)
+    {
+        if (totalBytes == 0)
+        {
+            return "无限制";
+        }
+
+        if (remainingBytes is long remaining)
+        {
+            return FormatBytes(remaining);
+        }
+
+        if (totalBytes is long total && usedBytes is long used)
+        {
+            return FormatBytes(Math.Max(0, total - used));
+        }
+
+        if (totalBytes is long totalOnly)
+        {
+            return FormatBytes(totalOnly);
+        }
+
+        return "-";
     }
 
     private static string FormatBytes(double bytes)

@@ -85,6 +85,7 @@ public static class VmessLinkParser
             throw new FormatException("VMess 链接必须包含 add 和 id 字段。");
         }
 
+        XpanelMetadataHelper.ApplyFromJson(profile, root);
         return profile;
     }
 
@@ -106,6 +107,7 @@ public static class VmessLinkParser
             throw new FormatException("VLESS 链接必须包含 UUID。");
         }
 
+        XpanelMetadataHelper.ApplyFromQuery(profile, query);
         return profile;
     }
 

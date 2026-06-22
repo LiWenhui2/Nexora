@@ -760,12 +760,22 @@
                                                     <Style TargetType="TextBlock" BasedOn="{StaticResource DataGridTcpLatencyCellStyle}"/>
                                                 </DataGridTextColumn.ElementStyle>
                                             </DataGridTextColumn>
-                                            <DataGridTextColumn Header="订阅" Binding="{Binding SubscriptionDisplay}" Width="SizeToCells" MinWidth="88">
+                                            <DataGridTextColumn Header="到期时间" Binding="{Binding ExpiryDisplay}" Width="SizeToCells" MinWidth="140">
                                                 <DataGridTextColumn.ElementStyle>
                                                     <Style TargetType="TextBlock" BasedOn="{StaticResource DataGridCellCenterTextStyle}"/>
                                                 </DataGridTextColumn.ElementStyle>
                                             </DataGridTextColumn>
-                                            <DataGridTextColumn Header="剩余流量" Binding="{Binding SubscriptionRemainingDisplay}" Width="SizeToCells" MinWidth="100">
+                                            <DataGridTextColumn Header="总流量" Binding="{Binding TotalTrafficDisplay}" Width="SizeToCells" MinWidth="96">
+                                                <DataGridTextColumn.ElementStyle>
+                                                    <Style TargetType="TextBlock" BasedOn="{StaticResource DataGridCellCenterTextStyle}"/>
+                                                </DataGridTextColumn.ElementStyle>
+                                            </DataGridTextColumn>
+                                            <DataGridTextColumn Header="剩余流量" Binding="{Binding RemainingTrafficDisplay}" Width="SizeToCells" MinWidth="100">
+                                                <DataGridTextColumn.ElementStyle>
+                                                    <Style TargetType="TextBlock" BasedOn="{StaticResource DataGridCellCenterTextStyle}"/>
+                                                </DataGridTextColumn.ElementStyle>
+                                            </DataGridTextColumn>
+                                            <DataGridTextColumn Header="订阅" Binding="{Binding SubscriptionDisplay}" Width="SizeToCells" MinWidth="88">
                                                 <DataGridTextColumn.ElementStyle>
                                                     <Style TargetType="TextBlock" BasedOn="{StaticResource DataGridCellCenterTextStyle}"/>
                                                 </DataGridTextColumn.ElementStyle>
