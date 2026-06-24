@@ -424,13 +424,21 @@
                     <Setter Property="Background" Value="#F8FAFC"/>
                 </DataTrigger>
                 <Trigger Property="IsSelected" Value="True">
-                    <Setter Property="Background" Value="#EEF4FC"/>
-                    <Setter Property="Foreground" Value="#1E3A5F"/>
+                    <Setter Property="Background" Value="#BFDBFE"/>
+                    <Setter Property="Foreground" Value="#1E3A8A"/>
                 </Trigger>
                 <DataTrigger Binding="{Binding IsActive}" Value="True">
                     <Setter Property="Background" Value="#DBEAFE"/>
                     <Setter Property="Foreground" Value="#1D4ED8"/>
                 </DataTrigger>
+                <MultiDataTrigger>
+                    <MultiDataTrigger.Conditions>
+                        <Condition Binding="{Binding IsActive}" Value="True"/>
+                        <Condition Binding="{Binding RelativeSource={RelativeSource AncestorType=DataGridRow}, Path=IsSelected}" Value="True"/>
+                    </MultiDataTrigger.Conditions>
+                    <Setter Property="Background" Value="#93C5FD"/>
+                    <Setter Property="Foreground" Value="#1E3A8A"/>
+                </MultiDataTrigger>
             </Style.Triggers>
         </Style>
 
@@ -742,11 +750,11 @@
                                               PreviewMouseWheel="ProfilesGrid_PreviewMouseWheel"
                                               Margin="14,0,14,14">
                                         <DataGrid.ContextMenu>
-                                            <ContextMenu Style="{StaticResource NodeContextMenuStyle}">
-                                                <MenuItem Header="设为活动节点" Click="CtxSetActiveNode_Click"/>
-                                                <Separator/>
-                                                <MenuItem Header="编辑节点" Click="CtxEditNode_Click"/>
-                                                <Separator/>
+                                            <ContextMenu Style="{StaticResource NodeContextMenuStyle}" Opened="ProfilesContextMenu_Opened">
+                                                <MenuItem Header="设为活动节点" Tag="SingleSelectionOnly" Click="CtxSetActiveNode_Click"/>
+                                                <Separator Tag="SingleSelectionOnly"/>
+                                                <MenuItem Header="编辑节点" Tag="SingleSelectionOnly" Click="CtxEditNode_Click"/>
+                                                <Separator Tag="SingleSelectionOnly"/>
                                                 <MenuItem Header="测速选中节点" Click="CtxTcpTest_Click"/>
                                                 <MenuItem Header="复制选中节点链接" Click="CtxCopySelectedLinks_Click"/>
                                                 <Separator/>
@@ -813,7 +821,7 @@
                                                 <DataGridTemplateColumn.CellTemplate>
                                                     <DataTemplate>
                                                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
-                                                            <Ellipse x:Name="StatusDot" Width="9" Height="9" Fill="{StaticResource GreenBrush}" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                                            <Ellipse x:Name="StatusDot" Width="9" Height="9" Fill="#3B82F6" Margin="0,0,8,0" VerticalAlignment="Center"/>
                                                             <TextBlock x:Name="StatusText" Text="{Binding StatusDisplay}" Style="{StaticResource NodeStatusTextStyle}"/>
                                                         </StackPanel>
                                                         <DataTemplate.Triggers>
@@ -830,11 +838,12 @@
                                                     </DataTemplate>
                                                 </DataGridTemplateColumn.CellTemplate>
                                             </DataGridTemplateColumn>
-                                            <DataGridTemplateColumn Header="名称" Width="220">
+                                            <DataGridTemplateColumn Header="名称" Width="74">
                                                 <DataGridTemplateColumn.CellTemplate>
                                                     <DataTemplate>
                                                         <TextBlock Text="{Binding DisplayName}" VerticalAlignment="Center"
-                                                                   TextAlignment="Left" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"
+                                                                   TextAlignment="Center" HorizontalAlignment="Stretch"
+                                                                   TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"
                                                                    ToolTip="{Binding DisplayName}"/>
                                                     </DataTemplate>
                                                 </DataGridTemplateColumn.CellTemplate>

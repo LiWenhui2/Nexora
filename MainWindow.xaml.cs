@@ -1905,6 +1905,24 @@ public partial class MainWindow : Window
         }
     }
 
+    private void ProfilesContextMenu_Opened(object sender, RoutedEventArgs e)
+    {
+        if (sender is not System.Windows.Controls.ContextMenu menu)
+        {
+            return;
+        }
+
+        var visibility = ProfilesGrid.SelectedItems.Count == 1
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+
+        foreach (var item in menu.Items.OfType<FrameworkElement>()
+                     .Where(item => string.Equals(item.Tag?.ToString(), "SingleSelectionOnly", StringComparison.Ordinal)))
+        {
+            item.Visibility = visibility;
+        }
+    }
+
     private void ProfilesGrid_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
     {
         if (e.Key == Key.A && Keyboard.Modifiers == ModifierKeys.Control)
