@@ -72,7 +72,9 @@ public partial class MainWindow : Window
     private CancellationTokenSource? _websiteTestCancellation;
     private readonly DispatcherTimer _registerCodeCooldownTimer = new() { Interval = TimeSpan.FromSeconds(1) };
     private readonly DispatcherTimer _aboutRuntimeTimer = new() { Interval = TimeSpan.FromSeconds(1) };
+    private readonly Dictionary<string, DispatcherTimer> _subscriptionRefreshTimers = new(StringComparer.OrdinalIgnoreCase);
     private int _registerCodeCooldownSeconds;
+    private string? _subscriptionContextMenuName;
 
     public MainWindow(bool startSilent = false)
     {
@@ -144,7 +146,6 @@ public partial class MainWindow : Window
         }
 
         RunAtStartupSilentInfoIcon.Source = bitmap;
-        AboutHttpProxyInfoIcon.Source = bitmap;
         AllowLanAccessInfoIcon.Source = bitmap;
     }
 
@@ -526,15 +527,15 @@ public partial class MainWindow : Window
         SelectRoutingCombo(_settings.RoutingMode);
         UpdateRoutingEditorVisibility();
 
-        var selected = _profiles.FirstOrDefault(p => p.Id == _settings.SelectedProfileId) ?? _profiles.FirstOrDefault();
-        if (selected is not null && _settings.SelectedProfileId != selected.Id)
+        var selected = GetSelectedProfileOrNull();
+        if (!string.IsNullOrWhiteSpace(_settings.SelectedProfileId) && selected is null)
         {
-            _settings.SelectedProfileId = selected.Id;
+            _settings.SelectedProfileId = null;
             _settingsStore.Save(_settings);
         }
 
         ProfilesGrid.SelectedItem = selected;
-        NodePickerCombo.SelectedItem = selected;
+        SyncNodePickerDisplay(selected);
         SyncTunToggleFromSettings();
         SyncProxyToggleFromCoreState();
         UpdateActiveProfileMarkers(_settings.SelectedProfileId);
@@ -549,6 +550,7 @@ public partial class MainWindow : Window
         SyncRunAtStartupFromSettings();
         SyncAllowLanAccessFromSettings();
         ApplyStartupSettings(save: false);
+        RestoreSubscriptionAutoRefreshTimers();
     }
 
     private void InitializeWebsiteTests()
@@ -823,23 +825,23 @@ public partial class MainWindow : Window
             return;
         }
 
-        var selected = (RegionFilterCombo.SelectedItem as ComboBoxItem)?.Content?.ToString() ?? "全部地区";
+        var selected = NormalizeFilterValue((RegionFilterCombo.SelectedItem as ComboBoxItem)?.Content?.ToString(), "地区");
         _suppressRegionFilterComboEvent = true;
         RegionFilterCombo.Items.Clear();
-        RegionFilterCombo.Items.Add(new ComboBoxItem { Content = "全部地区" });
+        RegionFilterCombo.Items.Add(new ComboBoxItem { Content = "地区：全部" });
 
         foreach (var region in _profiles
-                     .Select(p => p.RegionDisplay)
+                     .Select(p => p.RegionCountryDisplay)
                      .Where(r => !string.IsNullOrWhiteSpace(r) && r != "-")
                      .Distinct(StringComparer.OrdinalIgnoreCase)
                      .OrderBy(r => r, StringComparer.OrdinalIgnoreCase))
         {
-            RegionFilterCombo.Items.Add(new ComboBoxItem { Content = region });
+            RegionFilterCombo.Items.Add(new ComboBoxItem { Content = $"地区：{region}" });
         }
 
         var matched = RegionFilterCombo.Items
             .OfType<ComboBoxItem>()
-            .FirstOrDefault(item => string.Equals(item.Content?.ToString(), selected, StringComparison.OrdinalIgnoreCase));
+            .FirstOrDefault(item => string.Equals(NormalizeFilterValue(item.Content?.ToString(), "地区"), selected, StringComparison.OrdinalIgnoreCase));
         RegionFilterCombo.SelectedItem = matched ?? RegionFilterCombo.Items[0];
         _suppressRegionFilterComboEvent = false;
     }
@@ -851,9 +853,9 @@ public partial class MainWindow : Window
             return;
         }
 
-        var selected = (SubscriptionFilterCombo.SelectedItem as ComboBoxItem)?.Content?.ToString() ?? "全部订阅";
+        var selected = NormalizeFilterValue((SubscriptionFilterCombo.SelectedItem as ComboBoxItem)?.Content?.ToString(), "来源");
         SubscriptionFilterCombo.Items.Clear();
-        SubscriptionFilterCombo.Items.Add(new ComboBoxItem { Content = "全部订阅" });
+        SubscriptionFilterCombo.Items.Add(new ComboBoxItem { Content = "来源：全部订阅" });
 
         foreach (var subscription in _profiles
                      .Select(p => p.SubscriptionDisplay)
@@ -861,13 +863,27 @@ public partial class MainWindow : Window
                      .Distinct(StringComparer.OrdinalIgnoreCase)
                      .OrderBy(s => s, StringComparer.OrdinalIgnoreCase))
         {
-            SubscriptionFilterCombo.Items.Add(new ComboBoxItem { Content = subscription });
+            SubscriptionFilterCombo.Items.Add(new ComboBoxItem { Content = $"来源：{subscription}" });
         }
 
         var matched = SubscriptionFilterCombo.Items
             .OfType<ComboBoxItem>()
-            .FirstOrDefault(item => string.Equals(item.Content?.ToString(), selected, StringComparison.OrdinalIgnoreCase));
+            .FirstOrDefault(item => string.Equals(NormalizeFilterValue(item.Content?.ToString(), "来源"), selected, StringComparison.OrdinalIgnoreCase));
         SubscriptionFilterCombo.SelectedItem = matched ?? SubscriptionFilterCombo.Items[0];
+    }
+
+    private static string NormalizeFilterValue(string? value, string prefix)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return "";
+        }
+
+        var text = value.Trim();
+        var fullPrefix = $"{prefix}：";
+        return text.StartsWith(fullPrefix, StringComparison.Ordinal)
+            ? text[fullPrefix.Length..].Trim()
+            : text;
     }
 
     private void ScheduleRegionEnrichment(IEnumerable<VmessProfile>? profiles = null)
@@ -913,18 +929,29 @@ public partial class MainWindow : Window
             return false;
         }
 
-        var protocol = (ProtocolFilterCombo?.SelectedItem as ComboBoxItem)?.Content?.ToString();
+        var protocol = NormalizeFilterValue((ProtocolFilterCombo?.SelectedItem as ComboBoxItem)?.Content?.ToString(), "协议");
         if (!string.IsNullOrWhiteSpace(protocol) &&
-            protocol != "全部协议" &&
+            protocol != "全部" &&
             !string.Equals(profile.ProtocolDisplay, protocol, StringComparison.OrdinalIgnoreCase))
         {
             return false;
         }
 
-        var region = (RegionFilterCombo?.SelectedItem as ComboBoxItem)?.Content?.ToString();
+        var region = NormalizeFilterValue((RegionFilterCombo?.SelectedItem as ComboBoxItem)?.Content?.ToString(), "地区");
         if (!string.IsNullOrWhiteSpace(region) &&
-            region != "全部地区" &&
-            !string.Equals(profile.RegionDisplay, region, StringComparison.OrdinalIgnoreCase))
+            region != "全部" &&
+            !string.Equals(profile.RegionCountryDisplay, region, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var latency = NormalizeFilterValue((LatencyFilterCombo?.SelectedItem as ComboBoxItem)?.Content?.ToString(), "延迟");
+        if (latency == "可用" && profile.TcpLatencyMs is null)
+        {
+            return false;
+        }
+
+        if (latency == "超时" && profile.TcpLatencyDisplay != "Timeout")
         {
             return false;
         }
@@ -934,7 +961,7 @@ public partial class MainWindow : Window
             return false;
         }
 
-        var subscription = (SubscriptionFilterCombo?.SelectedItem as ComboBoxItem)?.Content?.ToString();
+        var subscription = NormalizeFilterValue((SubscriptionFilterCombo?.SelectedItem as ComboBoxItem)?.Content?.ToString(), "来源");
         if (!string.IsNullOrWhiteSpace(subscription) &&
             subscription != "全部订阅" &&
             !string.Equals(profile.SubscriptionDisplay, subscription, StringComparison.OrdinalIgnoreCase))
@@ -979,7 +1006,7 @@ public partial class MainWindow : Window
         }
 
         _profilesView.SortDescriptions.Clear();
-        var sort = (SortCombo?.SelectedItem as ComboBoxItem)?.Content?.ToString();
+        var sort = NormalizeFilterValue((SortCombo?.SelectedItem as ComboBoxItem)?.Content?.ToString(), "排序");
         if (sort == "延迟优先")
         {
             _profilesView.SortDescriptions.Add(new SortDescription(nameof(VmessProfile.TcpLatencyMs), ListSortDirection.Ascending));
@@ -1016,37 +1043,43 @@ public partial class MainWindow : Window
         if (profile is null)
         {
             NodeAddressText.Text = "[VMess] -";
-            CurrentTcpLatencyText.Text = "TCP -";
+            CurrentTcpLatencyText.Text = "-";
             NodeAvailabilityText.Text = "无节点";
             return;
         }
 
-        NodeAddressText.Text = profile.NodeAddressDisplay;
-        CurrentTcpLatencyText.Text = $"TCP {profile.TcpLatencyDisplay}";
+        NodeAddressText.Text = $"[{profile.ProtocolDisplay}] {profile.DisplayName} · {profile.Endpoint}";
+        CurrentTcpLatencyText.Text = profile.TcpLatencyDisplay;
         NodeAvailabilityText.Text = profile.TcpLatencyDisplay switch
         {
-            "Timeout" => "不可用",
+            "Timeout" => "超时",
             "-" or "..." => "待测速",
-            _ when profile.TcpLatencyMs is not null => "可用",
+            _ when profile.TcpLatencyMs is not null => profile.StatusDisplay,
             _ => "待测速"
         };
 
         var tagBackground = NodeAvailabilityText.Text switch
         {
             "可用" => "#DCFCE7",
-            "不可用" => "#FEE2E2",
+            "当前" => "#DBEAFE",
+            "超时" => "#FEE2E2",
+            "过期" => "#FEE2E2",
             _ => "#FEF3C7"
         };
         var tagBorder = NodeAvailabilityText.Text switch
         {
             "可用" => "#86EFAC",
-            "不可用" => "#FCA5A5",
+            "当前" => "#93C5FD",
+            "超时" => "#FCA5A5",
+            "过期" => "#FCA5A5",
             _ => "#FDE68A"
         };
         var tagForeground = NodeAvailabilityText.Text switch
         {
             "可用" => "#166534",
-            "不可用" => "#991B1B",
+            "当前" => "#1D4ED8",
+            "超时" => "#991B1B",
+            "过期" => "#991B1B",
             _ => "#92400E"
         };
         NodeAvailabilityTag.Background = (SolidColorBrush)new BrushConverter().ConvertFromString(tagBackground)!;
@@ -1058,21 +1091,35 @@ public partial class MainWindow : Window
     {
         foreach (var profile in _profiles)
         {
-            profile.SetActive(profile.Id == activeId);
+            profile.SetActive(!string.IsNullOrWhiteSpace(activeId) && profile.Id == activeId);
         }
 
         ProfilesGrid.Items.Refresh();
 
-        var active = _profiles.FirstOrDefault(p => p.Id == activeId);
-        if (active is not null)
+        var active = string.IsNullOrWhiteSpace(activeId)
+            ? null
+            : _profiles.FirstOrDefault(p => p.Id == activeId);
+
+        SideNodeText.Text = active is null
+            ? "节点：无活动节点"
+            : $"节点：{active.DisplayName} · {active.ProtocolDisplay}";
+
+        SyncNodePickerDisplay(active);
+        UpdateTrayStatus();
+    }
+
+    private void SyncNodePickerDisplay(VmessProfile? active = null)
+    {
+        if (!_isUiReady || NodePickerCombo is null)
         {
-            SideNodeText.Text = $"节点：{active.DisplayName} · {active.ProtocolDisplay}";
-            _suppressNodePickerComboEvent = true;
-            NodePickerCombo.SelectedItem = active;
-            _suppressNodePickerComboEvent = false;
+            return;
         }
 
-        UpdateTrayStatus();
+        active ??= GetSelectedProfileOrNull();
+        _suppressNodePickerComboEvent = true;
+        NodePickerCombo.SelectedItem = active;
+        NodePickerCombo.Text = active?.PickerDisplay ?? "无活动节点";
+        _suppressNodePickerComboEvent = false;
     }
 
     private void UpdateSidebarStatus()
@@ -1448,19 +1495,7 @@ public partial class MainWindow : Window
         StatUploadText.Text = running ? $"{FormatBytes(upSpeed)}/s" : "—";
         StatTodayText.Text = FormatBytes(_settings.TodayUplinkBytes + _settings.TodayDownlinkBytes);
         StatTotalText.Text = FormatBytes(_settings.TotalDownlinkBytes + _settings.TotalUplinkBytes);
-        StatRemainingText.Text = FormatSubscriptionRemaining();
         UpdateTrayStatus();
-    }
-
-    private string FormatSubscriptionRemaining()
-    {
-        if (_settings.SubscriptionTotalBytes is not long total)
-        {
-            return "—";
-        }
-
-        var remaining = Math.Max(0, total - _settings.SubscriptionUploadBytes - _settings.SubscriptionDownloadBytes);
-        return FormatBytes(remaining);
     }
 
     private void ApplySubscriptionTrafficInfo(SubscriptionTrafficInfo? trafficInfo)
@@ -1816,7 +1851,7 @@ public partial class MainWindow : Window
         return (RoutingCombo.SelectedItem as ComboBoxItem)?.Content?.ToString() switch
         {
             "全局代理" => "Global",
-            "V4-绕过大陆 (Whitelist)" => "BypassChina",
+            "绕过大陆" => "BypassChina",
             "绕过局域网" => "BypassLan",
             "直连模式" => "Direct",
             "自定义规则" => "Custom",
@@ -1830,11 +1865,11 @@ public partial class MainWindow : Window
         var label = mode switch
         {
             "Global" => "全局代理",
-            "BypassChina" => "V4-绕过大陆 (Whitelist)",
+            "BypassChina" => "绕过大陆",
             "BypassLan" => "绕过局域网",
             "Direct" => "直连模式",
             "Custom" => "自定义规则",
-            _ => "V4-绕过大陆 (Whitelist)"
+            _ => "绕过大陆"
         };
 
         foreach (ComboBoxItem item in RoutingCombo.Items)
@@ -1985,16 +2020,40 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (MessageBox.Show($"确定删除节点「{profile.DisplayName}」？", "Nexora", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
+        DeleteProfiles([profile]);
+    }
+
+    private List<VmessProfile> GetSelectedProfiles() =>
+        ProfilesGrid.SelectedItems.Cast<object>().OfType<VmessProfile>().ToList();
+
+    private void DeleteProfiles(IReadOnlyList<VmessProfile> profilesToDelete)
+    {
+        if (profilesToDelete.Count == 0)
         {
             return;
         }
 
-        _profiles.Remove(profile);
-        SaveProfiles(_profiles.FirstOrDefault()?.Id);
+        var message = profilesToDelete.Count == 1
+            ? $"确定删除节点「{profilesToDelete[0].DisplayName}」？"
+            : $"确定删除选中的 {profilesToDelete.Count} 个节点？";
+
+        if (MessageBox.Show(message, "Nexora", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        foreach (var profile in profilesToDelete)
+        {
+            _profiles.Remove(profile);
+        }
+
+        var nextActiveId = _profiles.FirstOrDefault(p => p.Id == _settings.SelectedProfileId)?.Id
+            ?? _profiles.FirstOrDefault()?.Id;
+        SaveProfiles(nextActiveId);
         RefreshNodePicker();
+        SyncNodePickerDisplay();
         RefreshSubscriptionFilterOptions();
-        ProfilesGrid.SelectedItem = _profiles.FirstOrDefault();
+        ProfilesGrid.SelectedItem = _profiles.FirstOrDefault(profile => profile.Id == nextActiveId);
     }
 
     private void CtxTcpTest_Click(object sender, RoutedEventArgs e)
@@ -2040,36 +2099,20 @@ public partial class MainWindow : Window
     private void OpenImportDialog()
     {
         var dialog = new ImportDialog { Owner = this };
-        if (dialog.ShowDialog() != true)
+        if (dialog.ShowDialog() != true || dialog.ImportResult is not SubscriptionImportResult result)
         {
             return;
         }
 
-        foreach (var profile in dialog.ImportedProfiles)
-        {
-            _profiles.Add(profile);
-        }
-
-        ApplySubscriptionTrafficInfo(dialog.ImportedTrafficInfo);
-
-        var last = dialog.ImportedProfiles.LastOrDefault();
-        SaveProfiles(last?.Id ?? _settings.SelectedProfileId);
-        RefreshNodePicker();
-        ProfilesGrid.Items.Refresh();
-        if (last is not null)
-        {
-            ProfilesGrid.SelectedItem = last;
-        }
-
-        ScheduleRegionEnrichment(dialog.ImportedProfiles);
-        RefreshRegionFilterOptions();
-        RefreshSubscriptionFilterOptions();
+        AddImportedProfiles(result);
     }
 
     private void RefreshNodePicker()
     {
         NodePickerCombo.ItemsSource = null;
         NodePickerCombo.ItemsSource = _profiles;
+        NodePickerCombo.IsEditable = true;
+        SyncNodePickerDisplay();
     }
 
     private void NodeListNavButton_Click(object sender, RoutedEventArgs e) => ShowNodePage();
@@ -2280,10 +2323,7 @@ public partial class MainWindow : Window
             : "未安装";
         AboutOperatingSystemText.Text = SystemInfoService.GetOperatingSystemDescription();
         AboutSystemProxyText.Text = SystemInfoService.GetSystemProxyAddress();
-        AboutHttpProxyAddressText.Text = SystemInfoService.GetHttpProxyAddressDisplay(_settings.HttpPort, _settings.AllowLanAccess);
-        AboutHttpProxyInfoIcon.ToolTip = _settings.AllowLanAccess
-            ? $"本地 HTTP 入站地址。虚拟机可使用主机局域网 IP 和端口 {_settings.HttpPort} 访问。"
-            : "Nexora 本地 HTTP 入站地址，系统代理与网站连通性测试均通过此地址访问。";
+        AboutLanAddressText.Text = SystemInfoService.GetPrimaryLanIPv4() ?? "未获取";
         AboutLocalPublicIpText.Text = "检测中...";
         SetAboutDirectoryText(AboutConfigDirectoryText, configDirectory);
         SetAboutDirectoryText(AboutRuntimeDirectoryText, runtimeDirectory);
@@ -2679,6 +2719,8 @@ public partial class MainWindow : Window
 
     private void AddImportedProfiles(SubscriptionImportResult result)
     {
+        RegisterSubscriptionSource(result);
+
         foreach (var profile in result.Profiles)
         {
             if (result.TrafficInfo is not null && !string.IsNullOrWhiteSpace(profile.SubscriptionName))
@@ -2705,6 +2747,262 @@ public partial class MainWindow : Window
         ScheduleRegionEnrichment(result.Profiles);
         RefreshRegionFilterOptions();
         RefreshSubscriptionFilterOptions();
+
+        if (result.Profiles.Count > 0)
+        {
+            _ = RunTcpLatencyTestsAsync(result.Profiles, parallel: true);
+        }
+    }
+
+    private void RegisterSubscriptionSource(SubscriptionImportResult result)
+    {
+        if (string.IsNullOrWhiteSpace(result.SourceUrl) || string.IsNullOrWhiteSpace(result.SubscriptionName))
+        {
+            return;
+        }
+
+        _settings.SubscriptionSources.TryGetValue(result.SubscriptionName, out var existing);
+        _settings.SubscriptionSources[result.SubscriptionName] = new SubscriptionSource
+        {
+            Url = result.SourceUrl,
+            AutoRefreshMinutes = existing?.AutoRefreshMinutes
+        };
+        _settingsStore.Save(_settings);
+    }
+
+    private void RestoreSubscriptionAutoRefreshTimers()
+    {
+        foreach (var timer in _subscriptionRefreshTimers.Values)
+        {
+            timer.Stop();
+        }
+
+        _subscriptionRefreshTimers.Clear();
+
+        foreach (var (subscriptionName, source) in _settings.SubscriptionSources)
+        {
+            if (source.AutoRefreshMinutes is int minutes && minutes > 0)
+            {
+                StartSubscriptionAutoRefresh(subscriptionName, minutes, save: false);
+            }
+        }
+    }
+
+    private void StartSubscriptionAutoRefresh(string subscriptionName, int minutes, bool save = true)
+    {
+        if (_subscriptionRefreshTimers.TryGetValue(subscriptionName, out var existingTimer))
+        {
+            existingTimer.Stop();
+            _subscriptionRefreshTimers.Remove(subscriptionName);
+        }
+
+        if (!_settings.SubscriptionSources.TryGetValue(subscriptionName, out var source))
+        {
+            source = new SubscriptionSource();
+            _settings.SubscriptionSources[subscriptionName] = source;
+        }
+
+        source.AutoRefreshMinutes = minutes;
+        if (save)
+        {
+            _settingsStore.Save(_settings);
+        }
+
+        var timer = new DispatcherTimer { Interval = TimeSpan.FromMinutes(minutes) };
+        timer.Tick += async (_, _) => await RefreshSubscriptionAsync(subscriptionName);
+        timer.Start();
+        _subscriptionRefreshTimers[subscriptionName] = timer;
+    }
+
+    private void StopSubscriptionAutoRefresh(string subscriptionName, bool save = true)
+    {
+        if (_subscriptionRefreshTimers.TryGetValue(subscriptionName, out var timer))
+        {
+            timer.Stop();
+            _subscriptionRefreshTimers.Remove(subscriptionName);
+        }
+
+        if (_settings.SubscriptionSources.TryGetValue(subscriptionName, out var source))
+        {
+            source.AutoRefreshMinutes = null;
+            if (save)
+            {
+                _settingsStore.Save(_settings);
+            }
+        }
+    }
+
+    private async void SubscriptionGroupRefreshButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: string subscriptionName })
+        {
+            await RefreshSubscriptionAsync(subscriptionName);
+        }
+    }
+
+    private void SubscriptionContextMenu_Opened(object sender, RoutedEventArgs e)
+    {
+        if (sender is not System.Windows.Controls.ContextMenu menu || menu.PlacementTarget is not DependencyObject target)
+        {
+            if (sender is System.Windows.Controls.ContextMenu invalidMenu)
+            {
+                invalidMenu.IsOpen = false;
+            }
+
+            return;
+        }
+
+        var subscriptionName = FindSubscriptionGroupName(target);
+        if (string.IsNullOrWhiteSpace(subscriptionName) ||
+            string.Equals(subscriptionName, "手动", StringComparison.OrdinalIgnoreCase))
+        {
+            menu.IsOpen = false;
+            return;
+        }
+
+        _subscriptionContextMenuName = subscriptionName;
+    }
+
+    private async void SubscriptionRefreshMenu_Click(object sender, RoutedEventArgs e)
+    {
+        if (!string.IsNullOrWhiteSpace(_subscriptionContextMenuName))
+        {
+            await RefreshSubscriptionAsync(_subscriptionContextMenuName);
+        }
+    }
+
+    private void SubscriptionAutoRefreshOff_Click(object sender, RoutedEventArgs e)
+    {
+        if (!string.IsNullOrWhiteSpace(_subscriptionContextMenuName))
+        {
+            StopSubscriptionAutoRefresh(_subscriptionContextMenuName);
+        }
+    }
+
+    private void SubscriptionAutoRefreshPreset_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not System.Windows.Controls.MenuItem { Tag: string tag } ||
+            !int.TryParse(tag, out var minutes) ||
+            string.IsNullOrWhiteSpace(_subscriptionContextMenuName))
+        {
+            return;
+        }
+
+        StartSubscriptionAutoRefresh(_subscriptionContextMenuName, minutes);
+    }
+
+    private void SubscriptionAutoRefreshCustom_Click(object sender, RoutedEventArgs e)
+    {
+        if (string.IsNullOrWhiteSpace(_subscriptionContextMenuName))
+        {
+            return;
+        }
+
+        _settings.SubscriptionSources.TryGetValue(_subscriptionContextMenuName, out var source);
+        var dialog = new DurationPromptDialog(_subscriptionContextMenuName, source?.AutoRefreshMinutes)
+        {
+            Owner = this
+        };
+
+        if (dialog.ShowDialog() == true)
+        {
+            StartSubscriptionAutoRefresh(_subscriptionContextMenuName, dialog.Minutes);
+        }
+    }
+
+    private static string? FindSubscriptionGroupName(DependencyObject source)
+    {
+        var current = source;
+        while (current is not null)
+        {
+            if (current is FrameworkElement { Tag: string name } && !string.IsNullOrWhiteSpace(name))
+            {
+                return name;
+            }
+
+            current = VisualTreeHelper.GetParent(current);
+        }
+
+        return null;
+    }
+
+    private async Task RefreshSubscriptionAsync(string subscriptionName)
+    {
+        if (string.Equals(subscriptionName, "手动", StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        if (!_settings.SubscriptionSources.TryGetValue(subscriptionName, out var source) ||
+            string.IsNullOrWhiteSpace(source.Url))
+        {
+            MessageBox.Show("该订阅没有保存原始地址，请重新导入订阅链接。", "Nexora", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        try
+        {
+            var result = await SubscriptionImportService.ImportAsync(source.Url);
+            var previousActive = GetSelectedProfileOrNull();
+            var removed = _profiles
+                .Where(profile => string.Equals(profile.SubscriptionName, subscriptionName, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            foreach (var profile in removed)
+            {
+                _profiles.Remove(profile);
+            }
+
+            foreach (var profile in result.Profiles)
+            {
+                profile.SubscriptionName = subscriptionName;
+                profile.SubscriptionUpdatedAt = DateTime.Now;
+                profile.UpdatedAt = DateTime.Now;
+                if (result.TrafficInfo is not null)
+                {
+                    profile.SubscriptionUploadBytes = result.TrafficInfo.UploadBytes;
+                    profile.SubscriptionDownloadBytes = result.TrafficInfo.DownloadBytes;
+                    profile.SubscriptionTotalBytes = result.TrafficInfo.TotalBytes;
+                }
+
+                _profiles.Add(profile);
+            }
+
+            ApplySubscriptionTrafficInfo(result.TrafficInfo);
+
+            string? nextActiveId = previousActive?.Id;
+            if (previousActive is not null &&
+                string.Equals(previousActive.SubscriptionName, subscriptionName, StringComparison.OrdinalIgnoreCase))
+            {
+                var replacement = _profiles.FirstOrDefault(profile =>
+                    profile.Address == previousActive.Address &&
+                    profile.Port == previousActive.Port &&
+                    string.Equals(profile.Protocol, previousActive.Protocol, StringComparison.OrdinalIgnoreCase) &&
+                    string.Equals(profile.SubscriptionName, subscriptionName, StringComparison.OrdinalIgnoreCase));
+                nextActiveId = replacement?.Id ?? _profiles.FirstOrDefault()?.Id;
+            }
+            else if (_profiles.All(profile => profile.Id != nextActiveId))
+            {
+                nextActiveId = _profiles.FirstOrDefault()?.Id;
+            }
+
+            SaveProfiles(nextActiveId);
+            RefreshNodePicker();
+            SyncNodePickerDisplay();
+            RefreshRegionFilterOptions();
+            RefreshSubscriptionFilterOptions();
+            ProfilesGrid.Items.Refresh();
+            ScheduleRegionEnrichment(result.Profiles);
+
+            if (result.Profiles.Count > 0)
+            {
+                await RunTcpLatencyTestsAsync(result.Profiles, parallel: true);
+            }
+        }
+        catch (Exception ex)
+        {
+            ShowError(ex);
+        }
     }
 
     private static string DecodeQrCodeFromFile(string path)
@@ -2833,7 +3131,7 @@ public partial class MainWindow : Window
         var unavailable = _profiles.Where(IsUnavailableProfile).ToList();
         if (unavailable.Count == 0)
         {
-            MessageBox.Show("没有已测速为不可用的节点。请先执行 TCP 测速或等待启动自动测速完成。", "Nexora", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show("没有已测速为不可用的节点。请先执行测速或等待启动自动测速完成。", "Nexora", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
 
@@ -2981,37 +3279,26 @@ public partial class MainWindow : Window
         _ = RunTcpLatencyTestsAsync(_profiles.ToList(), parallel: true);
     }
 
-    private async void TestTcpLatencyButton_Click(object sender, RoutedEventArgs e)
+    private async void TestCurrentLatencyButton_Click(object sender, RoutedEventArgs e)
     {
-        if (ProfilesGrid.SelectedItem is not VmessProfile profile)
+        var selected = GetSelectedProfiles();
+        if (selected.Count == 0)
         {
             MessageBox.Show("请先选择一个节点。", "Nexora", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
 
-        await RunTcpLatencyTestsAsync([profile], parallel: true);
+        await RunTcpLatencyTestsAsync([selected[0]], parallel: true);
     }
 
-    private async void SwitchFastestButton_Click(object sender, RoutedEventArgs e)
+    private void TestAllLatencyButton_Click(object sender, RoutedEventArgs e)
     {
-        var fastest = _profiles
-            .Where(p => p.TcpLatencyMs is not null)
-            .OrderBy(p => p.TcpLatencyMs)
-            .FirstOrDefault();
-
-        if (fastest is null)
+        if (_profiles.Count == 0)
         {
-            MessageBox.Show("没有可用的测速结果，请先执行 TCP 测速。", "Nexora", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
 
-        ProfilesGrid.SelectedItem = fastest;
-        SaveProfiles(fastest.Id);
-        UpdateNodeStatusBar(fastest);
-        if (_coreService.IsRunning)
-        {
-            await RestartCoreAsync();
-        }
+        _ = RunTcpLatencyTestsAsync(_profiles.ToList(), parallel: true);
     }
 
     private async Task RunTcpLatencyTestsAsync(IReadOnlyList<VmessProfile> profiles, bool parallel)
@@ -3068,8 +3355,8 @@ public partial class MainWindow : Window
 
     private void SetLatencyTestingEnabled(bool enabled)
     {
-        TestTcpLatencyButton.IsEnabled = enabled;
-        SwitchFastestButton.IsEnabled = enabled;
+        TestCurrentLatencyButton.IsEnabled = enabled;
+        TestAllLatencyButton.IsEnabled = enabled;
         RemoveUnavailableButton.IsEnabled = enabled;
         RemoveDuplicateButton.IsEnabled = enabled;
         EditRoutingButton.IsEnabled = enabled;
@@ -3082,15 +3369,21 @@ public partial class MainWindow : Window
 
     private VmessProfile GetActiveProfile()
     {
-        return GetCurrentProfileOrNull()
-            ?? throw new InvalidOperationException("请先添加节点。");
+        return GetSelectedProfileOrNull()
+            ?? throw new InvalidOperationException("请先选择活动节点。");
     }
 
-    private VmessProfile? GetCurrentProfileOrNull()
+    private VmessProfile? GetSelectedProfileOrNull()
     {
-        return _profiles.FirstOrDefault(p => p.Id == _settings.SelectedProfileId)
-            ?? _profiles.FirstOrDefault();
+        if (string.IsNullOrWhiteSpace(_settings.SelectedProfileId))
+        {
+            return null;
+        }
+
+        return _profiles.FirstOrDefault(p => p.Id == _settings.SelectedProfileId);
     }
+
+    private VmessProfile? GetCurrentProfileOrNull() => GetSelectedProfileOrNull();
 
     private static string FormatSystemProxyMode(string mode)
     {

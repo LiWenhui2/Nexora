@@ -4,6 +4,8 @@ public sealed class SubscriptionImportResult
 {
     public List<VmessProfile> Profiles { get; init; } = [];
     public SubscriptionTrafficInfo? TrafficInfo { get; init; }
+    public string? SourceUrl { get; init; }
+    public string? SubscriptionName { get; init; }
 }
 
 public sealed class SubscriptionTrafficInfo

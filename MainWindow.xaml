@@ -7,7 +7,7 @@
         Title="Nexora" Height="860" Width="1460" MinHeight="780" MinWidth="1280"
         Background="#F4F6FA"
         FontFamily="Segoe UI, Microsoft YaHei UI"
-        FontSize="17">
+        FontSize="16">
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVis"/>
         <SolidColorBrush x:Key="BgBrush" Color="#F4F6FA"/>
@@ -17,14 +17,14 @@
         <SolidColorBrush x:Key="LineBrush" Color="#E2E8F0"/>
         <SolidColorBrush x:Key="TextBrush" Color="#0F172A"/>
         <SolidColorBrush x:Key="MutedBrush" Color="#64748B"/>
-        <SolidColorBrush x:Key="AccentTextBrush" Color="#B45309"/>
+        <SolidColorBrush x:Key="AccentTextBrush" Color="#2563EB"/>
         <SolidColorBrush x:Key="GreenBrush" Color="#16A34A"/>
         <SolidColorBrush x:Key="RedBrush" Color="#DC2626"/>
-        <SolidColorBrush x:Key="YellowBrush" Color="#CA8A04"/>
+        <SolidColorBrush x:Key="YellowBrush" Color="#60A5FA"/>
 
         <LinearGradientBrush x:Key="AccentGradientBrush" StartPoint="0,0" EndPoint="1,1">
-            <GradientStop Color="#FACC15" Offset="0"/>
-            <GradientStop Color="#F59E0B" Offset="1"/>
+            <GradientStop Color="#BFDBFE" Offset="0"/>
+            <GradientStop Color="#60A5FA" Offset="1"/>
         </LinearGradientBrush>
 
         <Style TargetType="TextBlock">
@@ -46,7 +46,7 @@
 
         <Style x:Key="NavButtonStyle" TargetType="Button">
             <Setter Property="Height" Value="46"/>
-            <Setter Property="FontSize" Value="19"/>
+            <Setter Property="FontSize" Value="18"/>
             <Setter Property="HorizontalContentAlignment" Value="Left"/>
             <Setter Property="Padding" Value="14,0"/>
             <Setter Property="Margin" Value="0,3"/>
@@ -73,19 +73,19 @@
         <Style x:Key="ActiveNavButtonStyle" TargetType="Button" BasedOn="{StaticResource NavButtonStyle}">
             <Setter Property="Foreground" Value="{StaticResource AccentTextBrush}"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="Background" Value="#FEF3C7"/>
+            <Setter Property="Background" Value="#DBEAFE"/>
         </Style>
 
         <Style x:Key="NavChildButtonStyle" TargetType="Button" BasedOn="{StaticResource NavButtonStyle}">
             <Setter Property="Height" Value="42"/>
-            <Setter Property="FontSize" Value="18"/>
+            <Setter Property="FontSize" Value="17"/>
             <Setter Property="Padding" Value="28,0,12,0"/>
             <Setter Property="Foreground" Value="#64748B"/>
         </Style>
 
         <Style x:Key="NavGroupHeaderStyle" TargetType="TextBlock">
             <Setter Property="Foreground" Value="#475569"/>
-            <Setter Property="FontSize" Value="17"/>
+            <Setter Property="FontSize" Value="16"/>
             <Setter Property="FontWeight" Value="Bold"/>
             <Setter Property="Margin" Value="14,18,0,6"/>
         </Style>
@@ -144,7 +144,7 @@
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
                                 <Setter TargetName="Root" Property="Background" Value="#F1F5F9"/>
-                                <Setter Property="Foreground" Value="#B45309"/>
+                                <Setter Property="Foreground" Value="#2563EB"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -197,7 +197,7 @@
             <Setter Property="Foreground" Value="#111827"/>
             <Setter Property="FontWeight" Value="Bold"/>
             <Setter Property="Background" Value="{StaticResource AccentGradientBrush}"/>
-            <Setter Property="BorderBrush" Value="#FBBF24"/>
+            <Setter Property="BorderBrush" Value="#93C5FD"/>
         </Style>
 
         <Style x:Key="FieldTextBoxStyle" TargetType="TextBox">
@@ -208,7 +208,7 @@
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="Padding" Value="10,6"/>
             <Setter Property="VerticalContentAlignment" Value="Center"/>
-            <Setter Property="CaretBrush" Value="#FACC15"/>
+            <Setter Property="CaretBrush" Value="#60A5FA"/>
         </Style>
 
         <Style TargetType="TextBox" BasedOn="{StaticResource FieldTextBoxStyle}"/>
@@ -225,7 +225,7 @@
                         </StackPanel>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsChecked" Value="True">
-                                <Setter TargetName="Track" Property="Background" Value="#CA8A04"/>
+                                <Setter TargetName="Track" Property="Background" Value="#93C5FD"/>
                                 <Setter TargetName="Thumb" Property="HorizontalAlignment" Value="Right"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
@@ -242,7 +242,7 @@
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="Padding" Value="10,6"/>
             <Setter Property="VerticalContentAlignment" Value="Center"/>
-            <Setter Property="CaretBrush" Value="#FACC15"/>
+            <Setter Property="CaretBrush" Value="#60A5FA"/>
         </Style>
 
         <Style x:Key="AuthFieldLabelStyle" TargetType="TextBlock">
@@ -271,7 +271,7 @@
             <Setter Property="Width" Value="20"/>
             <Setter Property="Height" Value="20"/>
             <Setter Property="Stretch" Value="Uniform"/>
-            <Setter Property="Stroke" Value="#B45309"/>
+            <Setter Property="Stroke" Value="#2563EB"/>
             <Setter Property="StrokeThickness" Value="1.9"/>
             <Setter Property="StrokeStartLineCap" Value="Round"/>
             <Setter Property="StrokeEndLineCap" Value="Round"/>
@@ -320,10 +320,15 @@
         </Style>
 
         <Style x:Key="DataGridTcpLatencyCellStyle" TargetType="TextBlock" BasedOn="{StaticResource DataGridCellCenterTextStyle}">
-            <Setter Property="Foreground" Value="{StaticResource MutedBrush}"/>
+            <Setter Property="Foreground" Value="#009B45"/>
+            <Setter Property="FontWeight" Value="Bold"/>
             <Style.Triggers>
                 <DataTrigger Binding="{Binding IsTcpLatencyTesting}" Value="True">
                     <Setter Property="Foreground" Value="#38BDF8"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding TcpLatencyDisplay}" Value="-">
+                    <Setter Property="Foreground" Value="{StaticResource MutedBrush}"/>
+                    <Setter Property="FontWeight" Value="Normal"/>
                 </DataTrigger>
                 <DataTrigger Binding="{Binding TcpLatencyDisplay}" Value="Timeout">
                     <Setter Property="Foreground" Value="{StaticResource RedBrush}"/>
@@ -331,8 +336,49 @@
             </Style.Triggers>
         </Style>
 
+        <Style x:Key="DataGridProtocolCellStyle" TargetType="TextBlock" BasedOn="{StaticResource DataGridCellCenterTextStyle}">
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="Foreground" Value="#C2410C"/>
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding ProtocolDisplay}" Value="VLESS">
+                    <Setter Property="Foreground" Value="#0F172A"/>
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="NodeStatusTextStyle" TargetType="TextBlock">
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="#059669"/>
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding StatusDisplay}" Value="过期">
+                    <Setter Property="Foreground" Value="#DC2626"/>
+                    <Setter Property="FontWeight" Value="Normal"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding StatusDisplay}" Value="超时">
+                    <Setter Property="Foreground" Value="#64748B"/>
+                    <Setter Property="FontWeight" Value="Normal"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding StatusDisplay}" Value="当前">
+                    <Setter Property="Foreground" Value="#475569"/>
+                    <Setter Property="FontWeight" Value="Normal"/>
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="FilterComboStyle" TargetType="ComboBox">
+            <Setter Property="Height" Value="36"/>
+            <Setter Property="MinWidth" Value="112"/>
+            <Setter Property="Margin" Value="0,0,8,8"/>
+            <Setter Property="Padding" Value="10,0"/>
+            <Setter Property="Background" Value="#FFFFFF"/>
+            <Setter Property="BorderBrush" Value="#D8E4F5"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Foreground" Value="#334155"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+        </Style>
+
         <Style x:Key="NodeContextMenuStyle" TargetType="ContextMenu">
-            <Setter Property="FontSize" Value="19"/>
+            <Setter Property="FontSize" Value="18"/>
             <Setter Property="Background" Value="#FFFFFF"/>
             <Setter Property="BorderBrush" Value="#E2E8F0"/>
             <Setter Property="BorderThickness" Value="1"/>
@@ -340,7 +386,7 @@
         </Style>
 
         <Style TargetType="MenuItem">
-            <Setter Property="FontSize" Value="19"/>
+            <Setter Property="FontSize" Value="18"/>
             <Setter Property="Padding" Value="14,10"/>
             <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
         </Style>
@@ -593,16 +639,28 @@
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
-                    <Border x:Name="ProxyToggleBorder" Style="{StaticResource ControlFieldBorderStyle}" BorderBrush="#FBBF24" Background="#FEF9C3" Padding="14,0" MinWidth="210" VerticalAlignment="Center">
+                    <Border x:Name="ProxyToggleBorder" Style="{StaticResource ControlFieldBorderStyle}" BorderBrush="#BFDBFE" Background="#EFF6FF" Padding="14,0" MinWidth="200" VerticalAlignment="Center">
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                            <TextBlock Text="启用代理" Foreground="{StaticResource MutedBrush}" FontSize="16" Margin="0,0,10,0"/>
+                            <TextBlock Text="启用代理" Foreground="{StaticResource MutedBrush}" FontSize="15" Margin="0,0,10,0"/>
                             <CheckBox x:Name="ProxyToggle" Style="{StaticResource ToggleSwitchStyle}" Checked="ProxyToggle_Changed" Unchecked="ProxyToggle_Changed"/>
-                            <TextBlock x:Name="ProxyStateText" Text="运行中" Foreground="{StaticResource GreenBrush}" FontSize="16" FontWeight="SemiBold" Margin="10,0,0,0"/>
+                            <TextBlock x:Name="ProxyStateText" Text="运行中" Foreground="{StaticResource GreenBrush}" FontSize="15" FontWeight="SemiBold" Margin="10,0,0,0"/>
+                        </StackPanel>
+                    </Border>
+                    <ComboBox x:Name="NodePickerCombo" Grid.Column="1" Width="1" Height="1" Opacity="0" Visibility="Collapsed"
+                              DisplayMemberPath="PickerDisplay" SelectionChanged="NodePickerCombo_SelectionChanged"/>
+                    <Border Grid.Column="1" MinHeight="42" Padding="12,0" CornerRadius="11" Background="#F8FAFC" BorderBrush="#D8E4F5" BorderThickness="1" Margin="12,0,12,0" HorizontalAlignment="Left" VerticalAlignment="Center">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock x:Name="NodeAddressText" Text="[VMess] -" Foreground="{StaticResource AccentTextBrush}" FontWeight="SemiBold"/>
+                            <TextBlock Text=" · " Foreground="{StaticResource MutedBrush}"/>
+                            <TextBlock x:Name="CurrentTcpLatencyText" Text="-" Foreground="{StaticResource GreenBrush}" FontWeight="Bold"/>
+                            <Border x:Name="NodeAvailabilityTag" Background="#DCFCE7" BorderBrush="#86EFAC" BorderThickness="1" CornerRadius="999" Padding="8,2" Margin="10,0,0,0">
+                                <TextBlock x:Name="NodeAvailabilityText" Text="待测速" Foreground="#166534" FontSize="14"/>
+                            </Border>
                         </StackPanel>
                     </Border>
                     <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
                         <Border Padding="12,6" CornerRadius="8" Background="#F1F5F9" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" Margin="0,0,10,0">
-                            <TextBlock x:Name="TrafficBadgeText" Text="下行 — · 上传 —" FontSize="16" Foreground="#475569"/>
+                            <TextBlock x:Name="TrafficBadgeText" Text="下行 - · 上传 -" FontSize="15" Foreground="#475569"/>
                         </Border>
                     </StackPanel>
                 </Grid>
@@ -615,20 +673,10 @@
                         <StackPanel>
                             <!-- Status bar -->
                             <WrapPanel Margin="0,0,0,14">
-                                <ComboBox x:Name="NodePickerCombo" Width="240" Height="42" Margin="0,0,12,8"
-                                          DisplayMemberPath="PickerDisplay" SelectionChanged="NodePickerCombo_SelectionChanged"/>
-                                <Border MinHeight="42" MinWidth="360" Padding="12,0" CornerRadius="11" Background="{StaticResource Panel2Brush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" Margin="0,0,12,8">
-                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                        <TextBlock x:Name="NodeAddressText" Text="[VMess] -" Foreground="{StaticResource AccentTextBrush}" FontWeight="SemiBold"/>
-                                        <TextBlock Text="当前延迟：" Foreground="{StaticResource MutedBrush}" Margin="12,0,0,0"/>
-                                        <TextBlock x:Name="CurrentTcpLatencyText" Text="TCP -" Foreground="{StaticResource GreenBrush}" FontWeight="Bold"/>
-                                        <Border x:Name="NodeAvailabilityTag" Background="#DCFCE7" BorderBrush="#86EFAC" BorderThickness="1" CornerRadius="999" Padding="8,2" Margin="10,0,0,0">
-                                        <TextBlock x:Name="NodeAvailabilityText" Text="待测速" Foreground="#166534" FontSize="15"/>
-                                        </Border>
-                                    </StackPanel>
-                                </Border>
-                                <Button x:Name="TestTcpLatencyButton" Content="TCP 测速" Style="{StaticResource DarkButtonStyle}" Margin="0,0,8,8" Click="TestTcpLatencyButton_Click"/>
-                                <Button x:Name="SwitchFastestButton" Content="切换最快" Style="{StaticResource DarkButtonStyle}" Margin="0,0,0,8" Click="SwitchFastestButton_Click"/>
+                                <Button x:Name="TestCurrentLatencyButton" Content="当前测试" Style="{StaticResource DarkButtonStyle}" Margin="0,0,8,8" Click="TestCurrentLatencyButton_Click"/>
+                                <Button x:Name="TestAllLatencyButton" Content="全部测试" Style="{StaticResource DarkButtonStyle}" Margin="0,0,8,8" Click="TestAllLatencyButton_Click"/>
+                                <Button x:Name="RemoveUnavailableButton" Content="移除不可用" Style="{StaticResource DarkButtonStyle}" Margin="0,0,8,8" Click="RemoveUnavailableButton_Click"/>
+                                <Button x:Name="RemoveDuplicateButton" Content="去除重复" Style="{StaticResource DarkButtonStyle}" Margin="0,0,0,8" Click="RemoveDuplicateButton_Click"/>
                             </WrapPanel>
 
                             <!-- Table -->
@@ -651,32 +699,35 @@
                                         <RowDefinition Height="Auto"/>
                                         <RowDefinition Height="*"/>
                                     </Grid.RowDefinitions>
-                                    <WrapPanel Margin="14" VerticalAlignment="Center">
-                                        <ComboBox x:Name="RegionFilterCombo" Width="150" Margin="0,0,8,0" SelectionChanged="FilterChanged">
-                                            <ComboBoxItem Content="全部地区" IsSelected="True"/>
+                                    <WrapPanel Margin="14,14,14,6" VerticalAlignment="Center">
+                                        <ComboBox x:Name="RegionFilterCombo" Style="{StaticResource FilterComboStyle}" SelectionChanged="FilterChanged">
+                                            <ComboBoxItem Content="地区：全部" IsSelected="True"/>
                                         </ComboBox>
-                                        <ComboBox x:Name="ProtocolFilterCombo" Width="150" Margin="0,0,8,0" SelectionChanged="FilterChanged">
-                                            <ComboBoxItem Content="全部协议" IsSelected="True"/>
-                                            <ComboBoxItem Content="VMess"/>
-                                            <ComboBoxItem Content="VLESS"/>
-                                            <ComboBoxItem Content="Trojan"/>
-                                            <ComboBoxItem Content="Shadowsocks"/>
-                                            <ComboBoxItem Content="SOCKS"/>
-                                            <ComboBoxItem Content="HTTP"/>
+                                        <ComboBox x:Name="ProtocolFilterCombo" Style="{StaticResource FilterComboStyle}" SelectionChanged="FilterChanged">
+                                            <ComboBoxItem Content="协议：全部" IsSelected="True"/>
+                                            <ComboBoxItem Content="协议：VMess"/>
+                                            <ComboBoxItem Content="协议：VLESS"/>
+                                            <ComboBoxItem Content="协议：Trojan"/>
+                                            <ComboBoxItem Content="协议：Shadowsocks"/>
+                                            <ComboBoxItem Content="协议：SOCKS"/>
+                                            <ComboBoxItem Content="协议：HTTP"/>
                                         </ComboBox>
-                                        <ComboBox x:Name="SubscriptionFilterCombo" Width="170" Margin="0,0,8,0" SelectionChanged="FilterChanged">
-                                            <ComboBoxItem Content="全部订阅" IsSelected="True"/>
+                                        <ComboBox x:Name="SubscriptionFilterCombo" Style="{StaticResource FilterComboStyle}" MinWidth="142" SelectionChanged="FilterChanged">
+                                            <ComboBoxItem Content="来源：全部订阅" IsSelected="True"/>
                                         </ComboBox>
-                                        <ComboBox x:Name="SortCombo" Width="150" Margin="0,0,8,0" SelectionChanged="FilterChanged">
-                                            <ComboBoxItem Content="默认排序" IsSelected="True"/>
-                                            <ComboBoxItem Content="延迟优先"/>
+                                        <ComboBox x:Name="LatencyFilterCombo" Style="{StaticResource FilterComboStyle}" SelectionChanged="FilterChanged">
+                                            <ComboBoxItem Content="延迟：全部" IsSelected="True"/>
+                                            <ComboBoxItem Content="延迟：可用"/>
+                                            <ComboBoxItem Content="延迟：超时"/>
                                         </ComboBox>
-                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="8,0,0,0">
-                                            <TextBlock Text="仅可用" Foreground="{StaticResource MutedBrush}" FontSize="16" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                        <ComboBox x:Name="SortCombo" Style="{StaticResource FilterComboStyle}" SelectionChanged="FilterChanged">
+                                            <ComboBoxItem Content="排序：默认" IsSelected="True"/>
+                                            <ComboBoxItem Content="排序：延迟优先"/>
+                                        </ComboBox>
+                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="2,0,0,8">
+                                            <TextBlock Text="仅可用" Foreground="{StaticResource MutedBrush}" FontSize="14" VerticalAlignment="Center" Margin="0,0,8,0"/>
                                             <CheckBox x:Name="AvailableOnlyCheck" Style="{StaticResource ToggleSwitchStyle}" VerticalAlignment="Center" Checked="AvailabilityFilterChanged" Unchecked="AvailabilityFilterChanged"/>
                                         </StackPanel>
-                                        <Button x:Name="RemoveUnavailableButton" Content="移除不可用" Style="{StaticResource DarkButtonStyle}" Margin="12,0,8,0" Click="RemoveUnavailableButton_Click"/>
-                                        <Button x:Name="RemoveDuplicateButton" Content="去除重复" Style="{StaticResource DarkButtonStyle}" Margin="0,0,0,0" Click="RemoveDuplicateButton_Click"/>
                                     </WrapPanel>
                                     <DataGrid x:Name="ProfilesGrid" Grid.Row="1" AutoGenerateColumns="False" CanUserAddRows="False"
                                               IsReadOnly="True" SelectionMode="Single" AlternationCount="2"
@@ -723,21 +774,38 @@
                                             </GroupStyle>
                                         </DataGrid.GroupStyle>
                                         <DataGrid.Columns>
-                                            <DataGridTemplateColumn Header="名称" Width="SizeToCells" MinWidth="120">
+                                            <DataGridTemplateColumn Header="状态" Width="SizeToCells" MinWidth="76">
                                                 <DataGridTemplateColumn.CellTemplate>
                                                     <DataTemplate>
                                                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
-                                                            <Ellipse Width="10" Height="10" Fill="{StaticResource GreenBrush}" Margin="0,0,8,0" VerticalAlignment="Center"
-                                                                     Visibility="{Binding IsActive, Converter={StaticResource BoolToVis}}"/>
-                                                            <TextBlock Text="{Binding DisplayName}" VerticalAlignment="Center"
-                                                                       TextAlignment="Center" TextWrapping="NoWrap" TextTrimming="None"/>
+                                                            <Ellipse x:Name="StatusDot" Width="9" Height="9" Fill="{StaticResource GreenBrush}" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                                            <TextBlock x:Name="StatusText" Text="{Binding StatusDisplay}" Style="{StaticResource NodeStatusTextStyle}"/>
                                                         </StackPanel>
+                                                        <DataTemplate.Triggers>
+                                                            <DataTrigger Binding="{Binding StatusDisplay}" Value="过期">
+                                                                <Setter TargetName="StatusDot" Property="Fill" Value="{StaticResource RedBrush}"/>
+                                                            </DataTrigger>
+                                                            <DataTrigger Binding="{Binding StatusDisplay}" Value="超时">
+                                                                <Setter TargetName="StatusDot" Property="Fill" Value="#94A3B8"/>
+                                                            </DataTrigger>
+                                                            <DataTrigger Binding="{Binding StatusDisplay}" Value="当前">
+                                                                <Setter TargetName="StatusDot" Property="Fill" Value="{StaticResource GreenBrush}"/>
+                                                            </DataTrigger>
+                                                        </DataTemplate.Triggers>
+                                                    </DataTemplate>
+                                                </DataGridTemplateColumn.CellTemplate>
+                                            </DataGridTemplateColumn>
+                                            <DataGridTemplateColumn Header="名称" Width="SizeToCells" MinWidth="120">
+                                                <DataGridTemplateColumn.CellTemplate>
+                                                    <DataTemplate>
+                                                        <TextBlock Text="{Binding DisplayName}" VerticalAlignment="Center"
+                                                                   TextAlignment="Center" TextWrapping="NoWrap" TextTrimming="None"/>
                                                     </DataTemplate>
                                                 </DataGridTemplateColumn.CellTemplate>
                                             </DataGridTemplateColumn>
                                             <DataGridTextColumn Header="协议" Binding="{Binding ProtocolDisplay}" Width="SizeToCells" MinWidth="88">
                                                 <DataGridTextColumn.ElementStyle>
-                                                    <Style TargetType="TextBlock" BasedOn="{StaticResource DataGridCellCenterTextStyle}"/>
+                                                    <Style TargetType="TextBlock" BasedOn="{StaticResource DataGridProtocolCellStyle}"/>
                                                 </DataGridTextColumn.ElementStyle>
                                             </DataGridTextColumn>
                                             <DataGridTextColumn Header="地址" Binding="{Binding Address}" Width="SizeToCells" MinWidth="120">
@@ -750,12 +818,12 @@
                                                     <Style TargetType="TextBlock" BasedOn="{StaticResource DataGridCellCenterTextStyle}"/>
                                                 </DataGridTextColumn.ElementStyle>
                                             </DataGridTextColumn>
-                                            <DataGridTextColumn Header="地区" Binding="{Binding RegionDisplay}" Width="SizeToCells" MinWidth="88">
+                                            <DataGridTextColumn Header="地区" Binding="{Binding RegionCountryDisplay}" Width="SizeToCells" MinWidth="88">
                                                 <DataGridTextColumn.ElementStyle>
                                                     <Style TargetType="TextBlock" BasedOn="{StaticResource DataGridCellCenterTextStyle}"/>
                                                 </DataGridTextColumn.ElementStyle>
                                             </DataGridTextColumn>
-                                            <DataGridTextColumn Header="TCP" Binding="{Binding TcpLatencyDisplay}" Width="SizeToCells" MinWidth="88">
+                                            <DataGridTextColumn Header="延迟" Binding="{Binding TcpLatencyDisplay}" Width="SizeToCells" MinWidth="88">
                                                 <DataGridTextColumn.ElementStyle>
                                                     <Style TargetType="TextBlock" BasedOn="{StaticResource DataGridTcpLatencyCellStyle}"/>
                                                 </DataGridTextColumn.ElementStyle>
@@ -793,14 +861,15 @@
                             <!-- Embedded controls -->
                             <Border Margin="0,16,0,0" Padding="0,16,0,0" BorderBrush="#E2E8F0" BorderThickness="0,1,0,0">
                                 <WrapPanel>
-                                    <Border Style="{StaticResource ControlFieldBorderStyle}" Width="300" Margin="0,0,12,10">
+                                    <Border Style="{StaticResource ControlFieldBorderStyle}" MinWidth="250" Margin="0,0,12,10">
                                         <Grid VerticalAlignment="Center">
                                             <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="82"/>
-                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="Auto"/>
                                             </Grid.ColumnDefinitions>
-                                            <TextBlock Text="系统代理" Foreground="{StaticResource MutedBrush}" FontSize="16" VerticalAlignment="Center"/>
+                                            <TextBlock Text="系统代理" Foreground="{StaticResource MutedBrush}" FontSize="16" VerticalAlignment="Center" Margin="0,0,10,0"/>
                                             <ComboBox Grid.Column="1" x:Name="SystemProxyCombo" Height="32" BorderThickness="0" Background="Transparent"
+                                                      MinWidth="156"
                                                       HorizontalContentAlignment="Left" VerticalContentAlignment="Center"
                                                       SelectionChanged="SystemProxyCombo_SelectionChanged">
                                                 <ComboBoxItem Content="清除系统代理"/>
@@ -810,26 +879,27 @@
                                             </ComboBox>
                                         </Grid>
                                     </Border>
-                                    <Border Style="{StaticResource ControlFieldBorderStyle}" Width="210" Margin="0,0,12,10">
+                                    <Border Style="{StaticResource ControlFieldBorderStyle}" MinWidth="188" Margin="0,0,12,10">
                                         <Grid VerticalAlignment="Center">
                                             <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="82"/>
+                                                <ColumnDefinition Width="Auto"/>
                                                 <ColumnDefinition Width="48"/>
-                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
                                             </Grid.ColumnDefinitions>
-                                            <TextBlock Text="启用 Tun" Foreground="{StaticResource MutedBrush}" FontSize="16" VerticalAlignment="Center"/>
+                                            <TextBlock Text="启用 Tun" Foreground="{StaticResource MutedBrush}" FontSize="16" VerticalAlignment="Center" Margin="0,0,10,0"/>
                                             <CheckBox Grid.Column="1" x:Name="TunToggle" Style="{StaticResource ToggleSwitchStyle}" VerticalAlignment="Center" Checked="TunToggle_Changed" Unchecked="TunToggle_Changed"/>
                                             <TextBlock Grid.Column="2" x:Name="TunStateText" Text="已关闭" Foreground="{StaticResource MutedBrush}" FontSize="16" VerticalAlignment="Center"/>
                                         </Grid>
                                     </Border>
-                                    <Border Style="{StaticResource ControlFieldBorderStyle}" Width="330" Margin="0,0,12,10">
+                                    <Border Style="{StaticResource ControlFieldBorderStyle}" MinWidth="268" Margin="0,0,12,10">
                                         <Grid VerticalAlignment="Center">
                                             <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="82"/>
-                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="Auto"/>
                                             </Grid.ColumnDefinitions>
-                                            <TextBlock Text="路由规则" Foreground="{StaticResource MutedBrush}" FontSize="16" VerticalAlignment="Center"/>
+                                            <TextBlock Text="路由规则" Foreground="{StaticResource MutedBrush}" FontSize="16" VerticalAlignment="Center" Margin="0,0,10,0"/>
                                             <ComboBox Grid.Column="1" x:Name="RoutingCombo" Height="32" BorderThickness="0" Background="Transparent"
+                                                      MinWidth="174"
                                                       HorizontalContentAlignment="Left" VerticalContentAlignment="Center"
                                                       SelectionChanged="RoutingCombo_SelectionChanged">
                                                 <ComboBoxItem Content="全局代理"/>
@@ -847,36 +917,30 @@
                     </Border>
 
                     <!-- Stats -->
-                    <UniformGrid Columns="5" Margin="0,0,0,16">
+                    <UniformGrid Columns="4" Margin="0,0,0,16">
                         <Border Style="{StaticResource StatCardStyle}" Margin="0,0,8,0">
-                            <StackPanel>
-                                <TextBlock Text="当前下载" Foreground="{StaticResource MutedBrush}" FontSize="15"/>
-                                <TextBlock x:Name="StatDownloadText" Text="—" FontSize="23" FontWeight="Bold" Margin="0,6,0,0"/>
-                            </StackPanel>
+                            <Grid>
+                                <TextBlock Text="当前下载" Foreground="{StaticResource MutedBrush}" FontSize="15" VerticalAlignment="Center"/>
+                                <TextBlock x:Name="StatDownloadText" Text="—" FontSize="22" FontWeight="Bold" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                            </Grid>
                         </Border>
                         <Border Style="{StaticResource StatCardStyle}" Margin="0,0,8,0">
-                            <StackPanel>
-                                <TextBlock Text="当前上传" Foreground="{StaticResource MutedBrush}" FontSize="15"/>
-                                <TextBlock x:Name="StatUploadText" Text="—" FontSize="23" FontWeight="Bold" Margin="0,6,0,0"/>
-                            </StackPanel>
+                            <Grid>
+                                <TextBlock Text="当前上传" Foreground="{StaticResource MutedBrush}" FontSize="15" VerticalAlignment="Center"/>
+                                <TextBlock x:Name="StatUploadText" Text="—" FontSize="22" FontWeight="Bold" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                            </Grid>
                         </Border>
                         <Border Style="{StaticResource StatCardStyle}" Margin="0,0,8,0">
-                            <StackPanel>
-                                <TextBlock Text="今日累计" Foreground="{StaticResource MutedBrush}" FontSize="15"/>
-                                <TextBlock x:Name="StatTodayText" Text="—" FontSize="23" FontWeight="Bold" Margin="0,6,0,0"/>
-                            </StackPanel>
+                            <Grid>
+                                <TextBlock Text="今日累计" Foreground="{StaticResource MutedBrush}" FontSize="15" VerticalAlignment="Center"/>
+                                <TextBlock x:Name="StatTodayText" Text="—" FontSize="22" FontWeight="Bold" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                            </Grid>
                         </Border>
                         <Border Style="{StaticResource StatCardStyle}" Margin="0,0,8,0">
-                            <StackPanel>
-                                <TextBlock Text="累计流量" Foreground="{StaticResource MutedBrush}" FontSize="15"/>
-                                <TextBlock x:Name="StatTotalText" Text="—" FontSize="23" FontWeight="Bold" Margin="0,6,0,0"/>
-                            </StackPanel>
-                        </Border>
-                        <Border Style="{StaticResource StatCardStyle}">
-                            <StackPanel>
-                                <TextBlock Text="剩余流量" Foreground="{StaticResource MutedBrush}" FontSize="15"/>
-                                <TextBlock x:Name="StatRemainingText" Text="—" FontSize="23" FontWeight="Bold" Margin="0,6,0,0"/>
-                            </StackPanel>
+                            <Grid>
+                                <TextBlock Text="累计流量" Foreground="{StaticResource MutedBrush}" FontSize="15" VerticalAlignment="Center"/>
+                                <TextBlock x:Name="StatTotalText" Text="—" FontSize="22" FontWeight="Bold" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                            </Grid>
                         </Border>
                     </UniformGrid>
                 </StackPanel>
@@ -1131,6 +1195,12 @@
                                                    ToolTipService.ToolTip="Nexora 本地 HTTP 入站地址，系统代理与网站连通性测试均通过此地址访问。"/>
                                         </StackPanel>
                                         <TextBlock x:Name="AboutHttpProxyAddressText" HorizontalAlignment="Right" FontWeight="SemiBold"/>
+                                    </Grid>
+                                </Border>
+                                <Border Style="{StaticResource AboutInfoItemStyle}">
+                                    <Grid>
+                                        <TextBlock Text="局域网地址" Foreground="{StaticResource MutedBrush}"/>
+                                        <TextBlock x:Name="AboutLanAddressText" HorizontalAlignment="Right" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" TextAlignment="Right"/>
                                     </Grid>
                                 </Border>
                                 <Border Style="{StaticResource AboutInfoItemStyle}" Margin="0">

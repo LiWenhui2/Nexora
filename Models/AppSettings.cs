@@ -24,6 +24,7 @@ public sealed class AppSettings
     public bool RunAtStartup { get; set; }
     public bool RunAtStartupSilent { get; set; }
     public bool AllowLanAccess { get; set; }
+    public Dictionary<string, SubscriptionSource> SubscriptionSources { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 }
 
 public sealed class CustomRoutingSettings

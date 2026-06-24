@@ -29,7 +29,8 @@ public static class SubscriptionImportService
 
         return new SubscriptionImportResult
         {
-            Profiles = ParseProfiles(trimmed, "", DateTime.Now)
+            Profiles = ParseProfiles(trimmed, "", DateTime.Now),
+            SubscriptionName = ""
         };
     }
 
@@ -42,7 +43,8 @@ public static class SubscriptionImportService
 
         return new SubscriptionImportResult
         {
-            Profiles = ParseProfiles(input.Trim(), "", DateTime.Now)
+            Profiles = ParseProfiles(input.Trim(), "", DateTime.Now),
+            SubscriptionName = ""
         };
     }
 
@@ -59,7 +61,9 @@ public static class SubscriptionImportService
         return new SubscriptionImportResult
         {
             Profiles = ParseProfiles(content, sourceName, DateTime.Now),
-            TrafficInfo = TryParseSubscriptionUserInfo(response)
+            TrafficInfo = TryParseSubscriptionUserInfo(response),
+            SourceUrl = uri.ToString(),
+            SubscriptionName = sourceName
         };
     }
 

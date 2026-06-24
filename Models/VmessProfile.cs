@@ -86,6 +86,28 @@ public sealed class VmessProfile : INotifyPropertyChanged
         string.IsNullOrWhiteSpace(Region) ? NodeRegionHelper.Resolve(this) : Region);
 
     [JsonIgnore]
+    public string RegionCountryDisplay => ToCountryOnly(RegionDisplay);
+
+    [JsonIgnore]
+    public string StatusDisplay
+    {
+        get
+        {
+            if (IsExpired)
+            {
+                return "过期";
+            }
+
+            if (_tcpLatencyTested && TcpLatencyMs is null)
+            {
+                return "超时";
+            }
+
+            return IsActive ? "当前" : "可用";
+        }
+    }
+
+    [JsonIgnore]
     public string SubscriptionDisplay => string.IsNullOrWhiteSpace(SubscriptionName) ? "手动" : SubscriptionName;
 
     [JsonIgnore]
@@ -110,10 +132,20 @@ public sealed class VmessProfile : INotifyPropertyChanged
     public string TotalTrafficDisplay => FormatTotalTrafficDisplay(XpanelTotalBytes);
 
     [JsonIgnore]
+    public bool ShouldShowRemainingTraffic =>
+        !string.IsNullOrWhiteSpace(SubscriptionName) &&
+        (HasXpanelTrafficMetadata() || SubscriptionTotalBytes is not null);
+
+    [JsonIgnore]
     public string RemainingTrafficDisplay
     {
         get
         {
+            if (!ShouldShowRemainingTraffic)
+            {
+                return "";
+            }
+
             if (HasXpanelTrafficMetadata())
             {
                 return FormatRemainingTrafficDisplay(
@@ -123,6 +155,21 @@ public sealed class VmessProfile : INotifyPropertyChanged
             }
 
             return SubscriptionRemainingDisplay;
+        }
+    }
+
+    [JsonIgnore]
+    public bool IsExpired
+    {
+        get
+        {
+            if (XpanelExpiryTime is not DateTime expiryUtc)
+            {
+                return false;
+            }
+
+            var local = expiryUtc.ToLocalTime();
+            return local.Year < 2099 && local <= DateTime.Now;
         }
     }
 
@@ -138,28 +185,7 @@ public sealed class VmessProfile : INotifyPropertyChanged
         get
         {
             var updatedAt = SubscriptionUpdatedAt ?? UpdatedAt;
-            if (updatedAt is null)
-            {
-                return "-";
-            }
-
-            var elapsed = DateTime.Now - updatedAt.Value;
-            if (elapsed.TotalMinutes < 1)
-            {
-                return "刚刚";
-            }
-
-            if (elapsed.TotalHours < 1)
-            {
-                return $"{(int)elapsed.TotalMinutes} 分钟前";
-            }
-
-            if (elapsed.TotalDays < 1)
-            {
-                return $"{(int)elapsed.TotalHours} 小时前";
-            }
-
-            return $"{(int)elapsed.TotalDays} 天前";
+            return updatedAt?.ToLocalTime().ToString("yyyy-MM-dd HH:mm") ?? "-";
         }
     }
 
@@ -185,6 +211,7 @@ public sealed class VmessProfile : INotifyPropertyChanged
 
         _isActive = value;
         OnPropertyChanged(nameof(IsActive));
+        OnPropertyChanged(nameof(StatusDisplay));
     }
 
     public void SetRegion(string region)
@@ -196,6 +223,7 @@ public sealed class VmessProfile : INotifyPropertyChanged
 
         Region = region;
         OnPropertyChanged(nameof(RegionDisplay));
+        OnPropertyChanged(nameof(RegionCountryDisplay));
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -211,6 +239,7 @@ public sealed class VmessProfile : INotifyPropertyChanged
         _tcpLatencyTested = true;
         TcpLatencyMs = latencyMs;
         OnPropertyChanged(nameof(TcpLatencyDisplay));
+        OnPropertyChanged(nameof(StatusDisplay));
     }
 
     public void ResetLatency()
@@ -221,6 +250,7 @@ public sealed class VmessProfile : INotifyPropertyChanged
         OnPropertyChanged(nameof(IsTcpLatencyTesting));
         OnPropertyChanged(nameof(TcpLatencyMs));
         OnPropertyChanged(nameof(TcpLatencyDisplay));
+        OnPropertyChanged(nameof(StatusDisplay));
     }
 
     private void SetLatencyTestingField(ref bool field, bool value, string displayPropertyName)
@@ -310,6 +340,26 @@ public sealed class VmessProfile : INotifyPropertyChanged
         }
 
         return "-";
+    }
+
+    private static string ToCountryOnly(string region)
+    {
+        if (string.IsNullOrWhiteSpace(region) || region == "-")
+        {
+            return "-";
+        }
+
+        var trimmed = region.Trim();
+        foreach (var separator in new[] { " · ", " / ", " - ", " | ", "，", ",", "・", "·" })
+        {
+            var index = trimmed.IndexOf(separator, StringComparison.Ordinal);
+            if (index > 0)
+            {
+                return trimmed[..index].Trim();
+            }
+        }
+
+        return trimmed;
     }
 
     private static string FormatBytes(double bytes)

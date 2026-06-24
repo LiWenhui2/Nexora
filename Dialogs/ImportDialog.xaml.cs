@@ -15,6 +15,8 @@ public partial class ImportDialog : Window
 
     public SubscriptionTrafficInfo? ImportedTrafficInfo { get; private set; }
 
+    public SubscriptionImportResult? ImportResult { get; private set; }
+
     public ImportDialog()
     {
         InitializeComponent();
@@ -52,6 +54,7 @@ public partial class ImportDialog : Window
             ImportButton.Content = "导入中…";
             ImportedProfiles.Clear();
             var result = await SubscriptionImportService.ImportAsync(ImportBox.Text);
+            ImportResult = result;
             ImportedProfiles.AddRange(result.Profiles);
             ImportedTrafficInfo = result.TrafficInfo;
 

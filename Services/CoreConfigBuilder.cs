@@ -341,7 +341,7 @@ public static class CoreConfigBuilder
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
         var normalizedIps = ips
-            .Select(rule => rule.Trim())
+            .Select(NormalizeIpRule)
             .Where(rule => !string.IsNullOrWhiteSpace(rule))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
@@ -392,6 +392,12 @@ public static class CoreConfigBuilder
         }
 
         return $"domain:{trimmed}";
+    }
+
+    private static string NormalizeIpRule(string value)
+    {
+        var trimmed = value.Trim();
+        return string.IsNullOrWhiteSpace(trimmed) ? "" : trimmed;
     }
 
     private static object BuildPrivateDirectRule()
