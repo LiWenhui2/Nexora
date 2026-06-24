@@ -424,20 +424,20 @@
                     <Setter Property="Background" Value="#F8FAFC"/>
                 </DataTrigger>
                 <Trigger Property="IsSelected" Value="True">
-                    <Setter Property="Background" Value="#BFDBFE"/>
-                    <Setter Property="Foreground" Value="#1E3A8A"/>
+                    <Setter Property="Background" Value="#EFF6FF"/>
+                    <Setter Property="Foreground" Value="#334155"/>
                 </Trigger>
                 <DataTrigger Binding="{Binding IsActive}" Value="True">
-                    <Setter Property="Background" Value="#DBEAFE"/>
-                    <Setter Property="Foreground" Value="#1D4ED8"/>
+                    <Setter Property="Background" Value="#93C5FD"/>
+                    <Setter Property="Foreground" Value="#1E3A8A"/>
                 </DataTrigger>
                 <MultiDataTrigger>
                     <MultiDataTrigger.Conditions>
                         <Condition Binding="{Binding IsActive}" Value="True"/>
                         <Condition Binding="{Binding RelativeSource={RelativeSource AncestorType=DataGridRow}, Path=IsSelected}" Value="True"/>
                     </MultiDataTrigger.Conditions>
-                    <Setter Property="Background" Value="#93C5FD"/>
-                    <Setter Property="Foreground" Value="#1E3A8A"/>
+                    <Setter Property="Background" Value="#60A5FA"/>
+                    <Setter Property="Foreground" Value="#0F172A"/>
                 </MultiDataTrigger>
             </Style.Triggers>
         </Style>
@@ -1225,16 +1225,6 @@
                                     <Grid>
                                         <TextBlock Text="系统代理地址" Foreground="{StaticResource MutedBrush}"/>
                                         <TextBlock x:Name="AboutSystemProxyText" HorizontalAlignment="Right" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" TextAlignment="Right"/>
-                                    </Grid>
-                                </Border>
-                                <Border Style="{StaticResource AboutInfoItemStyle}">
-                                    <Grid>
-                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                            <TextBlock Text="HTTP 代理地址" Foreground="{StaticResource MutedBrush}"/>
-                                            <Image x:Name="AboutHttpProxyInfoIcon" Style="{StaticResource InfoHintIconStyle}"
-                                                   ToolTipService.ToolTip="Nexora 本地 HTTP 入站地址，系统代理与网站连通性测试均通过此地址访问。"/>
-                                        </StackPanel>
-                                        <TextBlock x:Name="AboutHttpProxyAddressText" HorizontalAlignment="Right" FontWeight="SemiBold"/>
                                     </Grid>
                                 </Border>
                                 <Border Style="{StaticResource AboutInfoItemStyle}">
