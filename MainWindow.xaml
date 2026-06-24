@@ -424,9 +424,13 @@
                     <Setter Property="Background" Value="#F8FAFC"/>
                 </DataTrigger>
                 <Trigger Property="IsSelected" Value="True">
-                    <Setter Property="Background" Value="#FEF9C3"/>
-                    <Setter Property="Foreground" Value="#92400E"/>
+                    <Setter Property="Background" Value="#EEF4FC"/>
+                    <Setter Property="Foreground" Value="#1E3A5F"/>
                 </Trigger>
+                <DataTrigger Binding="{Binding IsActive}" Value="True">
+                    <Setter Property="Background" Value="#DBEAFE"/>
+                    <Setter Property="Foreground" Value="#1D4ED8"/>
+                </DataTrigger>
             </Style.Triggers>
         </Style>
 
@@ -673,7 +677,7 @@
                         <StackPanel>
                             <!-- Status bar -->
                             <WrapPanel Margin="0,0,0,14">
-                                <Button x:Name="TestCurrentLatencyButton" Content="当前测试" Style="{StaticResource DarkButtonStyle}" Margin="0,0,8,8" Click="TestCurrentLatencyButton_Click"/>
+                                <Button x:Name="TestCurrentLatencyButton" Content="测试选中" Style="{StaticResource DarkButtonStyle}" Margin="0,0,8,8" Click="TestCurrentLatencyButton_Click"/>
                                 <Button x:Name="TestAllLatencyButton" Content="全部测试" Style="{StaticResource DarkButtonStyle}" Margin="0,0,8,8" Click="TestAllLatencyButton_Click"/>
                                 <Button x:Name="RemoveUnavailableButton" Content="移除不可用" Style="{StaticResource DarkButtonStyle}" Margin="0,0,8,8" Click="RemoveUnavailableButton_Click"/>
                                 <Button x:Name="RemoveDuplicateButton" Content="去除重复" Style="{StaticResource DarkButtonStyle}" Margin="0,0,0,8" Click="RemoveDuplicateButton_Click"/>
@@ -730,8 +734,9 @@
                                         </StackPanel>
                                     </WrapPanel>
                                     <DataGrid x:Name="ProfilesGrid" Grid.Row="1" AutoGenerateColumns="False" CanUserAddRows="False"
-                                              IsReadOnly="True" SelectionMode="Single" AlternationCount="2"
+                                              IsReadOnly="True" SelectionMode="Extended" SelectionUnit="FullRow" AlternationCount="2"
                                               SelectionChanged="ProfilesGrid_SelectionChanged"
+                                              PreviewKeyDown="ProfilesGrid_PreviewKeyDown"
                                               MinHeight="280" MaxHeight="360" HorizontalScrollBarVisibility="Auto"
                                               PreviewMouseRightButtonDown="ProfilesGrid_PreviewMouseRightButtonDown"
                                               PreviewMouseWheel="ProfilesGrid_PreviewMouseWheel"
@@ -742,12 +747,13 @@
                                                 <Separator/>
                                                 <MenuItem Header="编辑节点" Click="CtxEditNode_Click"/>
                                                 <Separator/>
-                                                <MenuItem Header="TCP 测速" Click="CtxTcpTest_Click"/>
+                                                <MenuItem Header="测速选中节点" Click="CtxTcpTest_Click"/>
+                                                <MenuItem Header="复制选中节点链接" Click="CtxCopySelectedLinks_Click"/>
                                                 <Separator/>
                                                 <MenuItem Header="移除不可用节点" Click="CtxRemoveUnavailableNodes_Click"/>
                                                 <MenuItem Header="去除重复节点" Click="CtxRemoveDuplicateNodes_Click"/>
                                                 <Separator/>
-                                                <MenuItem Header="删除节点" Click="CtxDeleteNode_Click"/>
+                                                <MenuItem Header="删除选中节点" Click="CtxDeleteNode_Click"/>
                                             </ContextMenu>
                                         </DataGrid.ContextMenu>
                                         <DataGrid.GroupStyle>
@@ -759,9 +765,38 @@
                                                                 <ControlTemplate TargetType="{x:Type GroupItem}">
                                                                     <Expander IsExpanded="True" Margin="0,4,0,0">
                                                                         <Expander.Header>
-                                                                            <StackPanel Orientation="Horizontal">
-                                                                                <TextBlock Text="{Binding Name}" FontWeight="SemiBold" Foreground="{StaticResource AccentTextBrush}" Margin="8,0,12,0"/>
+                                                                            <StackPanel Orientation="Horizontal" Tag="{Binding Name}">
+                                                                                <StackPanel.ContextMenu>
+                                                                                    <ContextMenu Style="{StaticResource NodeContextMenuStyle}" Opened="SubscriptionContextMenu_Opened">
+                                                                                        <MenuItem Header="刷新订阅" Click="SubscriptionRefreshMenu_Click"/>
+                                                                                        <Separator/>
+                                                                                        <MenuItem Header="自动刷新">
+                                                                                            <MenuItem Header="关闭" Click="SubscriptionAutoRefreshOff_Click"/>
+                                                                                            <MenuItem Header="每 15 分钟" Tag="15" Click="SubscriptionAutoRefreshPreset_Click"/>
+                                                                                            <MenuItem Header="每 30 分钟" Tag="30" Click="SubscriptionAutoRefreshPreset_Click"/>
+                                                                                            <MenuItem Header="每 60 分钟" Tag="60" Click="SubscriptionAutoRefreshPreset_Click"/>
+                                                                                            <MenuItem Header="自定义…" Click="SubscriptionAutoRefreshCustom_Click"/>
+                                                                                        </MenuItem>
+                                                                                    </ContextMenu>
+                                                                                </StackPanel.ContextMenu>
+                                                                                <TextBlock Text="{Binding Name}" FontWeight="SemiBold" Foreground="{StaticResource AccentTextBrush}" Margin="8,0,12,0" VerticalAlignment="Center"/>
                                                                                 <TextBlock Text="{Binding ItemCount, StringFormat=({0} 个节点)}" Foreground="{StaticResource MutedBrush}"/>
+                                                                                <Button Content="刷新" Tag="{Binding Name}"
+                                                                                        Click="SubscriptionGroupRefreshButton_Click">
+                                                                                    <Button.Style>
+                                                                                        <Style TargetType="Button" BasedOn="{StaticResource DarkButtonStyle}">
+                                                                                            <Setter Property="Height" Value="30"/>
+                                                                                            <Setter Property="MinWidth" Value="56"/>
+                                                                                            <Setter Property="Padding" Value="10,0"/>
+                                                                                            <Setter Property="Margin" Value="12,0,0,0"/>
+                                                                                            <Style.Triggers>
+                                                                                                <DataTrigger Binding="{Binding Name}" Value="手动">
+                                                                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                                                                </DataTrigger>
+                                                                                            </Style.Triggers>
+                                                                                        </Style>
+                                                                                    </Button.Style>
+                                                                                </Button>
                                                                             </StackPanel>
                                                                         </Expander.Header>
                                                                         <ItemsPresenter/>
@@ -795,11 +830,12 @@
                                                     </DataTemplate>
                                                 </DataGridTemplateColumn.CellTemplate>
                                             </DataGridTemplateColumn>
-                                            <DataGridTemplateColumn Header="名称" Width="SizeToCells" MinWidth="120">
+                                            <DataGridTemplateColumn Header="名称" Width="220">
                                                 <DataGridTemplateColumn.CellTemplate>
                                                     <DataTemplate>
                                                         <TextBlock Text="{Binding DisplayName}" VerticalAlignment="Center"
-                                                                   TextAlignment="Center" TextWrapping="NoWrap" TextTrimming="None"/>
+                                                                   TextAlignment="Left" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"
+                                                                   ToolTip="{Binding DisplayName}"/>
                                                     </DataTemplate>
                                                 </DataGridTemplateColumn.CellTemplate>
                                             </DataGridTemplateColumn>
@@ -839,11 +875,6 @@
                                                 </DataGridTextColumn.ElementStyle>
                                             </DataGridTextColumn>
                                             <DataGridTextColumn Header="剩余流量" Binding="{Binding RemainingTrafficDisplay}" Width="SizeToCells" MinWidth="100">
-                                                <DataGridTextColumn.ElementStyle>
-                                                    <Style TargetType="TextBlock" BasedOn="{StaticResource DataGridCellCenterTextStyle}"/>
-                                                </DataGridTextColumn.ElementStyle>
-                                            </DataGridTextColumn>
-                                            <DataGridTextColumn Header="订阅" Binding="{Binding SubscriptionDisplay}" Width="SizeToCells" MinWidth="88">
                                                 <DataGridTextColumn.ElementStyle>
                                                     <Style TargetType="TextBlock" BasedOn="{StaticResource DataGridCellCenterTextStyle}"/>
                                                 </DataGridTextColumn.ElementStyle>

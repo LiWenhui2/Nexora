@@ -1016,10 +1016,7 @@ public partial class MainWindow : Window
 
     private void ProfilesGrid_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (ProfilesGrid.SelectedItem is VmessProfile profile)
-        {
-            UpdateNodeStatusBar(profile);
-        }
+        // Selection is only for list operations. The header always shows the active node.
     }
 
     private void NodePickerCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -1105,6 +1102,7 @@ public partial class MainWindow : Window
             : $"节点：{active.DisplayName} · {active.ProtocolDisplay}";
 
         SyncNodePickerDisplay(active);
+        UpdateNodeStatusBar(active);
         UpdateTrayStatus();
     }
 
@@ -1900,9 +1898,26 @@ public partial class MainWindow : Window
     private void ProfilesGrid_PreviewMouseRightButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
     {
         var row = ItemsControl.ContainerFromElement(ProfilesGrid, e.OriginalSource as DependencyObject) as DataGridRow;
-        if (row?.Item is VmessProfile profile)
+        if (row?.Item is VmessProfile profile && !row.IsSelected)
         {
+            ProfilesGrid.SelectedItems.Clear();
             ProfilesGrid.SelectedItem = profile;
+        }
+    }
+
+    private void ProfilesGrid_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (e.Key == Key.A && Keyboard.Modifiers == ModifierKeys.Control)
+        {
+            ProfilesGrid.SelectAll();
+            e.Handled = true;
+            return;
+        }
+
+        if (e.Key == Key.Delete)
+        {
+            DeleteProfiles(GetSelectedProfiles());
+            e.Handled = true;
         }
     }
 
@@ -2015,12 +2030,7 @@ public partial class MainWindow : Window
 
     private void CtxDeleteNode_Click(object sender, RoutedEventArgs e)
     {
-        if (ProfilesGrid.SelectedItem is not VmessProfile profile)
-        {
-            return;
-        }
-
-        DeleteProfiles([profile]);
+        DeleteProfiles(GetSelectedProfiles());
     }
 
     private List<VmessProfile> GetSelectedProfiles() =>
@@ -2058,10 +2068,22 @@ public partial class MainWindow : Window
 
     private void CtxTcpTest_Click(object sender, RoutedEventArgs e)
     {
-        if (ProfilesGrid.SelectedItem is VmessProfile profile)
+        var selected = GetSelectedProfiles();
+        if (selected.Count > 0)
         {
-            _ = RunTcpLatencyTestsAsync([profile], parallel: true);
+            _ = RunTcpLatencyTestsAsync(selected, parallel: true);
         }
+    }
+
+    private void CtxCopySelectedLinks_Click(object sender, RoutedEventArgs e)
+    {
+        var selected = GetSelectedProfiles();
+        if (selected.Count == 0)
+        {
+            return;
+        }
+
+        Clipboard.SetText(string.Join(Environment.NewLine, selected.Select(BuildShareLink)));
     }
 
     private void OpenEditDialog(VmessProfile? profile)
@@ -3288,7 +3310,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        await RunTcpLatencyTestsAsync([selected[0]], parallel: true);
+        await RunTcpLatencyTestsAsync(selected, parallel: true);
     }
 
     private void TestAllLatencyButton_Click(object sender, RoutedEventArgs e)
@@ -3325,10 +3347,7 @@ public partial class MainWindow : Window
                 }
             }
 
-            if (ProfilesGrid.SelectedItem is VmessProfile selected)
-            {
-                UpdateNodeStatusBar(selected);
-            }
+            UpdateNodeStatusBar(GetSelectedProfileOrNull());
         }
         catch (OperationCanceledException)
         {
