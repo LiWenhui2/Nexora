@@ -1,6 +1,4 @@
 using System.IO;
-using System.Net.Http;
-using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using NaiwaProxy.Models;
@@ -9,15 +7,24 @@ namespace NaiwaProxy.Services;
 
 public sealed partial class AuthService
 {
-    private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(20) };
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
+    private static readonly TimeSpan AccessTokenLifetime = TimeSpan.FromHours(2);
 
     private readonly string _sessionPath;
+    private readonly ApiClient _apiClient;
+    private readonly SubscriptionApiService _subscriptionApi;
+    private readonly SubscriptionSyncService _subscriptionSync;
     private string _apiBaseUrl = "";
     private AuthSession? _session;
 
     [GeneratedRegex(@"^[^@\s]+@[^@\s]+\.[^@\s]+$", RegexOptions.CultureInvariant)]
     private static partial Regex EmailRegex();
+
+    [GeneratedRegex(@"[A-Za-z]")]
+    private static partial Regex PasswordLetterRegex();
+
+    [GeneratedRegex(@"\d")]
+    private static partial Regex PasswordDigitRegex();
 
     public event Action? AuthStateChanged;
 
@@ -29,15 +36,25 @@ public sealed partial class AuthService
         Directory.CreateDirectory(directory);
         _sessionPath = Path.Combine(directory, "auth-session.json");
         _session = LoadSession();
+        _apiClient = new ApiClient(
+            () => GetAccessTokenAsync(CancellationToken.None),
+            () => RefreshTokenInternalAsync(CancellationToken.None));
+        _subscriptionApi = new SubscriptionApiService(_apiClient, () => _apiBaseUrl);
+        _subscriptionSync = new SubscriptionSyncService(this, _subscriptionApi);
     }
+
+    public SubscriptionApiService SubscriptionApi => _subscriptionApi;
+    public SubscriptionSyncService SubscriptionSync => _subscriptionSync;
 
     public bool IsConfigured => !string.IsNullOrWhiteSpace(_apiBaseUrl);
 
-    public bool IsAuthenticated => _session is { IsExpired: false };
+    public bool IsAuthenticated => _session is not null &&
+                                   !string.IsNullOrWhiteSpace(_session.AccessToken) &&
+                                   !string.IsNullOrWhiteSpace(_session.RefreshToken);
 
-    public AuthSession? CurrentSession => _session is { IsExpired: false } ? _session : null;
+    public AuthSession? CurrentSession => _session;
 
-    public string? CurrentEmail => CurrentSession?.Email;
+    public string? CurrentEmail => _session?.Email;
 
     public void Configure(string apiBaseUrl)
     {
@@ -46,6 +63,12 @@ public sealed partial class AuthService
 
     public static bool IsValidEmail(string email) =>
         !string.IsNullOrWhiteSpace(email) && EmailRegex().IsMatch(email.Trim());
+
+    public static bool IsValidPassword(string password) =>
+        !string.IsNullOrWhiteSpace(password) &&
+        password.Length >= 6 &&
+        PasswordLetterRegex().IsMatch(password) &&
+        PasswordDigitRegex().IsMatch(password);
 
     public async Task<AuthResult> SendRegisterCodeAsync(string email, CancellationToken cancellationToken = default)
     {
@@ -61,18 +84,15 @@ public sealed partial class AuthService
 
         try
         {
-            using var response = await Http.PostAsJsonAsync(
-                $"{_apiBaseUrl}/api/auth/email/code",
+            var result = await _apiClient.PostPublicAsync<object?>(
+                _apiBaseUrl,
+                "auth/email/code",
                 new { email = email.Trim(), scene = "register" },
                 cancellationToken);
 
-            var payload = await ReadResponseAsync(response, cancellationToken);
-            if (!response.IsSuccessStatusCode)
-            {
-                return AuthResult.Fail(payload.Message ?? "验证码发送失败。");
-            }
-
-            return AuthResult.Ok(new AuthSession(), payload.Message ?? "验证码已发送，请查收邮箱。");
+            return result.IsSuccess
+                ? AuthResult.Ok(new AuthSession(), result.Message)
+                : AuthResult.Fail(result.Message);
         }
         catch (Exception ex)
         {
@@ -98,9 +118,9 @@ public sealed partial class AuthService
             return AuthResult.Fail("请输入邮箱验证码。");
         }
 
-        if (string.IsNullOrWhiteSpace(password) || password.Length < 8)
+        if (!IsValidPassword(password))
         {
-            return AuthResult.Fail("密码长度至少 8 位。");
+            return AuthResult.Fail("密码至少 6 位，且必须同时包含字母和数字。");
         }
 
         if (!string.Equals(password, confirmPassword, StringComparison.Ordinal))
@@ -115,8 +135,9 @@ public sealed partial class AuthService
 
         try
         {
-            using var response = await Http.PostAsJsonAsync(
-                $"{_apiBaseUrl}/api/auth/email/register",
+            var result = await _apiClient.PostPublicAsync<object?>(
+                _apiBaseUrl,
+                "auth/register",
                 new
                 {
                     email = email.Trim(),
@@ -125,19 +146,12 @@ public sealed partial class AuthService
                 },
                 cancellationToken);
 
-            var payload = await ReadResponseAsync(response, cancellationToken);
-            if (!response.IsSuccessStatusCode)
+            if (!result.IsSuccess)
             {
-                return AuthResult.Fail(payload.Message ?? "注册失败。");
+                return AuthResult.Fail(result.Message);
             }
 
-            if (payload.Session is null)
-            {
-                return AuthResult.Fail("注册成功，但服务端未返回登录凭证。");
-            }
-
-            ApplySession(payload.Session);
-            return AuthResult.Ok(payload.Session, payload.Message ?? "注册成功。");
+            return await LoginAsync(email, password, cancellationToken);
         }
         catch (Exception ex)
         {
@@ -168,8 +182,9 @@ public sealed partial class AuthService
 
         try
         {
-            using var response = await Http.PostAsJsonAsync(
-                $"{_apiBaseUrl}/api/auth/email/login",
+            var result = await _apiClient.PostPublicAsync<LoginData>(
+                _apiBaseUrl,
+                "auth/login/password",
                 new
                 {
                     email = email.Trim(),
@@ -177,19 +192,14 @@ public sealed partial class AuthService
                 },
                 cancellationToken);
 
-            var payload = await ReadResponseAsync(response, cancellationToken);
-            if (!response.IsSuccessStatusCode)
+            if (!result.IsSuccess || result.Data is null)
             {
-                return AuthResult.Fail(payload.Message ?? "登录失败。");
+                return AuthResult.Fail(result.Message);
             }
 
-            if (payload.Session is null)
-            {
-                return AuthResult.Fail("登录失败，服务端未返回有效凭证。");
-            }
-
-            ApplySession(payload.Session);
-            return AuthResult.Ok(payload.Session, payload.Message ?? "登录成功。");
+            var session = CreateSession(result.Data);
+            ApplySession(session);
+            return AuthResult.Ok(session, result.Message);
         }
         catch (Exception ex)
         {
@@ -198,7 +208,112 @@ public sealed partial class AuthService
         }
     }
 
-    public void Logout()
+    public async Task LogoutAsync(CancellationToken cancellationToken = default)
+    {
+        var refreshToken = _session?.RefreshToken;
+        if (!string.IsNullOrWhiteSpace(refreshToken) && IsConfigured)
+        {
+            try
+            {
+                await _apiClient.PostPublicAsync<object?>(
+                    _apiBaseUrl,
+                    "auth/logout",
+                    new { refreshToken },
+                    cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                DiagnosticLogService.Warning($"Logout request failed: {ex.Message}");
+            }
+        }
+
+        ClearSession();
+    }
+
+    public async Task<string?> GetAccessTokenAsync(CancellationToken cancellationToken = default)
+    {
+        if (_session is null)
+        {
+            return null;
+        }
+
+        if (_session.AccessTokenExpiresAtUtc <= DateTime.UtcNow.AddMinutes(1))
+        {
+            var refreshed = await RefreshTokenInternalAsync(cancellationToken);
+            if (!refreshed)
+            {
+                return null;
+            }
+        }
+
+        return _session.AccessToken;
+    }
+
+    private async Task<bool> RefreshTokenInternalAsync(CancellationToken cancellationToken = default)
+    {
+        if (_session is null || string.IsNullOrWhiteSpace(_session.RefreshToken) || !IsConfigured)
+        {
+            return false;
+        }
+
+        try
+        {
+            var result = await _apiClient.PostPublicAsync<TokenData>(
+                _apiBaseUrl,
+                "auth/token/refresh",
+                new { refreshToken = _session.RefreshToken },
+                cancellationToken);
+
+            if (!result.IsSuccess || result.Data is null)
+            {
+                ClearSession();
+                return false;
+            }
+
+            _session.AccessToken = result.Data.AccessToken;
+            _session.RefreshToken = result.Data.RefreshToken;
+            _session.AccessTokenExpiresAtUtc = DateTime.UtcNow.Add(AccessTokenLifetime);
+            SaveSession(_session);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            DiagnosticLogService.Warning($"Token refresh failed: {ex.Message}");
+            ClearSession();
+            return false;
+        }
+    }
+
+    private static AuthSession CreateSession(LoginData data) =>
+        new()
+        {
+            UserId = data.UserInfo.Id,
+            Email = data.UserInfo.Email,
+            AccessToken = data.AccessToken,
+            RefreshToken = data.RefreshToken,
+            AccessTokenExpiresAtUtc = DateTime.UtcNow.Add(AccessTokenLifetime),
+            Subscriptions = data.Subscriptions
+        };
+
+    public void RemoveSubscriptionFromSession(int subscriptionId)
+    {
+        if (_session is null)
+        {
+            return;
+        }
+
+        _session.Subscriptions.RemoveAll(subscription => subscription.Id == subscriptionId);
+        SaveSession(_session);
+    }
+
+    private void ApplySession(AuthSession session)
+    {
+        _session = session;
+        SaveSession(session);
+        AuthStateChanged?.Invoke();
+    }
+
+    private void ClearSession()
     {
         _session = null;
         if (File.Exists(_sessionPath))
@@ -206,13 +321,6 @@ public sealed partial class AuthService
             File.Delete(_sessionPath);
         }
 
-        AuthStateChanged?.Invoke();
-    }
-
-    private void ApplySession(AuthSession session)
-    {
-        _session = session;
-        SaveSession(session);
         AuthStateChanged?.Invoke();
     }
 
@@ -240,83 +348,4 @@ public sealed partial class AuthService
         var json = JsonSerializer.Serialize(session, JsonOptions);
         File.WriteAllText(_sessionPath, json);
     }
-
-    private static async Task<ApiPayload> ReadResponseAsync(HttpResponseMessage response, CancellationToken cancellationToken)
-    {
-        var body = await response.Content.ReadAsStringAsync(cancellationToken);
-        if (string.IsNullOrWhiteSpace(body))
-        {
-            return new ApiPayload();
-        }
-
-        try
-        {
-            using var document = JsonDocument.Parse(body);
-            var root = document.RootElement;
-            var message = ReadString(root, "message") ?? ReadString(root, "error");
-            var session = TryReadSession(root);
-            return new ApiPayload(message, session);
-        }
-        catch (JsonException)
-        {
-            return new ApiPayload(body.Trim());
-        }
-    }
-
-    private static AuthSession? TryReadSession(JsonElement root)
-    {
-        var token = ReadString(root, "accessToken") ?? ReadString(root, "token");
-        var email = ReadString(root, "email");
-        var expiresAt = ReadDateTime(root, "expiresAt") ?? ReadDateTime(root, "expiresAtUtc");
-
-        if (string.IsNullOrWhiteSpace(token) || string.IsNullOrWhiteSpace(email))
-        {
-            if (root.TryGetProperty("data", out var data))
-            {
-                token ??= ReadString(data, "accessToken") ?? ReadString(data, "token");
-                email ??= ReadString(data, "email");
-                expiresAt ??= ReadDateTime(data, "expiresAt") ?? ReadDateTime(data, "expiresAtUtc");
-            }
-        }
-
-        if (string.IsNullOrWhiteSpace(token) || string.IsNullOrWhiteSpace(email))
-        {
-            return null;
-        }
-
-        return new AuthSession
-        {
-            Email = email,
-            AccessToken = token,
-            ExpiresAtUtc = expiresAt ?? DateTime.UtcNow.AddDays(7)
-        };
-    }
-
-    private static string? ReadString(JsonElement element, string propertyName)
-    {
-        if (!element.TryGetProperty(propertyName, out var value))
-        {
-            return null;
-        }
-
-        return value.ValueKind switch
-        {
-            JsonValueKind.String => value.GetString(),
-            JsonValueKind.Number => value.GetRawText(),
-            _ => null
-        };
-    }
-
-    private static DateTime? ReadDateTime(JsonElement element, string propertyName)
-    {
-        var text = ReadString(element, propertyName);
-        if (string.IsNullOrWhiteSpace(text))
-        {
-            return null;
-        }
-
-        return DateTime.TryParse(text, out var parsed) ? parsed.ToUniversalTime() : null;
-    }
-
-    private sealed record ApiPayload(string? Message = null, AuthSession? Session = null);
 }

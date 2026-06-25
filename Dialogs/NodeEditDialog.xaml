@@ -14,10 +14,6 @@
         <SolidColorBrush x:Key="LineBrush" Color="#E2E8F0"/>
         <SolidColorBrush x:Key="TextBrush" Color="#0F172A"/>
         <SolidColorBrush x:Key="MutedBrush" Color="#64748B"/>
-        <LinearGradientBrush x:Key="AccentGradientBrush" StartPoint="0,0" EndPoint="1,1">
-            <GradientStop Color="#BFDBFE" Offset="0"/>
-            <GradientStop Color="#60A5FA" Offset="1"/>
-        </LinearGradientBrush>
         <Style TargetType="TextBlock">
             <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
         </Style>
@@ -34,8 +30,8 @@
             <Setter Property="MinWidth" Value="96"/>
             <Setter Property="Foreground" Value="#111827"/>
             <Setter Property="FontWeight" Value="Bold"/>
-            <Setter Property="Background" Value="{StaticResource AccentGradientBrush}"/>
-            <Setter Property="BorderBrush" Value="#93C5FD"/>
+            <Setter Property="Background" Value="{DynamicResource AccentGradientBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource AccentPrimaryBorderBrush}"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="Template">

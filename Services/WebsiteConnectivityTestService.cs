@@ -40,7 +40,7 @@ public static class WebsiteConnectivityTestService
         {
             Timeout = Timeout.InfiniteTimeSpan
         };
-        client.DefaultRequestHeaders.UserAgent.ParseAdd("Nexora/1.0");
+        client.DefaultRequestHeaders.UserAgent.ParseAdd("Nexora/1.1.0");
 
         var stopwatch = Stopwatch.StartNew();
         try

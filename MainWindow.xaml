@@ -18,6 +18,13 @@
         <SolidColorBrush x:Key="TextBrush" Color="#0F172A"/>
         <SolidColorBrush x:Key="MutedBrush" Color="#64748B"/>
         <SolidColorBrush x:Key="AccentTextBrush" Color="#2563EB"/>
+        <SolidColorBrush x:Key="AccentLightBrush" Color="#EFF6FF"/>
+        <SolidColorBrush x:Key="AccentMediumBrush" Color="#93C5FD"/>
+        <SolidColorBrush x:Key="AccentStrongBrush" Color="#60A5FA"/>
+        <SolidColorBrush x:Key="AccentSoftBorderBrush" Color="#BFDBFE"/>
+        <SolidColorBrush x:Key="AccentNavBackgroundBrush" Color="#DBEAFE"/>
+        <SolidColorBrush x:Key="AccentPrimaryBorderBrush" Color="#93C5FD"/>
+        <SolidColorBrush x:Key="AccentActiveNodeForegroundBrush" Color="#1E3A8A"/>
         <SolidColorBrush x:Key="GreenBrush" Color="#16A34A"/>
         <SolidColorBrush x:Key="RedBrush" Color="#DC2626"/>
         <SolidColorBrush x:Key="YellowBrush" Color="#60A5FA"/>
@@ -71,9 +78,9 @@
         </Style>
 
         <Style x:Key="ActiveNavButtonStyle" TargetType="Button" BasedOn="{StaticResource NavButtonStyle}">
-            <Setter Property="Foreground" Value="{StaticResource AccentTextBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource AccentTextBrush}"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="Background" Value="#DBEAFE"/>
+            <Setter Property="Background" Value="{DynamicResource AccentNavBackgroundBrush}"/>
         </Style>
 
         <Style x:Key="NavChildButtonStyle" TargetType="Button" BasedOn="{StaticResource NavButtonStyle}">
@@ -144,7 +151,7 @@
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
                                 <Setter TargetName="Root" Property="Background" Value="#F1F5F9"/>
-                                <Setter Property="Foreground" Value="#2563EB"/>
+                                <Setter Property="Foreground" Value="{DynamicResource AccentTextBrush}"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -196,8 +203,8 @@
         <Style x:Key="PrimaryButtonStyle" TargetType="Button" BasedOn="{StaticResource DarkButtonStyle}">
             <Setter Property="Foreground" Value="#111827"/>
             <Setter Property="FontWeight" Value="Bold"/>
-            <Setter Property="Background" Value="{StaticResource AccentGradientBrush}"/>
-            <Setter Property="BorderBrush" Value="#93C5FD"/>
+            <Setter Property="Background" Value="{DynamicResource AccentGradientBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource AccentPrimaryBorderBrush}"/>
         </Style>
 
         <Style x:Key="FieldTextBoxStyle" TargetType="TextBox">
@@ -208,7 +215,7 @@
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="Padding" Value="10,6"/>
             <Setter Property="VerticalContentAlignment" Value="Center"/>
-            <Setter Property="CaretBrush" Value="#60A5FA"/>
+            <Setter Property="CaretBrush" Value="{DynamicResource AccentStrongBrush}"/>
         </Style>
 
         <Style TargetType="TextBox" BasedOn="{StaticResource FieldTextBoxStyle}"/>
@@ -225,7 +232,7 @@
                         </StackPanel>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsChecked" Value="True">
-                                <Setter TargetName="Track" Property="Background" Value="#93C5FD"/>
+                                <Setter TargetName="Track" Property="Background" Value="{DynamicResource AccentMediumBrush}"/>
                                 <Setter TargetName="Thumb" Property="HorizontalAlignment" Value="Right"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
@@ -242,7 +249,7 @@
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="Padding" Value="10,6"/>
             <Setter Property="VerticalContentAlignment" Value="Center"/>
-            <Setter Property="CaretBrush" Value="#60A5FA"/>
+            <Setter Property="CaretBrush" Value="{DynamicResource AccentStrongBrush}"/>
         </Style>
 
         <Style x:Key="AuthFieldLabelStyle" TargetType="TextBlock">
@@ -254,7 +261,7 @@
         <Style x:Key="AuthLinkButtonStyle" TargetType="Button">
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="Foreground" Value="{StaticResource AccentTextBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource AccentTextBrush}"/>
             <Setter Property="FontSize" Value="15"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="Padding" Value="0"/>
@@ -271,7 +278,7 @@
             <Setter Property="Width" Value="20"/>
             <Setter Property="Height" Value="20"/>
             <Setter Property="Stretch" Value="Uniform"/>
-            <Setter Property="Stroke" Value="#2563EB"/>
+            <Setter Property="Stroke" Value="{DynamicResource AccentTextBrush}"/>
             <Setter Property="StrokeThickness" Value="1.9"/>
             <Setter Property="StrokeStartLineCap" Value="Round"/>
             <Setter Property="StrokeEndLineCap" Value="Round"/>
@@ -424,19 +431,19 @@
                     <Setter Property="Background" Value="#F8FAFC"/>
                 </DataTrigger>
                 <Trigger Property="IsSelected" Value="True">
-                    <Setter Property="Background" Value="#EFF6FF"/>
+                    <Setter Property="Background" Value="{DynamicResource AccentLightBrush}"/>
                     <Setter Property="Foreground" Value="#334155"/>
                 </Trigger>
                 <DataTrigger Binding="{Binding IsActive}" Value="True">
-                    <Setter Property="Background" Value="#93C5FD"/>
-                    <Setter Property="Foreground" Value="#1E3A8A"/>
+                    <Setter Property="Background" Value="{DynamicResource AccentMediumBrush}"/>
+                    <Setter Property="Foreground" Value="{DynamicResource AccentActiveNodeForegroundBrush}"/>
                 </DataTrigger>
                 <MultiDataTrigger>
                     <MultiDataTrigger.Conditions>
                         <Condition Binding="{Binding IsActive}" Value="True"/>
                         <Condition Binding="{Binding RelativeSource={RelativeSource AncestorType=DataGridRow}, Path=IsSelected}" Value="True"/>
                     </MultiDataTrigger.Conditions>
-                    <Setter Property="Background" Value="#60A5FA"/>
+                    <Setter Property="Background" Value="{DynamicResource AccentStrongBrush}"/>
                     <Setter Property="Foreground" Value="#0F172A"/>
                 </MultiDataTrigger>
             </Style.Triggers>
@@ -651,7 +658,7 @@
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
-                    <Border x:Name="ProxyToggleBorder" Style="{StaticResource ControlFieldBorderStyle}" BorderBrush="#BFDBFE" Background="#EFF6FF" Padding="14,0" MinWidth="200" VerticalAlignment="Center">
+                    <Border x:Name="ProxyToggleBorder" Style="{StaticResource ControlFieldBorderStyle}" BorderBrush="{StaticResource LineBrush}" Background="#FFFFFF" Padding="14,0" MinWidth="200" VerticalAlignment="Center">
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                             <TextBlock Text="启用代理" Foreground="{StaticResource MutedBrush}" FontSize="15" Margin="0,0,10,0"/>
                             <CheckBox x:Name="ProxyToggle" Style="{StaticResource ToggleSwitchStyle}" Checked="ProxyToggle_Changed" Unchecked="ProxyToggle_Changed"/>
@@ -662,7 +669,7 @@
                               DisplayMemberPath="PickerDisplay" SelectionChanged="NodePickerCombo_SelectionChanged"/>
                     <Border Grid.Column="1" MinHeight="42" Padding="12,0" CornerRadius="11" Background="#F8FAFC" BorderBrush="#D8E4F5" BorderThickness="1" Margin="12,0,12,0" HorizontalAlignment="Left" VerticalAlignment="Center">
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                            <TextBlock x:Name="NodeAddressText" Text="[VMess] -" Foreground="{StaticResource AccentTextBrush}" FontWeight="SemiBold"/>
+                            <TextBlock x:Name="NodeAddressText" Text="[VMess] -" Foreground="{DynamicResource AccentTextBrush}" FontWeight="SemiBold"/>
                             <TextBlock Text=" · " Foreground="{StaticResource MutedBrush}"/>
                             <TextBlock x:Name="CurrentTcpLatencyText" Text="-" Foreground="{StaticResource GreenBrush}" FontWeight="Bold"/>
                             <Border x:Name="NodeAvailabilityTag" Background="#DCFCE7" BorderBrush="#86EFAC" BorderThickness="1" CornerRadius="999" Padding="8,2" Margin="10,0,0,0">
@@ -688,7 +695,13 @@
                                 <Button x:Name="TestCurrentLatencyButton" Content="测试选中" Style="{StaticResource DarkButtonStyle}" Margin="0,0,8,8" Click="TestCurrentLatencyButton_Click"/>
                                 <Button x:Name="TestAllLatencyButton" Content="全部测试" Style="{StaticResource DarkButtonStyle}" Margin="0,0,8,8" Click="TestAllLatencyButton_Click"/>
                                 <Button x:Name="RemoveUnavailableButton" Content="移除不可用" Style="{StaticResource DarkButtonStyle}" Margin="0,0,8,8" Click="RemoveUnavailableButton_Click"/>
-                                <Button x:Name="RemoveDuplicateButton" Content="去除重复" Style="{StaticResource DarkButtonStyle}" Margin="0,0,0,8" Click="RemoveDuplicateButton_Click"/>
+                                <Button x:Name="RemoveDuplicateButton" Content="去除重复" Style="{StaticResource DarkButtonStyle}" Margin="0,0,8,8" Click="RemoveDuplicateButton_Click"/>
+                                <Button x:Name="SyncCloudSubscriptionsButton" ToolTip="从云端更新当前账号下的全部节点" Style="{StaticResource DarkButtonStyle}" Margin="0,0,0,8" Visibility="Collapsed" Click="SyncCloudSubscriptionsButton_Click">
+                                    <StackPanel Orientation="Horizontal">
+                                        <Path Width="16" Height="16" Stretch="Uniform" Stroke="#334155" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Data="{StaticResource IconRefresh}" Margin="0,0,6,0"/>
+                                        <TextBlock Text="更新" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </Button>
                             </WrapPanel>
 
                             <!-- Table -->
@@ -778,6 +791,8 @@
                                                                                     <ContextMenu Style="{StaticResource NodeContextMenuStyle}" Opened="SubscriptionContextMenu_Opened">
                                                                                         <MenuItem Header="刷新订阅" Click="SubscriptionRefreshMenu_Click"/>
                                                                                         <Separator/>
+                                                                                        <MenuItem Header="删除订阅" Tag="DeleteSubscription" Click="SubscriptionDeleteMenu_Click"/>
+                                                                                        <Separator/>
                                                                                         <MenuItem Header="自动刷新">
                                                                                             <MenuItem Header="关闭" Click="SubscriptionAutoRefreshOff_Click"/>
                                                                                             <MenuItem Header="每 15 分钟" Tag="15" Click="SubscriptionAutoRefreshPreset_Click"/>
@@ -787,7 +802,7 @@
                                                                                         </MenuItem>
                                                                                     </ContextMenu>
                                                                                 </StackPanel.ContextMenu>
-                                                                                <TextBlock Text="{Binding Name}" FontWeight="SemiBold" Foreground="{StaticResource AccentTextBrush}" Margin="8,0,12,0" VerticalAlignment="Center"/>
+                                                                                <TextBlock Text="{Binding Name}" FontWeight="SemiBold" Foreground="{DynamicResource AccentTextBrush}" Margin="8,0,12,0" VerticalAlignment="Center"/>
                                                                                 <TextBlock Text="{Binding ItemCount, StringFormat=({0} 个节点)}" Foreground="{StaticResource MutedBrush}"/>
                                                                                 <Button Content="刷新" Tag="{Binding Name}"
                                                                                         Click="SubscriptionGroupRefreshButton_Click">
@@ -821,7 +836,7 @@
                                                 <DataGridTemplateColumn.CellTemplate>
                                                     <DataTemplate>
                                                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
-                                                            <Ellipse x:Name="StatusDot" Width="9" Height="9" Fill="#3B82F6" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                                            <Ellipse x:Name="StatusDot" Width="9" Height="9" Fill="{DynamicResource AccentTextBrush}" Margin="0,0,8,0" VerticalAlignment="Center"/>
                                                             <TextBlock x:Name="StatusText" Text="{Binding StatusDisplay}" Style="{StaticResource NodeStatusTextStyle}"/>
                                                         </StackPanel>
                                                         <DataTemplate.Triggers>
@@ -1457,6 +1472,18 @@
                             </Border>
                         </WrapPanel>
                     </Border>
+                    <Border Style="{StaticResource CardBorderStyle}" Margin="0,16,0,0">
+                        <StackPanel>
+                            <TextBlock Text="外观" FontSize="18" FontWeight="Bold" Margin="0,0,0,14"/>
+                            <WrapPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <TextBlock Text="主题色" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,12,8"/>
+                                <Border x:Name="ThemeAccentPreview" Width="36" Height="36" CornerRadius="8" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" Margin="0,0,12,8"/>
+                                <TextBlock x:Name="ThemeAccentHexText" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}" Margin="0,0,12,8"/>
+                                <Button Content="选择颜色" Style="{StaticResource DarkButtonStyle}" Margin="0,0,8,8" Click="ThemeColorPickButton_Click"/>
+                                <Button Content="恢复默认" Style="{StaticResource DarkButtonStyle}" Margin="0,0,0,8" Click="ThemeColorResetButton_Click"/>
+                            </WrapPanel>
+                        </StackPanel>
+                    </Border>
                 </StackPanel>
             </ScrollViewer>
 
@@ -1475,7 +1502,7 @@
                                         <ColumnDefinition Width="Auto"/>
                                     </Grid.ColumnDefinitions>
                                     <StackPanel>
-                                        <Border Width="48" Height="48" HorizontalAlignment="Left" Background="#FEF3C7" CornerRadius="14" Margin="0,0,0,14">
+                                        <Border Width="48" Height="48" HorizontalAlignment="Left" Background="{DynamicResource AccentLightBrush}" CornerRadius="14" Margin="0,0,0,14">
                                             <Path Data="{StaticResource IconUser}" Style="{StaticResource AuthInputIconStyle}" Width="24" Height="24" Margin="0" HorizontalAlignment="Center"/>
                                         </Border>
                                         <TextBlock Text="账号登录" FontSize="28" FontWeight="Bold" Margin="0,0,0,2"/>
@@ -1518,7 +1545,7 @@
                                         <ColumnDefinition Width="Auto"/>
                                     </Grid.ColumnDefinitions>
                                     <StackPanel>
-                                        <Border Width="48" Height="48" HorizontalAlignment="Left" Background="#FEF3C7" CornerRadius="14" Margin="0,0,0,14">
+                                        <Border Width="48" Height="48" HorizontalAlignment="Left" Background="{DynamicResource AccentLightBrush}" CornerRadius="14" Margin="0,0,0,14">
                                             <Path Data="{StaticResource IconUser}" Style="{StaticResource AuthInputIconStyle}" Width="24" Height="24" Margin="0" HorizontalAlignment="Center"/>
                                         </Border>
                                         <TextBlock Text="创建账号" FontSize="28" FontWeight="Bold" Margin="0,0,0,4"/>

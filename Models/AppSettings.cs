@@ -20,10 +20,11 @@ public sealed class AppSettings
     public long SubscriptionUploadBytes { get; set; }
     public long SubscriptionDownloadBytes { get; set; }
     public long? SubscriptionTotalBytes { get; set; }
-    public string AuthApiBaseUrl { get; set; } = "http://localhost:8080";
+    public string AuthApiBaseUrl { get; set; } = "http://43.136.117.106:8080/api/v1";
     public bool RunAtStartup { get; set; }
     public bool RunAtStartupSilent { get; set; }
     public bool AllowLanAccess { get; set; }
+    public string ThemeAccentColor { get; set; } = "#2563EB";
     public Dictionary<string, SubscriptionSource> SubscriptionSources { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 }
 

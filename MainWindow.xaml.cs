@@ -72,7 +72,9 @@ public partial class MainWindow : Window
     private CancellationTokenSource? _websiteTestCancellation;
     private readonly DispatcherTimer _registerCodeCooldownTimer = new() { Interval = TimeSpan.FromSeconds(1) };
     private readonly DispatcherTimer _aboutRuntimeTimer = new() { Interval = TimeSpan.FromSeconds(1) };
+    private readonly DispatcherTimer _subscriptionGlobalRefreshTimer = new() { Interval = TimeSpan.FromSeconds(30) };
     private readonly Dictionary<string, DispatcherTimer> _subscriptionRefreshTimers = new(StringComparer.OrdinalIgnoreCase);
+    private bool _subscriptionGlobalRefreshInProgress;
     private int _registerCodeCooldownSeconds;
     private string? _subscriptionContextMenuName;
 
@@ -90,6 +92,7 @@ public partial class MainWindow : Window
         _authService.AuthStateChanged += AuthService_AuthStateChanged;
         _registerCodeCooldownTimer.Tick += RegisterCodeCooldownTimer_Tick;
         _aboutRuntimeTimer.Tick += AboutRuntimeTimer_Tick;
+        _subscriptionGlobalRefreshTimer.Tick += SubscriptionGlobalRefreshTimer_Tick;
         _profilesView = CollectionViewSource.GetDefaultView(_profiles);
         _profilesView.Filter = FilterProfile;
         _profilesView.GroupDescriptions.Add(new PropertyGroupDescription(nameof(VmessProfile.SubscriptionDisplay)));
@@ -110,6 +113,14 @@ public partial class MainWindow : Window
             _registerCodeCooldownTimer.Tick -= RegisterCodeCooldownTimer_Tick;
             _aboutRuntimeTimer.Stop();
             _aboutRuntimeTimer.Tick -= AboutRuntimeTimer_Tick;
+            _subscriptionGlobalRefreshTimer.Stop();
+            _subscriptionGlobalRefreshTimer.Tick -= SubscriptionGlobalRefreshTimer_Tick;
+            foreach (var timer in _subscriptionRefreshTimers.Values)
+            {
+                timer.Stop();
+            }
+
+            _subscriptionRefreshTimers.Clear();
             DisposeTray();
             _regionEnrichmentCancellation?.Cancel();
             _regionEnrichmentCancellation?.Dispose();
@@ -541,6 +552,7 @@ public partial class MainWindow : Window
         UpdateActiveProfileMarkers(_settings.SelectedProfileId);
         UpdateNodeStatusBar(selected);
         ConfigureAuthService();
+        ApplyTheme();
         UpdateAuthSidebar();
         UpdateSidebarStatus();
         UpdateTrafficStatsDisplay();
@@ -551,6 +563,51 @@ public partial class MainWindow : Window
         SyncAllowLanAccessFromSettings();
         ApplyStartupSettings(save: false);
         RestoreSubscriptionAutoRefreshTimers();
+        StartSubscriptionGlobalAutoRefresh();
+    }
+
+    private void StartSubscriptionGlobalAutoRefresh()
+    {
+        _subscriptionGlobalRefreshTimer.Stop();
+        _subscriptionGlobalRefreshTimer.Start();
+    }
+
+    private async void SubscriptionGlobalRefreshTimer_Tick(object? sender, EventArgs e)
+    {
+        await RefreshAllSubscriptionsAsync(silent: true);
+    }
+
+    private async Task RefreshAllSubscriptionsAsync(bool silent)
+    {
+        if (_subscriptionGlobalRefreshInProgress)
+        {
+            return;
+        }
+
+        var subscriptionNames = _settings.SubscriptionSources
+            .Where(entry =>
+                !string.IsNullOrWhiteSpace(entry.Value.Url) &&
+                !string.Equals(entry.Key, "手动", StringComparison.OrdinalIgnoreCase))
+            .Select(entry => entry.Key)
+            .ToList();
+
+        if (subscriptionNames.Count == 0)
+        {
+            return;
+        }
+
+        _subscriptionGlobalRefreshInProgress = true;
+        try
+        {
+            foreach (var subscriptionName in subscriptionNames)
+            {
+                await RefreshSubscriptionAsync(subscriptionName, silent);
+            }
+        }
+        finally
+        {
+            _subscriptionGlobalRefreshInProgress = false;
+        }
     }
 
     private void InitializeWebsiteTests()
@@ -1125,22 +1182,66 @@ public partial class MainWindow : Window
         var running = _coreService.IsRunning;
         ProxyStateText.Text = running ? "运行中" : "已停止";
         ProxyStateText.Foreground = running
-            ? new SolidColorBrush(Color.FromRgb(0x16, 0xA3, 0x4A))
+            ? GreenBrush()
             : new SolidColorBrush(Color.FromRgb(0x64, 0x74, 0x8B));
-        ProxyToggleBorder.BorderBrush = running
-            ? new SolidColorBrush(Color.FromRgb(0xFB, 0xBF, 0x24))
-            : new SolidColorBrush(Color.FromRgb(0xE2, 0xE8, 0xF0));
-        ProxyToggleBorder.Background = running
-            ? new SolidColorBrush(Color.FromRgb(0xFE, 0xF9, 0xC3))
-            : new SolidColorBrush(Color.FromRgb(0xFF, 0xFF, 0xFF));
         UpdateTrayStatus();
+    }
+
+    private void ApplyTheme()
+    {
+        var accent = ThemeService.ParseAccentColor(_settings.ThemeAccentColor);
+        ThemeService.Apply(accent);
+        ThemeService.ApplyToResources(Resources, accent);
+        SyncThemeSettingsUi(accent);
+    }
+
+    private void SyncThemeSettingsUi(Color accent)
+    {
+        if (!_isUiReady || ThemeAccentPreview is null || ThemeAccentHexText is null)
+        {
+            return;
+        }
+
+        ThemeAccentPreview.Background = new SolidColorBrush(accent);
+        ThemeAccentHexText.Text = ThemeService.FormatHex(accent);
+    }
+
+    private void ThemeColorPickButton_Click(object sender, RoutedEventArgs e)
+    {
+        var current = ThemeService.ParseAccentColor(_settings.ThemeAccentColor);
+        using var dialog = new Forms.ColorDialog
+        {
+            FullOpen = true,
+            Color = System.Drawing.Color.FromArgb(current.R, current.G, current.B)
+        };
+
+        if (dialog.ShowDialog() != Forms.DialogResult.OK)
+        {
+            return;
+        }
+
+        _settings.ThemeAccentColor = ThemeService.FormatHex(
+            Color.FromRgb(dialog.Color.R, dialog.Color.G, dialog.Color.B));
+        ApplyTheme();
+        _settingsStore.Save(_settings);
+    }
+
+    private void ThemeColorResetButton_Click(object sender, RoutedEventArgs e)
+    {
+        _settings.ThemeAccentColor = ThemeService.DefaultAccentHex;
+        ApplyTheme();
+        _settingsStore.Save(_settings);
     }
 
     private void ConfigureAuthService()
     {
-        var apiBaseUrl = string.IsNullOrWhiteSpace(_settings.AuthApiBaseUrl)
-            ? "http://localhost:8080"
-            : _settings.AuthApiBaseUrl;
+        var apiBaseUrl = ApiDefaults.NormalizeAuthApiBaseUrl(_settings.AuthApiBaseUrl);
+        if (!string.Equals(_settings.AuthApiBaseUrl, apiBaseUrl, StringComparison.Ordinal))
+        {
+            _settings.AuthApiBaseUrl = apiBaseUrl;
+            _settingsStore.Save(_settings);
+        }
+
         _authService.Configure(apiBaseUrl);
     }
 
@@ -1161,21 +1262,48 @@ public partial class MainWindow : Window
             AuthGuestPanel.Visibility = Visibility.Collapsed;
             AuthUserPanel.Visibility = Visibility.Visible;
             SideAuthEmailText.Text = _authService.CurrentEmail ?? "";
+            if (SyncCloudSubscriptionsButton is not null)
+            {
+                SyncCloudSubscriptionsButton.Visibility = Visibility.Visible;
+            }
         }
         else
         {
             AuthGuestPanel.Visibility = Visibility.Visible;
             AuthUserPanel.Visibility = Visibility.Collapsed;
+            if (SyncCloudSubscriptionsButton is not null)
+            {
+                SyncCloudSubscriptionsButton.Visibility = Visibility.Collapsed;
+            }
         }
     }
 
     private void SideLoginButton_Click(object sender, RoutedEventArgs e) => ShowLoginPage();
 
-    private void SideLogoutButton_Click(object sender, RoutedEventArgs e)
+    private async void SideLogoutButton_Click(object sender, RoutedEventArgs e)
     {
-        _authService.Logout();
+        await _authService.LogoutAsync();
+        ClearCloudProfilesOnLogout();
         ClearAuthMessages();
-        MessageBox.Show("已退出登录。", "Nexora", MessageBoxButton.OK, MessageBoxImage.Information);
+    }
+
+    private async void SyncCloudSubscriptionsButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (!_authService.IsAuthenticated)
+        {
+            MessageBox.Show("请先登录后再从云端更新节点。", "Nexora", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        SyncCloudSubscriptionsButton.IsEnabled = false;
+        try
+        {
+            await ReloadCloudSubscriptionsAsync(showSuccessMessage: true);
+        }
+        finally
+        {
+            SyncCloudSubscriptionsButton.IsEnabled = true;
+        }
     }
 
     private void GoToRegisterPageButton_Click(object sender, RoutedEventArgs e) => ShowRegisterPage();
@@ -1242,6 +1370,7 @@ public partial class MainWindow : Window
             LoginPasswordBox.Clear();
             ShowAuthMessage(LoginMessageText, result.Message, isSuccess: true);
             CloseAuthDialog();
+            await ReloadCloudSubscriptionsAsync(showSuccessMessage: false);
             ShowNodePage();
         }
         finally
@@ -1327,6 +1456,7 @@ public partial class MainWindow : Window
             RegisterCodeBox.Clear();
             ShowAuthMessage(RegisterMessageText, result.Message, isSuccess: true);
             CloseAuthDialog();
+            await ReloadCloudSubscriptionsAsync(showSuccessMessage: false);
             ShowNodePage();
         }
         finally
@@ -1334,6 +1464,176 @@ public partial class MainWindow : Window
             RegisterSubmitButton.IsEnabled = true;
             RegisterSubmitButton.Content = "注册";
         }
+    }
+
+    private async Task ReloadCloudSubscriptionsAsync(bool showSuccessMessage)
+    {
+        if (!_authService.IsAuthenticated)
+        {
+            return;
+        }
+
+        var items = await _authService.SubscriptionSync.LoadLoginSubscriptionsAsync();
+        if (items.Count == 0)
+        {
+            await _authService.SubscriptionSync.PullServerSubscriptionsAsync(_settings);
+            _settingsStore.Save(_settings);
+            if (showSuccessMessage)
+            {
+                MessageBox.Show("当前账号暂无云端订阅。", "Nexora", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+
+            return;
+        }
+
+        var loadedProfiles = new List<VmessProfile>();
+        var failedMessages = new List<string>();
+        var syncedSubscriptions = 0;
+
+        foreach (var item in items)
+        {
+            if (!item.Success || item.ImportResult is null)
+            {
+                failedMessages.Add($"{item.Subscription.Name}：{item.ErrorMessage ?? "加载失败"}");
+                continue;
+            }
+
+            var source = RegisterServerSubscriptionSource(item.Subscription);
+            var subscriptionName = item.Subscription.Name;
+            var importResult = item.ImportResult;
+
+            RemoveProfilesForSubscription(subscriptionName);
+
+            SubscriptionMetadataHelper.ApplyToProfiles(importResult, subscriptionName);
+
+            var syncResult = await _authService.SubscriptionSync.SyncRefreshAsync(
+                importResult,
+                source,
+                subscriptionName);
+
+            if (!syncResult.Success)
+            {
+                failedMessages.Add($"{subscriptionName}：{syncResult.Message}");
+                DiagnosticLogService.Warning($"Subscription sync failed for \"{subscriptionName}\": {syncResult.Message}");
+            }
+            else
+            {
+                syncedSubscriptions++;
+            }
+
+            foreach (var profile in importResult.Profiles)
+            {
+                MarkProfileAsCloudManaged(profile);
+                _profiles.Add(profile);
+                loadedProfiles.Add(profile);
+            }
+
+            ApplySubscriptionTrafficInfo(importResult.TrafficInfo);
+        }
+
+        _settingsStore.Save(_settings);
+        if (loadedProfiles.Count > 0)
+        {
+            SaveProfiles(loadedProfiles.Last().Id);
+            RefreshNodePicker();
+            ProfilesGrid.Items.Refresh();
+            RefreshRegionFilterOptions();
+            RefreshSubscriptionFilterOptions();
+            RestoreSubscriptionAutoRefreshTimers();
+            ScheduleRegionEnrichment(loadedProfiles);
+            _ = RunTcpLatencyTestsAsync(loadedProfiles, parallel: true);
+        }
+
+        if (failedMessages.Count > 0)
+        {
+            MessageBox.Show(
+                $"部分云端订阅更新失败：{Environment.NewLine}{string.Join(Environment.NewLine, failedMessages)}",
+                "Nexora",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+            return;
+        }
+
+        if (showSuccessMessage && syncedSubscriptions > 0)
+        {
+            MessageBox.Show(
+                $"已从云端更新 {syncedSubscriptions} 个订阅，共 {loadedProfiles.Count} 个节点。",
+                "Nexora",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+        }
+    }
+
+    private void ClearCloudProfilesOnLogout()
+    {
+        var removed = _profiles.Where(ShouldRemoveOnLogout).ToList();
+        foreach (var profile in removed)
+        {
+            _profiles.Remove(profile);
+        }
+
+        var cloudSourceKeys = _settings.SubscriptionSources
+            .Where(pair => pair.Value.ServerSubscriptionId is > 0)
+            .Select(pair => pair.Key)
+            .ToList();
+
+        foreach (var key in cloudSourceKeys)
+        {
+            _settings.SubscriptionSources.Remove(key);
+        }
+
+        var selectedId = _profiles.FirstOrDefault(profile => profile.Id == _settings.SelectedProfileId)?.Id
+            ?? _profiles.FirstOrDefault()?.Id;
+        _settings.SelectedProfileId = selectedId;
+        SaveProfiles(selectedId);
+        RefreshNodePicker();
+        SyncNodePickerDisplay();
+        RefreshRegionFilterOptions();
+        RefreshSubscriptionFilterOptions();
+        ProfilesGrid.Items.Refresh();
+        RestoreSubscriptionAutoRefreshTimers();
+        _settingsStore.Save(_settings);
+    }
+
+    private static bool ShouldRemoveOnLogout(VmessProfile profile) => profile.IsCloudManaged;
+
+    private static void MarkProfileAsCloudManaged(VmessProfile profile)
+    {
+        profile.IsCloudManaged = true;
+        profile.IsLocalManual = false;
+    }
+
+    private static void MarkProfileAsLocalManual(VmessProfile profile)
+    {
+        profile.IsCloudManaged = false;
+        profile.IsLocalManual = true;
+    }
+
+    private void RemoveProfilesForSubscription(string subscriptionName)
+    {
+        var removed = _profiles
+            .Where(profile => string.Equals(profile.SubscriptionName, subscriptionName, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        foreach (var profile in removed)
+        {
+            _profiles.Remove(profile);
+        }
+    }
+
+    private SubscriptionSource RegisterServerSubscriptionSource(ServerSubscription subscription)
+    {
+        _settings.SubscriptionSources.TryGetValue(subscription.Name, out var existing);
+        var source = new SubscriptionSource
+        {
+            Url = subscription.Url,
+            ServerSubscriptionId = subscription.Id,
+            DisplayName = subscription.Name,
+            AutoRefreshMinutes = existing?.AutoRefreshMinutes,
+            CreatedAtUtc = existing?.CreatedAtUtc ?? DateTime.UtcNow
+        };
+        _settings.SubscriptionSources[subscription.Name] = source;
+        return source;
     }
 
     private void ReconcileProxyUiState()
@@ -2101,7 +2401,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        Clipboard.SetText(string.Join(Environment.NewLine, selected.Select(BuildShareLink)));
+        Clipboard.SetText(string.Join(Environment.NewLine, selected.Select(ShareLinkBuilder.Build)));
     }
 
     private void OpenEditDialog(VmessProfile? profile)
@@ -2116,6 +2416,15 @@ public partial class MainWindow : Window
         var existing = _profiles.FirstOrDefault(p => p.Id == saved.Id);
         if (existing is null)
         {
+            if (_authService.IsAuthenticated)
+            {
+                MarkProfileAsCloudManaged(saved);
+            }
+            else
+            {
+                MarkProfileAsLocalManual(saved);
+            }
+
             _profiles.Add(saved);
         }
         else
@@ -2144,7 +2453,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        AddImportedProfiles(result);
+        _ = AddImportedProfilesAsync(result);
     }
 
     private void RefreshNodePicker()
@@ -2296,6 +2605,7 @@ public partial class MainWindow : Window
     {
         SyncRunAtStartupFromSettings();
         SyncAllowLanAccessFromSettings();
+        SyncThemeSettingsUi(ThemeService.ParseAccentColor(_settings.ThemeAccentColor));
         ShowPage(SettingsPageScroll, SettingsNavButton);
     }
 
@@ -2706,7 +3016,7 @@ public partial class MainWindow : Window
     {
         InlineImportBox.Text = content;
         var result = await SubscriptionImportService.ImportAsync(content);
-        AddImportedProfiles(result);
+        await AddImportedProfilesAsync(result);
     }
 
     private async void InlineOpenQrImageButton_Click(object sender, RoutedEventArgs e)
@@ -2757,19 +3067,30 @@ public partial class MainWindow : Window
         }
     }
 
-    private void AddImportedProfiles(SubscriptionImportResult result)
+    private async Task AddImportedProfilesAsync(SubscriptionImportResult result)
     {
-        RegisterSubscriptionSource(result);
+        var source = RegisterSubscriptionSource(result);
+        var subscriptionName = result.SubscriptionName ?? "订阅";
+        SubscriptionMetadataHelper.ApplyToProfiles(result, subscriptionName);
+
+        if (source is not null)
+        {
+            var syncResult = await _authService.SubscriptionSync.SyncImportAsync(result, source, subscriptionName);
+            if (!syncResult.Success)
+            {
+                DiagnosticLogService.Warning($"Subscription sync failed: {syncResult.Message}");
+            }
+            else if (!string.IsNullOrWhiteSpace(syncResult.SnapshotPath))
+            {
+                DiagnosticLogService.Info($"Subscription snapshot saved: {syncResult.SnapshotPath}");
+            }
+
+            _settingsStore.Save(_settings);
+        }
 
         foreach (var profile in result.Profiles)
         {
-            if (result.TrafficInfo is not null && !string.IsNullOrWhiteSpace(profile.SubscriptionName))
-            {
-                profile.SubscriptionUploadBytes = result.TrafficInfo.UploadBytes;
-                profile.SubscriptionDownloadBytes = result.TrafficInfo.DownloadBytes;
-                profile.SubscriptionTotalBytes = result.TrafficInfo.TotalBytes;
-            }
-
+            MarkProfileAsLocalManual(profile);
             _profiles.Add(profile);
         }
 
@@ -2794,20 +3115,25 @@ public partial class MainWindow : Window
         }
     }
 
-    private void RegisterSubscriptionSource(SubscriptionImportResult result)
+    private SubscriptionSource? RegisterSubscriptionSource(SubscriptionImportResult result)
     {
         if (string.IsNullOrWhiteSpace(result.SourceUrl) || string.IsNullOrWhiteSpace(result.SubscriptionName))
         {
-            return;
+            return null;
         }
 
         _settings.SubscriptionSources.TryGetValue(result.SubscriptionName, out var existing);
-        _settings.SubscriptionSources[result.SubscriptionName] = new SubscriptionSource
+        var source = new SubscriptionSource
         {
             Url = result.SourceUrl,
-            AutoRefreshMinutes = existing?.AutoRefreshMinutes
+            AutoRefreshMinutes = existing?.AutoRefreshMinutes,
+            ServerSubscriptionId = existing?.ServerSubscriptionId,
+            DisplayName = existing?.DisplayName ?? result.SubscriptionName,
+            CreatedAtUtc = existing?.CreatedAtUtc ?? DateTime.UtcNow
         };
-        _settingsStore.Save(_settings);
+        _authService.SubscriptionSync.ResolveAndAssignServerSubscriptionId(source, result.SubscriptionName);
+        _settings.SubscriptionSources[result.SubscriptionName] = source;
+        return source;
     }
 
     private void RestoreSubscriptionAutoRefreshTimers()
@@ -2903,6 +3229,14 @@ public partial class MainWindow : Window
         _subscriptionContextMenuName = subscriptionName;
     }
 
+    private async void SubscriptionDeleteMenu_Click(object sender, RoutedEventArgs e)
+    {
+        if (!string.IsNullOrWhiteSpace(_subscriptionContextMenuName))
+        {
+            await DeleteSubscriptionAsync(_subscriptionContextMenuName);
+        }
+    }
+
     private async void SubscriptionRefreshMenu_Click(object sender, RoutedEventArgs e)
     {
         if (!string.IsNullOrWhiteSpace(_subscriptionContextMenuName))
@@ -2966,7 +3300,115 @@ public partial class MainWindow : Window
         return null;
     }
 
-    private async Task RefreshSubscriptionAsync(string subscriptionName)
+    private bool TryGetCloudSubscriptionId(string subscriptionName, out int subscriptionId)
+    {
+        subscriptionId = 0;
+        if (!_authService.IsAuthenticated ||
+            string.Equals(subscriptionName, "手动", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        if (!_settings.SubscriptionSources.TryGetValue(subscriptionName, out var source))
+        {
+            var fromSession = _authService.CurrentSession?.Subscriptions.FirstOrDefault(subscription =>
+                string.Equals(subscription.Name, subscriptionName, StringComparison.OrdinalIgnoreCase));
+            if (fromSession is not null)
+            {
+                subscriptionId = fromSession.Id;
+                return true;
+            }
+
+            return false;
+        }
+
+        _authService.SubscriptionSync.ResolveAndAssignServerSubscriptionId(source, subscriptionName);
+        if (source.ServerSubscriptionId is int resolvedId && resolvedId > 0)
+        {
+            subscriptionId = resolvedId;
+            return true;
+        }
+
+        return false;
+    }
+
+    private async Task DeleteSubscriptionAsync(string subscriptionName)
+    {
+        if (string.Equals(subscriptionName, "手动", StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        var isCloudSubscription = TryGetCloudSubscriptionId(subscriptionName, out var subscriptionId);
+        var nodeCount = _profiles.Count(profile =>
+            string.Equals(profile.SubscriptionName, subscriptionName, StringComparison.OrdinalIgnoreCase));
+
+        var message = isCloudSubscription
+            ? $"确定删除订阅「{subscriptionName}」吗？{Environment.NewLine}{Environment.NewLine}" +
+              $"将同时删除云端订阅链接及本地 {nodeCount} 个节点。{Environment.NewLine}" +
+              "此操作不可恢复，是否继续？"
+            : $"确定删除订阅「{subscriptionName}」及本地 {nodeCount} 个节点吗？";
+
+        if (MessageBox.Show(
+                message,
+                "删除订阅",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning) != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        if (isCloudSubscription && subscriptionId <= 0)
+        {
+            MessageBox.Show(
+                "未找到云端订阅 ID，请重新登录后再试。",
+                "Nexora",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+            return;
+        }
+
+        if (isCloudSubscription)
+        {
+            var deleteResult = await _authService.SubscriptionApi.DeleteAsync(subscriptionId);
+            if (!deleteResult.IsSuccess)
+            {
+                MessageBox.Show(
+                    $"云端订阅删除失败：{deleteResult.Message}",
+                    "Nexora",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+                return;
+            }
+
+            _authService.RemoveSubscriptionFromSession(subscriptionId);
+        }
+
+        StopSubscriptionAutoRefresh(subscriptionName, save: false);
+        RemoveProfilesForSubscription(subscriptionName);
+        _settings.SubscriptionSources.Remove(subscriptionName);
+
+        var nextActiveId = _profiles.FirstOrDefault(profile => profile.Id == _settings.SelectedProfileId)?.Id
+            ?? _profiles.FirstOrDefault()?.Id;
+        SaveProfiles(nextActiveId);
+        RefreshNodePicker();
+        SyncNodePickerDisplay();
+        RefreshRegionFilterOptions();
+        RefreshSubscriptionFilterOptions();
+        ProfilesGrid.Items.Refresh();
+        ProfilesGrid.SelectedItem = _profiles.FirstOrDefault(profile => profile.Id == nextActiveId);
+        _settingsStore.Save(_settings);
+
+        MessageBox.Show(
+            isCloudSubscription
+                ? $"订阅「{subscriptionName}」已从云端和本地删除。"
+                : $"订阅「{subscriptionName}」及本地节点已删除。",
+            "Nexora",
+            MessageBoxButton.OK,
+            MessageBoxImage.Information);
+    }
+
+    private async Task RefreshSubscriptionAsync(string subscriptionName, bool silent = false)
     {
         if (string.Equals(subscriptionName, "手动", StringComparison.OrdinalIgnoreCase))
         {
@@ -2976,12 +3418,21 @@ public partial class MainWindow : Window
         if (!_settings.SubscriptionSources.TryGetValue(subscriptionName, out var source) ||
             string.IsNullOrWhiteSpace(source.Url))
         {
-            MessageBox.Show("该订阅没有保存原始地址，请重新导入订阅链接。", "Nexora", MessageBoxButton.OK, MessageBoxImage.Information);
+            if (!silent)
+            {
+                MessageBox.Show("该订阅没有保存原始地址，请重新导入订阅链接。", "Nexora", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+
             return;
         }
 
         try
         {
+            if (_authService.IsAuthenticated)
+            {
+                _authService.SubscriptionSync.ResolveAndAssignServerSubscriptionId(source, subscriptionName);
+            }
+
             var result = await SubscriptionImportService.ImportAsync(source.Url);
             var previousActive = GetSelectedProfileOrNull();
             var removed = _profiles
@@ -2995,20 +3446,77 @@ public partial class MainWindow : Window
 
             foreach (var profile in result.Profiles)
             {
-                profile.SubscriptionName = subscriptionName;
                 profile.SubscriptionUpdatedAt = DateTime.Now;
                 profile.UpdatedAt = DateTime.Now;
-                if (result.TrafficInfo is not null)
-                {
-                    profile.SubscriptionUploadBytes = result.TrafficInfo.UploadBytes;
-                    profile.SubscriptionDownloadBytes = result.TrafficInfo.DownloadBytes;
-                    profile.SubscriptionTotalBytes = result.TrafficInfo.TotalBytes;
-                }
-
                 _profiles.Add(profile);
             }
 
+            SubscriptionMetadataHelper.ApplyToProfiles(
+                new SubscriptionImportResult
+                {
+                    Profiles = result.Profiles,
+                    TrafficInfo = result.TrafficInfo,
+                    SourceUrl = source.Url,
+                    SubscriptionName = subscriptionName
+                },
+                subscriptionName);
+
             ApplySubscriptionTrafficInfo(result.TrafficInfo);
+
+            if (_authService.IsAuthenticated)
+            {
+                var syncResult = await _authService.SubscriptionSync.SyncRefreshAsync(
+                    new SubscriptionImportResult
+                    {
+                        Profiles = result.Profiles,
+                        TrafficInfo = result.TrafficInfo,
+                        SourceUrl = source.Url,
+                        SubscriptionName = subscriptionName
+                    },
+                    source,
+                    subscriptionName);
+
+                foreach (var profile in result.Profiles)
+                {
+                    MarkProfileAsCloudManaged(profile);
+                }
+
+                if (!syncResult.Success)
+                {
+                    DiagnosticLogService.Warning($"Subscription refresh sync failed: {syncResult.Message}");
+                    if (!silent)
+                    {
+                        MessageBox.Show(
+                            $"订阅已本地刷新，但同步到云端失败：{syncResult.Message}",
+                            "Nexora",
+                            MessageBoxButton.OK,
+                            MessageBoxImage.Warning);
+                    }
+                }
+                else
+                {
+                    DiagnosticLogService.Info(
+                        $"Subscription refreshed and synced to server. id={syncResult.ServerSubscriptionId}, message={syncResult.Message}");
+                }
+            }
+            else
+            {
+                foreach (var profile in result.Profiles)
+                {
+                    MarkProfileAsLocalManual(profile);
+                }
+
+                if (!silent)
+                {
+                    MessageBox.Show(
+                        "订阅已本地刷新完成。",
+                        "Nexora",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Information);
+                }
+            }
+
+            _settingsStore.Save(_settings);
 
             string? nextActiveId = previousActive?.Id;
             if (previousActive is not null &&
@@ -3034,14 +3542,21 @@ public partial class MainWindow : Window
             ProfilesGrid.Items.Refresh();
             ScheduleRegionEnrichment(result.Profiles);
 
-            if (result.Profiles.Count > 0)
+            if (!silent && result.Profiles.Count > 0)
             {
                 await RunTcpLatencyTestsAsync(result.Profiles, parallel: true);
             }
         }
         catch (Exception ex)
         {
-            ShowError(ex);
+            if (!silent)
+            {
+                ShowError(ex);
+            }
+            else
+            {
+                DiagnosticLogService.Warning($"Subscription auto refresh failed for \"{subscriptionName}\": {ex.Message}");
+            }
         }
     }
 
@@ -3103,7 +3618,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        var link = BuildShareLink(profile);
+        var link = ShareLinkBuilder.Build(profile);
         ExportShareBox.Text = link;
         ExportQrImage.Source = GenerateQrImage(link);
     }
@@ -3453,6 +3968,17 @@ public partial class MainWindow : Window
         _settings.SelectedProfileId = selectedProfileId;
         _settingsStore.Save(_settings);
         UpdateActiveProfileMarkers(selectedProfileId);
+        StopProxyIfNoProfiles();
+    }
+
+    private void StopProxyIfNoProfiles()
+    {
+        if (_profiles.Count != 0 || !_coreService.IsRunning)
+        {
+            return;
+        }
+
+        StopProxy();
     }
 
     private static void CopyProfile(VmessProfile source, VmessProfile target)
@@ -3511,89 +4037,6 @@ public partial class MainWindow : Window
         var invalidChars = Path.GetInvalidFileNameChars();
         var sanitized = new string(value.Select(ch => invalidChars.Contains(ch) ? '_' : ch).ToArray()).Trim();
         return string.IsNullOrWhiteSpace(sanitized) ? "Nexora-Node" : sanitized;
-    }
-
-    private static string BuildShareLink(VmessProfile profile)
-    {
-        return profile.Protocol.ToLowerInvariant() switch
-        {
-            "vless" => BuildVlessLink(profile),
-            "trojan" => BuildTrojanLink(profile),
-            "shadowsocks" or "ss" => BuildShadowsocksLink(profile),
-            "socks" or "socks5" => BuildUserPassLink(profile, "socks"),
-            "http" or "https" => BuildUserPassLink(profile, "http"),
-            _ => BuildVmessLink(profile)
-        };
-    }
-
-    private static string BuildVmessLink(VmessProfile profile)
-    {
-        var payload = new
-        {
-            v = "2",
-            ps = profile.DisplayName,
-            add = profile.Address,
-            port = profile.Port.ToString(),
-            id = profile.UserId,
-            aid = profile.AlterId.ToString(),
-            scy = profile.Security,
-            net = profile.Network,
-            type = profile.Type,
-            host = profile.Host,
-            path = profile.Path,
-            tls = profile.Tls,
-            sni = profile.Sni
-        };
-        return $"vmess://{Convert.ToBase64String(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(payload)))}";
-    }
-
-    private static string BuildVlessLink(VmessProfile profile)
-    {
-        var query = BuildQuery([
-            ("encryption", string.IsNullOrWhiteSpace(profile.Security) ? "none" : profile.Security),
-            ("type", profile.Network),
-            ("security", string.IsNullOrWhiteSpace(profile.Tls) ? "" : "tls"),
-            ("sni", profile.Sni),
-            ("host", profile.Host),
-            ("path", profile.Path)
-        ]);
-        return $"vless://{Uri.EscapeDataString(profile.UserId)}@{profile.Address}:{profile.Port}{query}#{Uri.EscapeDataString(profile.DisplayName)}";
-    }
-
-    private static string BuildTrojanLink(VmessProfile profile)
-    {
-        var query = BuildQuery([
-            ("type", profile.Network),
-            ("security", string.IsNullOrWhiteSpace(profile.Tls) ? "tls" : "tls"),
-            ("sni", profile.Sni),
-            ("host", profile.Host),
-            ("path", profile.Path)
-        ]);
-        return $"trojan://{Uri.EscapeDataString(profile.Password)}@{profile.Address}:{profile.Port}{query}#{Uri.EscapeDataString(profile.DisplayName)}";
-    }
-
-    private static string BuildShadowsocksLink(VmessProfile profile)
-    {
-        var method = string.IsNullOrWhiteSpace(profile.Security) ? "aes-128-gcm" : profile.Security;
-        var userInfo = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{method}:{profile.Password}")).TrimEnd('=').Replace('+', '-').Replace('/', '_');
-        return $"ss://{userInfo}@{profile.Address}:{profile.Port}#{Uri.EscapeDataString(profile.DisplayName)}";
-    }
-
-    private static string BuildUserPassLink(VmessProfile profile, string scheme)
-    {
-        var userInfo = string.IsNullOrWhiteSpace(profile.UserId)
-            ? ""
-            : $"{Uri.EscapeDataString(profile.UserId)}:{Uri.EscapeDataString(profile.Password)}@";
-        return $"{scheme}://{userInfo}{profile.Address}:{profile.Port}#{Uri.EscapeDataString(profile.DisplayName)}";
-    }
-
-    private static string BuildQuery(IEnumerable<(string Key, string Value)> values)
-    {
-        var items = values
-            .Where(item => !string.IsNullOrWhiteSpace(item.Value))
-            .Select(item => $"{Uri.EscapeDataString(item.Key)}={Uri.EscapeDataString(item.Value)}")
-            .ToArray();
-        return items.Length == 0 ? "" : $"?{string.Join("&", items)}";
     }
 
     private static string GetConfigDirectory()

@@ -29,6 +29,8 @@ public sealed class VmessProfile : INotifyPropertyChanged
     public string Remark { get; set; } = "";
     public string Region { get; set; } = "";
     public string SubscriptionName { get; set; } = "";
+    public bool IsCloudManaged { get; set; }
+    public bool IsLocalManual { get; set; }
     public DateTime? SubscriptionUpdatedAt { get; set; }
     public long SubscriptionUploadBytes { get; set; }
     public long SubscriptionDownloadBytes { get; set; }

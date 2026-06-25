@@ -51,7 +51,7 @@ public static class SubscriptionImportService
     private static async Task<SubscriptionImportResult> ImportFromUrlAsync(Uri uri, CancellationToken cancellationToken)
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, uri);
-        request.Headers.UserAgent.ParseAdd("Nexora/1.0");
+        request.Headers.UserAgent.ParseAdd("Nexora/1.1.0");
 
         using var response = await HttpClient.SendAsync(request, cancellationToken);
         response.EnsureSuccessStatusCode();
@@ -69,12 +69,7 @@ public static class SubscriptionImportService
 
     internal static SubscriptionTrafficInfo? TryParseSubscriptionUserInfo(HttpResponseMessage response)
     {
-        if (!response.Headers.TryGetValues("subscription-userinfo", out var values))
-        {
-            return null;
-        }
-
-        var raw = values.FirstOrDefault();
+        var raw = ReadSubscriptionUserInfoHeader(response);
         if (string.IsNullOrWhiteSpace(raw))
         {
             return null;
@@ -83,6 +78,7 @@ public static class SubscriptionImportService
         long upload = 0;
         long download = 0;
         long? total = null;
+        long? expireUnix = null;
 
         foreach (var part in raw.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
         {
@@ -110,10 +106,14 @@ public static class SubscriptionImportService
                 case "total":
                     total = number;
                     break;
+                case "expire":
+                    expireUnix = number;
+                    break;
             }
         }
 
-        if (total is null && upload == 0 && download == 0)
+        var expireAtUtc = ParseExpireUnix(expireUnix);
+        if (total is null && upload == 0 && download == 0 && expireAtUtc is null)
         {
             return null;
         }
@@ -122,8 +122,36 @@ public static class SubscriptionImportService
         {
             UploadBytes = upload,
             DownloadBytes = download,
-            TotalBytes = total
+            TotalBytes = total,
+            ExpireAtUtc = expireAtUtc
         };
+    }
+
+    private static string? ReadSubscriptionUserInfoHeader(HttpResponseMessage response)
+    {
+        if (response.Headers.TryGetValues("subscription-userinfo", out var responseValues))
+        {
+            return responseValues.FirstOrDefault();
+        }
+
+        if (response.Content.Headers.TryGetValues("subscription-userinfo", out var contentValues))
+        {
+            return contentValues.FirstOrDefault();
+        }
+
+        return null;
+    }
+
+    private static DateTime? ParseExpireUnix(long? expireUnix)
+    {
+        if (expireUnix is not long unix || unix <= 0)
+        {
+            return null;
+        }
+
+        var seconds = unix > 9999999999 ? unix / 1000 : unix;
+        var expireAtUtc = DateTimeOffset.FromUnixTimeSeconds(seconds).UtcDateTime;
+        return expireAtUtc.Year >= 2099 ? new DateTime(2099, 12, 31, 23, 59, 59, DateTimeKind.Utc) : expireAtUtc;
     }
 
     private static List<VmessProfile> ParseProfiles(string content, string sourceName, DateTime? updatedAt)

@@ -33,7 +33,14 @@ public sealed class SettingsStore
                 throw new JsonException("Settings file is empty or starts with an invalid value.");
             }
 
-            return JsonSerializer.Deserialize<AppSettings>(json, JsonOptions()) ?? new AppSettings();
+            var settings = JsonSerializer.Deserialize<AppSettings>(json, JsonOptions()) ?? new AppSettings();
+            var migrated = MigrateSettings(settings);
+            if (!string.Equals(settings.AuthApiBaseUrl, migrated.AuthApiBaseUrl, StringComparison.Ordinal))
+            {
+                Save(migrated);
+            }
+
+            return migrated;
         }
         catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
         {
@@ -84,6 +91,22 @@ public sealed class SettingsStore
             DiagnosticLogService.Warning($"Failed to backup corrupted settings: {ex.Message}");
             return null;
         }
+    }
+
+    private static AppSettings MigrateSettings(AppSettings settings)
+    {
+        var normalizedApi = ApiDefaults.NormalizeAuthApiBaseUrl(settings.AuthApiBaseUrl);
+        if (!string.Equals(settings.AuthApiBaseUrl, normalizedApi, StringComparison.Ordinal))
+        {
+            settings.AuthApiBaseUrl = normalizedApi;
+        }
+
+        if (string.IsNullOrWhiteSpace(settings.ThemeAccentColor))
+        {
+            settings.ThemeAccentColor = ThemeService.DefaultAccentHex;
+        }
+
+        return settings;
     }
 
     private static JsonSerializerOptions JsonOptions()
