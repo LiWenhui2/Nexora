@@ -56,7 +56,7 @@ public sealed class VmessProfile : INotifyPropertyChanged
     }
 
     [JsonIgnore]
-    public string TcpLatencyDisplay => FormatLatencyDisplay(IsTcpLatencyTesting, _tcpLatencyTested, TcpLatencyMs);
+    public string TcpLatencyDisplay => FormatLatencyDisplay(IsTcpLatencyTesting, _tcpLatencyTested, TcpLatencyMs, IsExpired);
 
     private bool _isActive;
 
@@ -277,7 +277,7 @@ public sealed class VmessProfile : INotifyPropertyChanged
         OnPropertyChanged(displayPropertyName);
     }
 
-    private static string FormatLatencyDisplay(bool isTesting, bool tested, int? latencyMs)
+    private static string FormatLatencyDisplay(bool isTesting, bool tested, int? latencyMs, bool isExpired)
     {
         if (isTesting)
         {
@@ -286,7 +286,7 @@ public sealed class VmessProfile : INotifyPropertyChanged
 
         if (!tested)
         {
-            return "-";
+            return isExpired ? "Timeout" : "-";
         }
 
         return latencyMs is null ? "Timeout" : $"{latencyMs} ms";

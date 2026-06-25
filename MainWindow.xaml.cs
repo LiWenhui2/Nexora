@@ -1104,13 +1104,20 @@ public partial class MainWindow : Window
 
         NodeAddressText.Text = $"[{profile.ProtocolDisplay}] {profile.DisplayName} · {profile.Endpoint}";
         CurrentTcpLatencyText.Text = profile.TcpLatencyDisplay;
-        NodeAvailabilityText.Text = profile.TcpLatencyDisplay switch
+        if (profile.IsExpired)
         {
-            "Timeout" => "超时",
-            "-" or "..." => "待测速",
-            _ when profile.TcpLatencyMs is not null => profile.StatusDisplay,
-            _ => "待测速"
-        };
+            NodeAvailabilityText.Text = "过期";
+        }
+        else
+        {
+            NodeAvailabilityText.Text = profile.TcpLatencyDisplay switch
+            {
+                "Timeout" => "超时",
+                "-" or "..." => "待测速",
+                _ when profile.TcpLatencyMs is not null => profile.StatusDisplay,
+                _ => "待测速"
+            };
+        }
 
         var tagBackground = NodeAvailabilityText.Text switch
         {
@@ -3897,6 +3904,12 @@ public partial class MainWindow : Window
 
     private static async Task TestTcpLatencyAsync(VmessProfile profile, CancellationToken cancellationToken)
     {
+        if (profile.IsExpired)
+        {
+            profile.CompleteTcpLatencyTest(null);
+            return;
+        }
+
         profile.BeginTcpLatencyTest();
         var latency = await LatencyTestService.MeasureTcpAsync(profile.Address, profile.Port, cancellationToken: cancellationToken);
         if (!cancellationToken.IsCancellationRequested)

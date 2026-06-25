@@ -1,0 +1,13 @@
+---
+description: Git commit identity — author only, no AI co-author
+alwaysApply: true
+---
+
+# Git Commits
+
+When creating git commits for this repository:
+
+- Commits must appear **only** under the user's identity (`vonphy <vonphy217@gmail.com>`).
+- **Never** add `Co-authored-by`, `Signed-off-by`, or any Cursor/AI attribution to commit messages.
+- To avoid Cursor injecting co-author trailers, use `git commit-tree` + `git reset --hard` (or `git.exe` with `-F` message file and verify with `git cat-file -p HEAD`) instead of plain `git commit` when the agent commits.
+- After every commit, verify the message with `git log -1 --format=full` and ensure no `Co-authored-by` line exists before pushing.
