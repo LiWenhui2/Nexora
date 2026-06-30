@@ -71,10 +71,12 @@ public partial class MainWindow : Window
     private CancellationTokenSource? _regionEnrichmentCancellation;
     private CancellationTokenSource? _websiteTestCancellation;
     private readonly DispatcherTimer _registerCodeCooldownTimer = new() { Interval = TimeSpan.FromSeconds(1) };
+    private readonly DispatcherTimer _authRefreshTimer = new() { Interval = TimeSpan.FromMinutes(30) };
     private readonly DispatcherTimer _aboutRuntimeTimer = new() { Interval = TimeSpan.FromSeconds(1) };
     private readonly DispatcherTimer _subscriptionGlobalRefreshTimer = new() { Interval = TimeSpan.FromSeconds(30) };
     private readonly Dictionary<string, DispatcherTimer> _subscriptionRefreshTimers = new(StringComparer.OrdinalIgnoreCase);
     private bool _subscriptionGlobalRefreshInProgress;
+    private bool _authRefreshInProgress;
     private int _registerCodeCooldownSeconds;
     private string? _subscriptionContextMenuName;
     private const string InvalidSubscriptionSuffix = "（已失效）";
@@ -92,6 +94,7 @@ public partial class MainWindow : Window
         _coreService.CoreExited += CoreService_CoreExited;
         _authService.AuthStateChanged += AuthService_AuthStateChanged;
         _registerCodeCooldownTimer.Tick += RegisterCodeCooldownTimer_Tick;
+        _authRefreshTimer.Tick += AuthRefreshTimer_Tick;
         _aboutRuntimeTimer.Tick += AboutRuntimeTimer_Tick;
         _subscriptionGlobalRefreshTimer.Tick += SubscriptionGlobalRefreshTimer_Tick;
         _profilesView = CollectionViewSource.GetDefaultView(_profiles);
@@ -112,6 +115,8 @@ public partial class MainWindow : Window
             _authService.AuthStateChanged -= AuthService_AuthStateChanged;
             _registerCodeCooldownTimer.Stop();
             _registerCodeCooldownTimer.Tick -= RegisterCodeCooldownTimer_Tick;
+            _authRefreshTimer.Stop();
+            _authRefreshTimer.Tick -= AuthRefreshTimer_Tick;
             _aboutRuntimeTimer.Stop();
             _aboutRuntimeTimer.Tick -= AboutRuntimeTimer_Tick;
             _subscriptionGlobalRefreshTimer.Stop();
@@ -468,6 +473,7 @@ public partial class MainWindow : Window
 
         if (await _authService.TryRestoreSessionAsync())
         {
+            StartAuthRefreshTimer();
             try
             {
                 await ReloadCloudSubscriptionsAsync(showSuccessMessage: false);
@@ -1306,7 +1312,62 @@ public partial class MainWindow : Window
 
     private void AuthService_AuthStateChanged()
     {
-        Dispatcher.Invoke(UpdateAuthSidebar);
+        Dispatcher.Invoke(() =>
+        {
+            UpdateAuthSidebar();
+            SyncAuthRefreshTimer();
+        });
+    }
+
+    private void SyncAuthRefreshTimer()
+    {
+        if (_authService.IsAuthenticated)
+        {
+            StartAuthRefreshTimer();
+        }
+        else
+        {
+            StopAuthRefreshTimer();
+        }
+    }
+
+    private void StartAuthRefreshTimer()
+    {
+        if (!_authRefreshTimer.IsEnabled)
+        {
+            _authRefreshTimer.Start();
+        }
+    }
+
+    private void StopAuthRefreshTimer()
+    {
+        _authRefreshTimer.Stop();
+        _authRefreshInProgress = false;
+    }
+
+    private async void AuthRefreshTimer_Tick(object? sender, EventArgs e)
+    {
+        if (_authRefreshInProgress || !_authService.IsConfigured)
+        {
+            return;
+        }
+
+        _authRefreshInProgress = true;
+        try
+        {
+            if (!await _authService.RefreshSessionAsync())
+            {
+                SyncAuthRefreshTimer();
+            }
+        }
+        catch (Exception ex)
+        {
+            DiagnosticLogService.Warning($"Background auth refresh failed: {ex.Message}");
+        }
+        finally
+        {
+            _authRefreshInProgress = false;
+        }
     }
 
     private void UpdateAuthSidebar()

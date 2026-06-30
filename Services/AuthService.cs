@@ -40,7 +40,7 @@ public sealed partial class AuthService
         _session = LoadSession();
         _apiClient = new ApiClient(
             () => GetAccessTokenAsync(CancellationToken.None),
-            () => RefreshTokenInternalAsync(CancellationToken.None));
+            () => RefreshTokenInternalAsync(CancellationToken.None, forceRefresh: true));
         _subscriptionApi = new SubscriptionApiService(_apiClient, () => _apiBaseUrl);
         _subscriptionSync = new SubscriptionSyncService(this, _subscriptionApi);
     }
@@ -88,6 +88,9 @@ public sealed partial class AuthService
 
         return await RefreshTokenInternalAsync(cancellationToken);
     }
+
+    public Task<bool> RefreshSessionAsync(CancellationToken cancellationToken = default) =>
+        RefreshTokenInternalAsync(cancellationToken, forceRefresh: true);
 
     public async Task<AuthResult> SendRegisterCodeAsync(string email, CancellationToken cancellationToken = default)
     {
@@ -268,7 +271,9 @@ public sealed partial class AuthService
         return _session.AccessToken;
     }
 
-    private async Task<bool> RefreshTokenInternalAsync(CancellationToken cancellationToken = default)
+    private async Task<bool> RefreshTokenInternalAsync(
+        CancellationToken cancellationToken = default,
+        bool forceRefresh = false)
     {
         if (_session is null || string.IsNullOrWhiteSpace(_session.RefreshToken) || !IsConfigured)
         {
@@ -283,7 +288,7 @@ public sealed partial class AuthService
                 return false;
             }
 
-            if (!IsAccessTokenExpired(_session))
+            if (!forceRefresh && !IsAccessTokenExpired(_session))
             {
                 return true;
             }
