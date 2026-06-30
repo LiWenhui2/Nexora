@@ -27,59 +27,68 @@ public sealed class SubscriptionSyncService
         IEnumerable<ServerSubscription> subscriptions,
         CancellationToken cancellationToken = default)
     {
-        var results = new List<LoginSubscriptionLoadItem>();
-        foreach (var subscription in subscriptions)
+        var tasks = subscriptions.Select(async subscription =>
         {
             if (string.IsNullOrWhiteSpace(subscription.Url))
             {
-                results.Add(new LoginSubscriptionLoadItem
+                return new LoginSubscriptionLoadItem
                 {
                     Subscription = subscription,
                     ErrorMessage = "订阅链接为空，已跳过。"
-                });
-                continue;
+                };
             }
 
             try
             {
                 var importResult = await SubscriptionImportService.ImportAsync(subscription.Url, cancellationToken);
                 var normalized = NormalizeImportResult(importResult, subscription);
-                results.Add(new LoginSubscriptionLoadItem
+                DiagnosticLogService.Info(
+                    $"Loaded subscription \"{subscription.Name}\" with {normalized.Profiles.Count} node(s).");
+
+                return new LoginSubscriptionLoadItem
                 {
                     Subscription = subscription,
                     ImportResult = normalized
-                });
-
-                DiagnosticLogService.Info(
-                    $"Loaded subscription \"{subscription.Name}\" with {normalized.Profiles.Count} node(s).");
+                };
             }
             catch (Exception ex)
             {
                 DiagnosticLogService.Warning($"Failed to load subscription \"{subscription.Name}\": {ex.Message}");
-                results.Add(new LoginSubscriptionLoadItem
+                return new LoginSubscriptionLoadItem
                 {
                     Subscription = subscription,
                     ErrorMessage = ex.Message
-                });
+                };
             }
+        });
+
+        return await Task.WhenAll(tasks);
+    }
+
+    public async Task<IReadOnlyList<ServerSubscription>> GetLoginSubscriptionsAsync(
+        CancellationToken cancellationToken = default)
+    {
+        if (!_authService.IsAuthenticated)
+        {
+            return [];
         }
 
-        return results;
+        var listResult = await _subscriptionApi.ListAsync(cancellationToken);
+        if (listResult.IsSuccess && listResult.Data is not null)
+        {
+            _authService.ReplaceSessionSubscriptions(listResult.Data);
+            return listResult.Data;
+        }
+
+        DiagnosticLogService.Warning(
+            $"Failed to fetch subscription list from server: {listResult.Message}. Using cached session list.");
+        return _authService.CurrentSession?.Subscriptions ?? [];
     }
 
     public async Task<IReadOnlyList<LoginSubscriptionLoadItem>> LoadLoginSubscriptionsAsync(
         CancellationToken cancellationToken = default)
     {
-        var subscriptions = _authService.CurrentSession?.Subscriptions ?? [];
-        if (subscriptions.Count == 0 && _authService.IsAuthenticated)
-        {
-            var listResult = await _subscriptionApi.ListAsync(cancellationToken);
-            if (listResult.IsSuccess && listResult.Data is not null)
-            {
-                subscriptions = listResult.Data;
-            }
-        }
-
+        var subscriptions = await GetLoginSubscriptionsAsync(cancellationToken);
         return await LoadLoginSubscriptionsAsync(subscriptions, cancellationToken);
     }
 
@@ -210,6 +219,7 @@ public sealed class SubscriptionSyncService
             };
         }
 
+        SaveSubscriptionToSession(serverId, subscriptionName, source.Url);
         return SubscriptionSyncResult.Ok(serverId, updateResult.Message) with
         {
             SnapshotPath = snapshotPath,
@@ -299,6 +309,7 @@ public sealed class SubscriptionSyncService
                 return SubscriptionSyncResult.Fail(updateResult.Message, resolvedId);
             }
 
+            SaveSubscriptionToSession(resolvedId, subscriptionName, source.Url);
             return SubscriptionSyncResult.Ok(resolvedId, updateResult.Message);
         }
 
@@ -324,6 +335,7 @@ public sealed class SubscriptionSyncService
                 return SubscriptionSyncResult.Fail(updateResult.Message, existing.Id);
             }
 
+            SaveSubscriptionToSession(existing.Id, subscriptionName, source.Url);
             return SubscriptionSyncResult.Ok(existing.Id, updateResult.Message);
         }
 
@@ -360,7 +372,18 @@ public sealed class SubscriptionSyncService
             return SubscriptionSyncResult.Fail(createdUpdateResult.Message, existing.Id);
         }
 
+        SaveSubscriptionToSession(existing.Id, subscriptionName, source.Url);
         return SubscriptionSyncResult.Ok(existing.Id, createdUpdateResult.Message);
+    }
+
+    private void SaveSubscriptionToSession(int id, string name, string url)
+    {
+        _authService.AddOrUpdateSubscriptionInSession(new ServerSubscription
+        {
+            Id = id,
+            Name = name,
+            Url = url
+        });
     }
 
     public async Task PullServerSubscriptionsAsync(AppSettings settings, CancellationToken cancellationToken = default)
@@ -370,16 +393,10 @@ public sealed class SubscriptionSyncService
             return;
         }
 
-        var subscriptions = _authService.CurrentSession?.Subscriptions ?? [];
+        var subscriptions = await GetLoginSubscriptionsAsync(cancellationToken);
         if (subscriptions.Count == 0)
         {
-            var result = await _subscriptionApi.ListAsync(cancellationToken);
-            if (!result.IsSuccess || result.Data is null)
-            {
-                return;
-            }
-
-            subscriptions = result.Data;
+            return;
         }
 
         foreach (var serverSubscription in subscriptions)

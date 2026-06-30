@@ -32,8 +32,14 @@ public sealed class CustomRoutingSettings
 {
     public List<string> ProxyDomains { get; set; } = [];
     public List<string> DirectDomains { get; set; } = [];
+    public List<string> BypassChinaDomains { get; set; } = [];
     public List<string> BlockDomains { get; set; } = [];
     public List<string> ProxyIps { get; set; } = [];
     public List<string> DirectIps { get; set; } = [];
+    public List<string> BypassChinaIps { get; set; } = [];
     public List<string> BlockIps { get; set; } = [];
+    public List<string> ProxyProcesses { get; set; } = [];
+    public List<string> DirectProcesses { get; set; } = [];
+    public List<string> BypassChinaProcesses { get; set; } = [];
+    public List<string> BlockProcesses { get; set; } = [];
 }

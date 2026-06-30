@@ -1,8 +1,8 @@
 <Window x:Class="NaiwaProxy.Dialogs.CustomRoutingDialog"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="自定义路由规则"
-        Height="760" Width="920" MinHeight="640" MinWidth="820"
+        Title="添加规则"
+        Height="820" Width="1080" MinHeight="680" MinWidth="920"
         WindowStartupLocation="CenterOwner"
         Background="#F4F6FA"
         FontFamily="Segoe UI, Microsoft YaHei UI"
@@ -14,10 +14,6 @@
         <SolidColorBrush x:Key="TextBrush" Color="#0F172A"/>
         <SolidColorBrush x:Key="MutedBrush" Color="#64748B"/>
         <SolidColorBrush x:Key="PlaceholderBrush" Color="#94A3B8"/>
-        <LinearGradientBrush x:Key="AccentGradientBrush" StartPoint="0,0" EndPoint="1,1">
-            <GradientStop Color="#FACC15" Offset="0"/>
-            <GradientStop Color="#F59E0B" Offset="1"/>
-        </LinearGradientBrush>
         <Style TargetType="TextBlock">
             <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
         </Style>
@@ -26,25 +22,27 @@
             <Setter Property="Background" Value="#FFFFFF"/>
             <Setter Property="BorderBrush" Value="{StaticResource LineBrush}"/>
             <Setter Property="Padding" Value="10"/>
+        </Style>
+        <Style x:Key="RuleTextBoxStyle" TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
             <Setter Property="AcceptsReturn" Value="True"/>
             <Setter Property="TextWrapping" Value="NoWrap"/>
             <Setter Property="VerticalScrollBarVisibility" Value="Auto"/>
             <Setter Property="HorizontalScrollBarVisibility" Value="Auto"/>
-            <Setter Property="MinHeight" Value="120"/>
+            <Setter Property="MinHeight" Value="92"/>
         </Style>
         <Style x:Key="PrimaryButtonStyle" TargetType="Button">
             <Setter Property="Height" Value="40"/>
             <Setter Property="MinWidth" Value="110"/>
             <Setter Property="Foreground" Value="#111827"/>
             <Setter Property="FontWeight" Value="Bold"/>
-            <Setter Property="Background" Value="{StaticResource AccentGradientBrush}"/>
-            <Setter Property="BorderBrush" Value="#FBBF24"/>
+            <Setter Property="Background" Value="{DynamicResource AccentGradientBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource AccentPrimaryBorderBrush}"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
-                        <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1" CornerRadius="10">
+                        <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1" CornerRadius="8">
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
                     </ControlTemplate>
@@ -52,8 +50,8 @@
             </Setter>
         </Style>
         <Style x:Key="DarkButtonStyle" TargetType="Button">
-            <Setter Property="Height" Value="40"/>
-            <Setter Property="MinWidth" Value="96"/>
+            <Setter Property="Height" Value="36"/>
+            <Setter Property="MinWidth" Value="86"/>
             <Setter Property="Foreground" Value="#334155"/>
             <Setter Property="Background" Value="#FFFFFF"/>
             <Setter Property="BorderBrush" Value="{StaticResource LineBrush}"/>
@@ -62,23 +60,23 @@
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
-                        <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1" CornerRadius="10">
+                        <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1" CornerRadius="8">
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
         </Style>
-        <Style x:Key="HintBorderStyle" TargetType="Border">
-            <Setter Property="Background" Value="#F8FAFC"/>
+        <Style x:Key="PanelBorderStyle" TargetType="Border">
+            <Setter Property="Background" Value="#FFFFFF"/>
             <Setter Property="BorderBrush" Value="#E2E8F0"/>
             <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="CornerRadius" Value="12"/>
+            <Setter Property="CornerRadius" Value="8"/>
             <Setter Property="Padding" Value="14"/>
-            <Setter Property="Margin" Value="0,0,0,14"/>
         </Style>
     </Window.Resources>
-    <Border Margin="20" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" CornerRadius="16" Padding="20">
+
+    <Border Margin="20" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" CornerRadius="8" Padding="20">
         <Grid>
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
@@ -86,46 +84,116 @@
                 <RowDefinition Height="*"/>
                 <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
-            <StackPanel Margin="0,0,0,10">
-                <TextBlock Text="自定义路由规则" FontSize="18" FontWeight="Bold"/>
-                <TextBlock Text="按优先级匹配：阻止 → 直连 → 代理。未命中规则的流量走默认代理出站。" Foreground="{StaticResource MutedBrush}" FontSize="13" Margin="0,6,0,0" TextWrapping="Wrap"/>
+
+            <StackPanel Margin="0,0,0,12">
+                <TextBlock Text="添加规则" FontSize="20" FontWeight="Bold"/>
+                <TextBlock Text="规则会叠加在当前路由模式之前生效。可为域名、IP 或正在运行的桌面软件设置代理、直连、绕过大陆或阻止。" Foreground="{StaticResource MutedBrush}" FontSize="13" Margin="0,6,0,0" TextWrapping="Wrap"/>
             </StackPanel>
-            <Border Grid.Row="1" Style="{StaticResource HintBorderStyle}">
+
+            <Border Grid.Row="1" Style="{StaticResource PanelBorderStyle}" Background="#F8FAFC" Margin="0,0,0,14">
                 <TextBlock Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" LineHeight="22"
-                           Text="多条规则可用换行、英文逗号或分号分隔；以 # 开头的行视为注释。下方输入框中的灰色文字为示例，开始输入后会自动消失。"/>
+                           Text="多条规则可用换行、英文逗号或分号分隔。桌面软件规则使用进程名，例如 chrome.exe、Telegram.exe。没有启动的软件也可以直接手动填写进程名。"/>
             </Border>
-            <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="12"/>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="12"/>
-                        <ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="*"/>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="*"/>
-                    </Grid.RowDefinitions>
-                    <TextBlock Grid.Column="0" Text="走代理 · 域名" FontWeight="SemiBold" Margin="0,0,0,8"/>
-                    <TextBlock Grid.Column="2" Text="直连 · 域名" FontWeight="SemiBold" Margin="0,0,0,8"/>
-                    <TextBlock Grid.Column="4" Text="阻止 · 域名" FontWeight="SemiBold" Margin="0,0,0,8"/>
-                    <TextBox x:Name="ProxyDomainsBox" Grid.Row="1" Grid.Column="0"/>
-                    <TextBox x:Name="DirectDomainsBox" Grid.Row="1" Grid.Column="2"/>
-                    <TextBox x:Name="BlockDomainsBox" Grid.Row="1" Grid.Column="4"/>
-                    <TextBlock Grid.Row="2" Grid.Column="0" Text="走代理 · IP / CIDR" FontWeight="SemiBold" Margin="0,14,0,8"/>
-                    <TextBlock Grid.Row="2" Grid.Column="2" Text="直连 · IP / CIDR" FontWeight="SemiBold" Margin="0,14,0,8"/>
-                    <TextBlock Grid.Row="2" Grid.Column="4" Text="阻止 · IP / CIDR" FontWeight="SemiBold" Margin="0,14,0,8"/>
-                    <TextBox x:Name="ProxyIpsBox" Grid.Row="3" Grid.Column="0"/>
-                    <TextBox x:Name="DirectIpsBox" Grid.Row="3" Grid.Column="2"/>
-                    <TextBox x:Name="BlockIpsBox" Grid.Row="3" Grid.Column="4"/>
-                </Grid>
-            </ScrollViewer>
+
+            <Grid Grid.Row="2">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="1.05*"/>
+                    <ColumnDefinition Width="16"/>
+                    <ColumnDefinition Width="1.25*"/>
+                </Grid.ColumnDefinitions>
+
+                <Border Grid.Column="0" Style="{StaticResource PanelBorderStyle}">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <TextBlock Text="桌面软件" FontWeight="SemiBold" FontSize="16"/>
+                        <TextBox x:Name="AppSearchBox" Grid.Row="1" Margin="0,10,0,10" Height="38" TextChanged="AppSearchBox_TextChanged"/>
+                        <ListBox x:Name="AppListBox" Grid.Row="2" SelectionMode="Extended" BorderBrush="{StaticResource LineBrush}" PreviewMouseRightButtonDown="AppListBox_PreviewMouseRightButtonDown">
+                            <ListBox.ContextMenu>
+                                <ContextMenu>
+                                    <MenuItem x:Name="AddAppsToDirectMenuItem" Header="加入直连" Click="AddSelectedAppsToDirect_Click"/>
+                                    <MenuItem x:Name="AddAppsToBypassChinaMenuItem" Header="加入绕过大陆" Click="AddSelectedAppsToBypassChina_Click"/>
+                                    <MenuItem x:Name="AddAppsToProxyMenuItem" Header="加入全局代理" Click="AddSelectedAppsToProxy_Click"/>
+                                    <MenuItem x:Name="AddAppsToBlockMenuItem" Header="加入阻止" Click="AddSelectedAppsToBlock_Click"/>
+                                    <Separator/>
+                                    <MenuItem Header="刷新列表" Click="RefreshAppsButton_Click"/>
+                                </ContextMenu>
+                            </ListBox.ContextMenu>
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid Margin="4">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="32"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <Border Width="24" Height="24" Background="#F8FAFC" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" CornerRadius="4">
+                                            <Image Source="{Binding Icon}" Width="18" Height="18" Stretch="Uniform"/>
+                                        </Border>
+                                        <StackPanel Grid.Column="1" Margin="8,0,0,0">
+                                            <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                                            <TextBlock Text="{Binding ProcessName}" Foreground="{StaticResource MutedBrush}" FontSize="12"/>
+                                        </StackPanel>
+                                    </Grid>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                        <TextBlock x:Name="RuleHintText" Grid.Row="3" Margin="0,12,0,0" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap"/>
+                    </Grid>
+                </Border>
+
+                <ScrollViewer Grid.Column="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel>
+
+                        <StackPanel x:Name="ProxyRulesPanel" Margin="0,0,0,16">
+                            <TextBlock Text="全局代理" FontWeight="SemiBold" Margin="0,0,0,8"/>
+                            <TextBlock Text="域名" Foreground="{StaticResource MutedBrush}" FontSize="12"/>
+                            <TextBox x:Name="ProxyDomainsBox" Style="{StaticResource RuleTextBoxStyle}" Margin="0,4,0,8"/>
+                            <TextBlock Text="IP / CIDR" Foreground="{StaticResource MutedBrush}" FontSize="12"/>
+                            <TextBox x:Name="ProxyIpsBox" Style="{StaticResource RuleTextBoxStyle}" Margin="0,4,0,8"/>
+                            <TextBlock Text="桌面软件进程" Foreground="{StaticResource MutedBrush}" FontSize="12"/>
+                            <TextBox x:Name="ProxyProcessesBox" Style="{StaticResource RuleTextBoxStyle}" Margin="0,4,0,0"/>
+                        </StackPanel>
+
+                        <StackPanel x:Name="DirectRulesPanel" Margin="0,0,0,16">
+                            <TextBlock Text="直连" FontWeight="SemiBold" Margin="0,0,0,8"/>
+                            <TextBlock Text="域名" Foreground="{StaticResource MutedBrush}" FontSize="12"/>
+                            <TextBox x:Name="DirectDomainsBox" Style="{StaticResource RuleTextBoxStyle}" Margin="0,4,0,8"/>
+                            <TextBlock Text="IP / CIDR" Foreground="{StaticResource MutedBrush}" FontSize="12"/>
+                            <TextBox x:Name="DirectIpsBox" Style="{StaticResource RuleTextBoxStyle}" Margin="0,4,0,8"/>
+                            <TextBlock Text="桌面软件进程" Foreground="{StaticResource MutedBrush}" FontSize="12"/>
+                            <TextBox x:Name="DirectProcessesBox" Style="{StaticResource RuleTextBoxStyle}" Margin="0,4,0,0"/>
+                        </StackPanel>
+
+                        <StackPanel x:Name="BypassChinaRulesPanel" Margin="0,0,0,16">
+                            <TextBlock Text="绕过大陆" FontWeight="SemiBold" Margin="0,0,0,8"/>
+                            <TextBlock Text="域名" Foreground="{StaticResource MutedBrush}" FontSize="12"/>
+                            <TextBox x:Name="BypassChinaDomainsBox" Style="{StaticResource RuleTextBoxStyle}" Margin="0,4,0,8"/>
+                            <TextBlock Text="IP / CIDR" Foreground="{StaticResource MutedBrush}" FontSize="12"/>
+                            <TextBox x:Name="BypassChinaIpsBox" Style="{StaticResource RuleTextBoxStyle}" Margin="0,4,0,8"/>
+                            <TextBlock Text="桌面软件进程" Foreground="{StaticResource MutedBrush}" FontSize="12"/>
+                            <TextBox x:Name="BypassChinaProcessesBox" Style="{StaticResource RuleTextBoxStyle}" Margin="0,4,0,0"/>
+                        </StackPanel>
+
+                        <StackPanel x:Name="BlockRulesPanel" Margin="0,0,0,16">
+                            <TextBlock Text="阻止" FontWeight="SemiBold" Margin="0,0,0,8"/>
+                            <TextBlock Text="域名" Foreground="{StaticResource MutedBrush}" FontSize="12"/>
+                            <TextBox x:Name="BlockDomainsBox" Style="{StaticResource RuleTextBoxStyle}" Margin="0,4,0,8"/>
+                            <TextBlock Text="IP / CIDR" Foreground="{StaticResource MutedBrush}" FontSize="12"/>
+                            <TextBox x:Name="BlockIpsBox" Style="{StaticResource RuleTextBoxStyle}" Margin="0,4,0,8"/>
+                            <TextBlock Text="桌面软件进程" Foreground="{StaticResource MutedBrush}" FontSize="12"/>
+                            <TextBox x:Name="BlockProcessesBox" Style="{StaticResource RuleTextBoxStyle}" Margin="0,4,0,0"/>
+                        </StackPanel>
+                    </StackPanel>
+                </ScrollViewer>
+            </Grid>
+
             <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
                 <Button Content="取消" Style="{StaticResource DarkButtonStyle}" Margin="0,0,8,0" IsCancel="True"/>
-                <Button Content="保存并启用" Style="{StaticResource PrimaryButtonStyle}" IsDefault="True" Click="SaveButton_Click"/>
+                <Button Content="保存规则" Style="{StaticResource PrimaryButtonStyle}" IsDefault="True" Click="SaveButton_Click"/>
             </StackPanel>
         </Grid>
     </Border>

@@ -703,6 +703,7 @@
                                     </StackPanel>
                                 </Button>
                             </WrapPanel>
+                            <TextBlock x:Name="CloudSubscriptionStatusText" Visibility="Collapsed" Foreground="{StaticResource MutedBrush}" FontSize="13" Margin="0,-6,0,12" TextWrapping="Wrap"/>
 
                             <!-- Table -->
                             <Border BorderBrush="{StaticResource LineBrush}" BorderThickness="1" CornerRadius="12" ClipToBounds="True">
@@ -958,14 +959,14 @@
                                                       HorizontalContentAlignment="Left" VerticalContentAlignment="Center"
                                                       SelectionChanged="RoutingCombo_SelectionChanged">
                                                 <ComboBoxItem Content="全局代理"/>
-                                                <ComboBoxItem Content="V4-绕过大陆 (Whitelist)" IsSelected="True"/>
+                                                <ComboBoxItem Content="绕过大陆" IsSelected="True"/>
                                                 <ComboBoxItem Content="绕过局域网"/>
                                                 <ComboBoxItem Content="直连模式"/>
                                                 <ComboBoxItem Content="自定义规则"/>
                                             </ComboBox>
                                         </Grid>
                                     </Border>
-                                    <Button x:Name="EditRoutingButton" Content="编辑规则" Style="{StaticResource DarkButtonStyle}" MinWidth="116" Margin="0,0,0,10" Visibility="Collapsed" Click="EditRoutingButton_Click"/>
+                                    <Button x:Name="EditRoutingButton" Content="添加规则" Style="{StaticResource DarkButtonStyle}" MinWidth="116" Margin="0,0,0,10" Click="EditRoutingButton_Click"/>
                                 </WrapPanel>
                             </Border>
                         </StackPanel>

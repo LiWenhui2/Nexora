@@ -7,9 +7,10 @@ namespace NaiwaProxy.Services;
 
 public static class SubscriptionImportService
 {
+    private const int SubscriptionRequestTimeoutSeconds = 5;
     private static readonly HttpClient HttpClient = new()
     {
-        Timeout = TimeSpan.FromSeconds(20)
+        Timeout = Timeout.InfiniteTimeSpan
     };
 
     public static async Task<SubscriptionImportResult> ImportAsync(string input, CancellationToken cancellationToken = default)
@@ -50,21 +51,31 @@ public static class SubscriptionImportService
 
     private static async Task<SubscriptionImportResult> ImportFromUrlAsync(Uri uri, CancellationToken cancellationToken)
     {
-        using var request = new HttpRequestMessage(HttpMethod.Get, uri);
-        request.Headers.UserAgent.ParseAdd("Nexora/1.1.0");
+        using var timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeoutSource.CancelAfter(TimeSpan.FromSeconds(SubscriptionRequestTimeoutSeconds));
 
-        using var response = await HttpClient.SendAsync(request, cancellationToken);
-        response.EnsureSuccessStatusCode();
-
-        var content = await response.Content.ReadAsStringAsync(cancellationToken);
-        var sourceName = string.IsNullOrWhiteSpace(uri.Host) ? "订阅" : uri.Host;
-        return new SubscriptionImportResult
+        try
         {
-            Profiles = ParseProfiles(content, sourceName, DateTime.Now),
-            TrafficInfo = TryParseSubscriptionUserInfo(response),
-            SourceUrl = uri.ToString(),
-            SubscriptionName = sourceName
-        };
+            using var request = new HttpRequestMessage(HttpMethod.Get, uri);
+            request.Headers.UserAgent.ParseAdd("Nexora/1.1.0");
+
+            using var response = await HttpClient.SendAsync(request, timeoutSource.Token);
+            response.EnsureSuccessStatusCode();
+
+            var content = await response.Content.ReadAsStringAsync(timeoutSource.Token);
+            var sourceName = string.IsNullOrWhiteSpace(uri.Host) ? "订阅" : uri.Host;
+            return new SubscriptionImportResult
+            {
+                Profiles = ParseProfiles(content, sourceName, DateTime.Now),
+                TrafficInfo = TryParseSubscriptionUserInfo(response),
+                SourceUrl = uri.ToString(),
+                SubscriptionName = sourceName
+            };
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new TimeoutException($"订阅请求超过 {SubscriptionRequestTimeoutSeconds} 秒未响应，请稍后重试或检查订阅链接网络。");
+        }
     }
 
     internal static SubscriptionTrafficInfo? TryParseSubscriptionUserInfo(HttpResponseMessage response)

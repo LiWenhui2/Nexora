@@ -1,4 +1,5 @@
 using Microsoft.Win32;
+using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
 
@@ -17,8 +18,9 @@ public static class SystemProxyService
 
         key.SetValue("ProxyEnable", 1, RegistryValueKind.DWord);
         key.SetValue("ProxyServer", $"127.0.0.1:{httpPort}", RegistryValueKind.String);
-        key.SetValue("ProxyOverride", "<local>", RegistryValueKind.String);
+        key.SetValue("ProxyOverride", string.Join(';', MicrosoftStoreProxyOverrideRules.Append("<local>")), RegistryValueKind.String);
         TryDeleteValue(key, "AutoConfigURL");
+        EnsureMicrosoftStoreLoopbackExemptions();
         NotifyProxySettingsChanged();
     }
 
@@ -31,6 +33,7 @@ public static class SystemProxyService
         key.SetValue("ProxyEnable", 0, RegistryValueKind.DWord);
         TryDeleteValue(key, "ProxyServer");
         key.SetValue("AutoConfigURL", new Uri(pacPath).AbsoluteUri, RegistryValueKind.String);
+        EnsureMicrosoftStoreLoopbackExemptions();
         NotifyProxySettingsChanged();
     }
 
@@ -93,6 +96,14 @@ public static class SystemProxyService
 function FindProxyForURL(url, host) {
   if (isPlainHostName(host) ||
       shExpMatch(host, "*.local") ||
+      shExpMatch(host, "*.microsoft.com") ||
+      shExpMatch(host, "*.windows.com") ||
+      shExpMatch(host, "*.live.com") ||
+      shExpMatch(host, "*.microsoftonline.com") ||
+      shExpMatch(host, "*.xboxlive.com") ||
+      shExpMatch(host, "*.mp.microsoft.com") ||
+      shExpMatch(host, "msftconnecttest.com") ||
+      shExpMatch(host, "msftncsi.com") ||
       isInNet(dnsResolve(host), "10.0.0.0", "255.0.0.0") ||
       isInNet(dnsResolve(host), "172.16.0.0", "255.240.0.0") ||
       isInNet(dnsResolve(host), "192.168.0.0", "255.255.0.0") ||
@@ -105,6 +116,56 @@ function FindProxyForURL(url, host) {
         File.WriteAllText(pacPath, pac);
         return pacPath;
     }
+
+    private static void EnsureMicrosoftStoreLoopbackExemptions()
+    {
+        foreach (var packageFamilyName in MicrosoftStorePackageFamilyNames)
+        {
+            TryAddLoopbackExemption(packageFamilyName);
+        }
+    }
+
+    private static void TryAddLoopbackExemption(string packageFamilyName)
+    {
+        try
+        {
+            using var process = Process.Start(new ProcessStartInfo
+            {
+                FileName = "CheckNetIsolation.exe",
+                Arguments = $"LoopbackExempt -a -n={packageFamilyName}",
+                CreateNoWindow = true,
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true
+            });
+
+            process?.WaitForExit(3000);
+        }
+        catch (Exception ex)
+        {
+            DiagnosticLogService.Warning(
+                $"Failed to add UWP loopback exemption for {packageFamilyName}: {ex.Message}");
+        }
+    }
+
+    private static readonly string[] MicrosoftStorePackageFamilyNames =
+    [
+        "Microsoft.WindowsStore_8wekyb3d8bbwe",
+        "Microsoft.StorePurchaseApp_8wekyb3d8bbwe",
+        "Microsoft.DesktopAppInstaller_8wekyb3d8bbwe"
+    ];
+
+    private static readonly string[] MicrosoftStoreProxyOverrideRules =
+    [
+        "*.microsoft.com",
+        "*.windows.com",
+        "*.live.com",
+        "*.microsoftonline.com",
+        "*.xboxlive.com",
+        "*.mp.microsoft.com",
+        "msftconnecttest.com",
+        "msftncsi.com"
+    ];
 
     private static void TryDeleteValue(RegistryKey key, string name)
     {

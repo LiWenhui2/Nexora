@@ -77,6 +77,7 @@ public partial class MainWindow : Window
     private bool _subscriptionGlobalRefreshInProgress;
     private int _registerCodeCooldownSeconds;
     private string? _subscriptionContextMenuName;
+    private const string InvalidSubscriptionSuffix = "（已失效）";
 
     public MainWindow(bool startSilent = false)
     {
@@ -465,6 +466,20 @@ public partial class MainWindow : Window
     {
         Loaded -= MainWindow_Loaded;
 
+        if (await _authService.TryRestoreSessionAsync())
+        {
+            try
+            {
+                await ReloadCloudSubscriptionsAsync(showSuccessMessage: false);
+            }
+            catch (Exception ex)
+            {
+                DiagnosticLogService.Warning($"Startup cloud subscription sync failed: {ex.Message}");
+            }
+        }
+
+        StartSubscriptionGlobalAutoRefresh();
+
         if (_profiles.Count > 0)
         {
             _ = RunStartupLatencyTestsAsync();
@@ -563,7 +578,7 @@ public partial class MainWindow : Window
         SyncAllowLanAccessFromSettings();
         ApplyStartupSettings(save: false);
         RestoreSubscriptionAutoRefreshTimers();
-        StartSubscriptionGlobalAutoRefresh();
+        ReconcileSubscriptionTrafficExhaustedState();
     }
 
     private void StartSubscriptionGlobalAutoRefresh()
@@ -601,6 +616,12 @@ public partial class MainWindow : Window
         {
             foreach (var subscriptionName in subscriptionNames)
             {
+                if (silent && IsSubscriptionTrafficExhausted(subscriptionName))
+                {
+                    ApplyTimeoutLatencyToSubscription(subscriptionName);
+                    continue;
+                }
+
                 await RefreshSubscriptionAsync(subscriptionName, silent);
             }
         }
@@ -910,23 +931,54 @@ public partial class MainWindow : Window
             return;
         }
 
-        var selected = NormalizeFilterValue((SubscriptionFilterCombo.SelectedItem as ComboBoxItem)?.Content?.ToString(), "来源");
+        var selected = GetSelectedSubscriptionFilterValue();
         SubscriptionFilterCombo.Items.Clear();
         SubscriptionFilterCombo.Items.Add(new ComboBoxItem { Content = "来源：全部订阅" });
 
-        foreach (var subscription in _profiles
-                     .Select(p => p.SubscriptionDisplay)
-                     .Where(s => !string.IsNullOrWhiteSpace(s))
-                     .Distinct(StringComparer.OrdinalIgnoreCase)
-                     .OrderBy(s => s, StringComparer.OrdinalIgnoreCase))
+        var subscriptions = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var subscription in _profiles.Select(p => p.SubscriptionDisplay).Where(s => !string.IsNullOrWhiteSpace(s)))
         {
-            SubscriptionFilterCombo.Items.Add(new ComboBoxItem { Content = $"来源：{subscription}" });
+            subscriptions.TryAdd(subscription, subscription);
+        }
+
+        foreach (var (subscriptionName, source) in _settings.SubscriptionSources)
+        {
+            if (string.IsNullOrWhiteSpace(subscriptionName))
+            {
+                continue;
+            }
+
+            subscriptions[subscriptionName] = string.IsNullOrWhiteSpace(source.DisplayName)
+                ? subscriptionName
+                : source.DisplayName!;
+        }
+
+        foreach (var subscription in subscriptions.OrderBy(pair => pair.Value, StringComparer.OrdinalIgnoreCase))
+        {
+            SubscriptionFilterCombo.Items.Add(new ComboBoxItem
+            {
+                Content = $"来源：{subscription.Value}",
+                Tag = subscription.Key
+            });
         }
 
         var matched = SubscriptionFilterCombo.Items
             .OfType<ComboBoxItem>()
-            .FirstOrDefault(item => string.Equals(NormalizeFilterValue(item.Content?.ToString(), "来源"), selected, StringComparison.OrdinalIgnoreCase));
+            .FirstOrDefault(item => string.Equals(GetSubscriptionFilterItemValue(item), selected, StringComparison.OrdinalIgnoreCase));
         SubscriptionFilterCombo.SelectedItem = matched ?? SubscriptionFilterCombo.Items[0];
+    }
+
+    private string GetSelectedSubscriptionFilterValue() =>
+        GetSubscriptionFilterItemValue(SubscriptionFilterCombo?.SelectedItem as ComboBoxItem);
+
+    private static string GetSubscriptionFilterItemValue(ComboBoxItem? item)
+    {
+        if (item?.Tag is string tag && !string.IsNullOrWhiteSpace(tag))
+        {
+            return tag;
+        }
+
+        return NormalizeFilterValue(item?.Content?.ToString(), "来源");
     }
 
     private static string NormalizeFilterValue(string? value, string prefix)
@@ -1018,7 +1070,7 @@ public partial class MainWindow : Window
             return false;
         }
 
-        var subscription = NormalizeFilterValue((SubscriptionFilterCombo?.SelectedItem as ComboBoxItem)?.Content?.ToString(), "来源");
+        var subscription = GetSelectedSubscriptionFilterValue();
         if (!string.IsNullOrWhiteSpace(subscription) &&
             subscription != "全部订阅" &&
             !string.Equals(profile.SubscriptionDisplay, subscription, StringComparison.OrdinalIgnoreCase))
@@ -1282,6 +1334,8 @@ public partial class MainWindow : Window
             {
                 SyncCloudSubscriptionsButton.Visibility = Visibility.Collapsed;
             }
+
+            SetCloudSubscriptionStatus("");
         }
     }
 
@@ -1305,12 +1359,34 @@ public partial class MainWindow : Window
         SyncCloudSubscriptionsButton.IsEnabled = false;
         try
         {
+            SetCloudSubscriptionStatus("正在从云端获取订阅列表...");
             await ReloadCloudSubscriptionsAsync(showSuccessMessage: true);
+        }
+        catch (Exception ex)
+        {
+            SetCloudSubscriptionStatus($"云端更新失败：{ex.Message}", isError: true);
+            DiagnosticLogService.Error("Cloud subscription refresh failed.", ex);
         }
         finally
         {
             SyncCloudSubscriptionsButton.IsEnabled = true;
         }
+    }
+
+    private void SetCloudSubscriptionStatus(string message, bool isError = false)
+    {
+        if (!_isUiReady || CloudSubscriptionStatusText is null)
+        {
+            return;
+        }
+
+        CloudSubscriptionStatusText.Text = message;
+        CloudSubscriptionStatusText.Foreground = isError
+            ? new SolidColorBrush(Color.FromRgb(0xDC, 0x26, 0x26))
+            : new SolidColorBrush(Color.FromRgb(0x64, 0x74, 0x8B));
+        CloudSubscriptionStatusText.Visibility = string.IsNullOrWhiteSpace(message)
+            ? Visibility.Collapsed
+            : Visibility.Visible;
     }
 
     private void GoToRegisterPageButton_Click(object sender, RoutedEventArgs e) => ShowRegisterPage();
@@ -1480,36 +1556,76 @@ public partial class MainWindow : Window
             return;
         }
 
-        var items = await _authService.SubscriptionSync.LoadLoginSubscriptionsAsync();
-        if (items.Count == 0)
-        {
-            await _authService.SubscriptionSync.PullServerSubscriptionsAsync(_settings);
-            _settingsStore.Save(_settings);
-            if (showSuccessMessage)
-            {
-                MessageBox.Show("当前账号暂无云端订阅。", "Nexora", MessageBoxButton.OK, MessageBoxImage.Information);
-            }
+        var subscriptions = await _authService.SubscriptionSync.GetLoginSubscriptionsAsync();
+        PruneStaleCloudSubscriptions(subscriptions);
 
+        foreach (var subscription in subscriptions)
+        {
+            RegisterServerSubscriptionSource(subscription, isInvalid: false);
+        }
+
+        _settingsStore.Save(_settings);
+        RefreshSubscriptionFilterOptions();
+        RestoreSubscriptionAutoRefreshTimers();
+        SetCloudSubscriptionStatus($"已获取 {subscriptions.Count} 个云端订阅，正在同时解析节点...");
+
+        if (subscriptions.Count == 0)
+        {
+            var nextActiveId = _profiles.FirstOrDefault(profile => profile.Id == _settings.SelectedProfileId)?.Id
+                ?? _profiles.FirstOrDefault()?.Id;
+            SaveProfiles(nextActiveId);
+            RefreshNodePicker();
+            SyncNodePickerDisplay();
+            ProfilesGrid.Items.Refresh();
+            _settingsStore.Save(_settings);
+            RefreshSubscriptionFilterOptions();
+            SetCloudSubscriptionStatus("当前账号暂无云端订阅。");
             return;
         }
 
+        var items = await _authService.SubscriptionSync.LoadLoginSubscriptionsAsync(subscriptions);
         var loadedProfiles = new List<VmessProfile>();
-        var failedMessages = new List<string>();
         var syncedSubscriptions = 0;
+        var profileCollectionChanged = false;
 
         foreach (var item in items)
         {
             if (!item.Success || item.ImportResult is null)
             {
-                failedMessages.Add($"{item.Subscription.Name}：{item.ErrorMessage ?? "加载失败"}");
+                if (ShouldTreatRefreshFailureAsTrafficExhausted(item.Subscription.Name, item.ErrorMessage))
+                {
+                    SetSubscriptionTrafficExhausted(item.Subscription.Name);
+                    DiagnosticLogService.Warning(
+                        $"Cloud subscription \"{item.Subscription.Name}\" traffic exhausted; kept existing nodes and paused auto refresh.");
+                }
+                else
+                {
+                    MarkServerSubscriptionInvalid(item.Subscription);
+                    RemoveProfilesForSubscription(item.Subscription.Name);
+                    profileCollectionChanged = true;
+                    DiagnosticLogService.Warning(
+                        $"Cloud subscription \"{item.Subscription.Name}\" marked invalid: {item.ErrorMessage ?? "no profiles parsed"}");
+                }
+
                 continue;
             }
 
-            var source = RegisterServerSubscriptionSource(item.Subscription);
+            var source = RegisterServerSubscriptionSource(item.Subscription, isInvalid: false);
             var subscriptionName = item.Subscription.Name;
             var importResult = item.ImportResult;
 
+            if (SubscriptionTrafficHelper.IsTrafficExhausted(importResult.TrafficInfo) ||
+                SubscriptionTrafficHelper.AreProfilesTrafficExhausted(importResult.Profiles))
+            {
+                SetSubscriptionTrafficExhausted(subscriptionName, save: false);
+                ApplySubscriptionTrafficInfo(importResult.TrafficInfo);
+                DiagnosticLogService.Warning(
+                    $"Cloud subscription \"{subscriptionName}\" traffic exhausted after import; kept existing nodes and paused auto refresh.");
+                continue;
+            }
+
             RemoveProfilesForSubscription(subscriptionName);
+            profileCollectionChanged = true;
 
             SubscriptionMetadataHelper.ApplyToProfiles(importResult, subscriptionName);
 
@@ -1520,7 +1636,6 @@ public partial class MainWindow : Window
 
             if (!syncResult.Success)
             {
-                failedMessages.Add($"{subscriptionName}：{syncResult.Message}");
                 DiagnosticLogService.Warning($"Subscription sync failed for \"{subscriptionName}\": {syncResult.Message}");
             }
             else
@@ -1539,6 +1654,7 @@ public partial class MainWindow : Window
         }
 
         _settingsStore.Save(_settings);
+        var invalidSubscriptions = items.Count(item => !item.Success || item.ImportResult is null);
         if (loadedProfiles.Count > 0)
         {
             SaveProfiles(loadedProfiles.Last().Id);
@@ -1548,27 +1664,29 @@ public partial class MainWindow : Window
             RefreshSubscriptionFilterOptions();
             RestoreSubscriptionAutoRefreshTimers();
             ScheduleRegionEnrichment(loadedProfiles);
-            _ = RunTcpLatencyTestsAsync(loadedProfiles, parallel: true);
+            SetCloudSubscriptionStatus($"已加载 {loadedProfiles.Count} 个节点，正在重新测速...");
+            await RunTcpLatencyTestsAsync(loadedProfiles, parallel: true);
+        }
+        else
+        {
+            if (profileCollectionChanged)
+            {
+                var nextActiveId = _profiles.FirstOrDefault(profile => profile.Id == _settings.SelectedProfileId)?.Id
+                    ?? _profiles.FirstOrDefault()?.Id;
+                SaveProfiles(nextActiveId);
+                ProfilesGrid.SelectedItem = _profiles.FirstOrDefault(profile => profile.Id == nextActiveId);
+                SyncNodePickerDisplay();
+            }
+
+            RefreshNodePicker();
+            ProfilesGrid.Items.Refresh();
+            RefreshRegionFilterOptions();
+            RefreshSubscriptionFilterOptions();
+            RestoreSubscriptionAutoRefreshTimers();
         }
 
-        if (failedMessages.Count > 0)
-        {
-            MessageBox.Show(
-                $"部分云端订阅更新失败：{Environment.NewLine}{string.Join(Environment.NewLine, failedMessages)}",
-                "Nexora",
-                MessageBoxButton.OK,
-                MessageBoxImage.Warning);
-            return;
-        }
-
-        if (showSuccessMessage && syncedSubscriptions > 0)
-        {
-            MessageBox.Show(
-                $"已从云端更新 {syncedSubscriptions} 个订阅，共 {loadedProfiles.Count} 个节点。",
-                "Nexora",
-                MessageBoxButton.OK,
-                MessageBoxImage.Information);
-        }
+        SetCloudSubscriptionStatus(
+            $"云端更新完成：获取 {subscriptions.Count} 个订阅，解析成功 {items.Count - invalidSubscriptions} 个，失效 {invalidSubscriptions} 个，共加载并测速 {loadedProfiles.Count} 个节点。");
     }
 
     private void ClearCloudProfilesOnLogout()
@@ -1614,12 +1732,21 @@ public partial class MainWindow : Window
     {
         profile.IsCloudManaged = false;
         profile.IsLocalManual = true;
+        profile.SubscriptionName = "";
+    }
+
+    private static void MarkProfileAsLocalSubscription(VmessProfile profile)
+    {
+        profile.IsCloudManaged = false;
+        profile.IsLocalManual = false;
     }
 
     private void RemoveProfilesForSubscription(string subscriptionName)
     {
         var removed = _profiles
-            .Where(profile => string.Equals(profile.SubscriptionName, subscriptionName, StringComparison.OrdinalIgnoreCase))
+            .Where(profile =>
+                !profile.IsLocalManual &&
+                string.Equals(profile.SubscriptionName, subscriptionName, StringComparison.OrdinalIgnoreCase))
             .ToList();
 
         foreach (var profile in removed)
@@ -1628,19 +1755,211 @@ public partial class MainWindow : Window
         }
     }
 
-    private SubscriptionSource RegisterServerSubscriptionSource(ServerSubscription subscription)
+    private void PruneStaleCloudSubscriptions(IReadOnlyList<ServerSubscription> currentSubscriptions)
+    {
+        var validIds = currentSubscriptions
+            .Where(subscription => subscription.Id > 0)
+            .Select(subscription => subscription.Id)
+            .ToHashSet();
+        var validUrls = currentSubscriptions
+            .Select(subscription => subscription.Url)
+            .Where(url => !string.IsNullOrWhiteSpace(url))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var validNames = currentSubscriptions
+            .Select(subscription => subscription.Name)
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var keysToRemove = new List<string>();
+        foreach (var (subscriptionName, source) in _settings.SubscriptionSources)
+        {
+            if (string.Equals(subscriptionName, "手动", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var isCloudSource = source.ServerSubscriptionId is > 0 ||
+                                _profiles.Any(profile =>
+                                    profile.IsCloudManaged &&
+                                    string.Equals(profile.SubscriptionName, subscriptionName, StringComparison.OrdinalIgnoreCase));
+            if (!isCloudSource)
+            {
+                continue;
+            }
+
+            var displayName = RemoveInvalidSubscriptionSuffix(source.DisplayName ?? subscriptionName);
+            var matchesServer =
+                (source.ServerSubscriptionId is int serverId && serverId > 0 && validIds.Contains(serverId)) ||
+                (!string.IsNullOrWhiteSpace(source.Url) && validUrls.Contains(source.Url)) ||
+                validNames.Contains(subscriptionName) ||
+                validNames.Contains(displayName);
+
+            if (!matchesServer)
+            {
+                keysToRemove.Add(subscriptionName);
+            }
+        }
+
+        if (keysToRemove.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var subscriptionName in keysToRemove)
+        {
+            StopSubscriptionAutoRefresh(subscriptionName, save: false);
+            _settings.SubscriptionSources.Remove(subscriptionName);
+            RemoveProfilesForSubscription(subscriptionName);
+            DiagnosticLogService.Info($"Removed stale cloud subscription \"{subscriptionName}\" from local storage.");
+        }
+    }
+
+    private List<VmessProfile> GetProfilesForSubscription(string subscriptionName) =>
+        _profiles
+            .Where(profile => string.Equals(profile.SubscriptionName, subscriptionName, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+    private bool IsSubscriptionTrafficExhausted(string subscriptionName)
+    {
+        if (_settings.SubscriptionSources.TryGetValue(subscriptionName, out var source) && source.TrafficExhausted)
+        {
+            return true;
+        }
+
+        return SubscriptionTrafficHelper.AreProfilesTrafficExhausted(GetProfilesForSubscription(subscriptionName));
+    }
+
+    private bool ShouldTreatRefreshFailureAsTrafficExhausted(
+        string subscriptionName,
+        string? errorMessage,
+        Exception? exception = null)
+    {
+        if (IsSubscriptionTrafficExhausted(subscriptionName))
+        {
+            return true;
+        }
+
+        if (!string.IsNullOrWhiteSpace(errorMessage) &&
+            SubscriptionTrafficHelper.IsLikelyTrafficExhaustedErrorMessage(errorMessage))
+        {
+            return true;
+        }
+
+        if (exception is not null && SubscriptionTrafficHelper.IsLikelyTrafficExhaustedError(exception))
+        {
+            return true;
+        }
+
+        return exception is TimeoutException &&
+               SubscriptionTrafficHelper.AreProfilesTrafficExhausted(GetProfilesForSubscription(subscriptionName));
+    }
+
+    private void SetSubscriptionTrafficExhausted(string subscriptionName, bool save = true)
+    {
+        if (!_settings.SubscriptionSources.TryGetValue(subscriptionName, out var source))
+        {
+            source = new SubscriptionSource();
+            _settings.SubscriptionSources[subscriptionName] = source;
+        }
+
+        source.TrafficExhausted = true;
+        source.DisplayName = RemoveInvalidSubscriptionSuffix(source.DisplayName ?? subscriptionName);
+        ApplyTimeoutLatencyToSubscription(subscriptionName);
+
+        if (save)
+        {
+            _settingsStore.Save(_settings);
+        }
+
+        if (_isUiReady)
+        {
+            ProfilesGrid.Items.Refresh();
+            RefreshSubscriptionFilterOptions();
+        }
+
+        DiagnosticLogService.Warning(
+            $"Subscription \"{subscriptionName}\" traffic exhausted; auto refresh paused and latency set to Timeout.");
+    }
+
+    private void ClearSubscriptionTrafficExhausted(string subscriptionName)
+    {
+        if (_settings.SubscriptionSources.TryGetValue(subscriptionName, out var source))
+        {
+            source.TrafficExhausted = false;
+        }
+    }
+
+    private void ApplyTimeoutLatencyToSubscription(string subscriptionName)
+    {
+        foreach (var profile in GetProfilesForSubscription(subscriptionName))
+        {
+            profile.CompleteTcpLatencyTest(null);
+        }
+    }
+
+    private void ReconcileSubscriptionTrafficExhaustedState()
+    {
+        foreach (var subscriptionName in _settings.SubscriptionSources.Keys.ToList())
+        {
+            if (!IsSubscriptionTrafficExhausted(subscriptionName))
+            {
+                continue;
+            }
+
+            if (_settings.SubscriptionSources.TryGetValue(subscriptionName, out var source))
+            {
+                source.TrafficExhausted = true;
+            }
+
+            ApplyTimeoutLatencyToSubscription(subscriptionName);
+        }
+    }
+
+    private SubscriptionSource RegisterServerSubscriptionSource(ServerSubscription subscription, bool isInvalid = false)
     {
         _settings.SubscriptionSources.TryGetValue(subscription.Name, out var existing);
         var source = new SubscriptionSource
         {
             Url = subscription.Url,
             ServerSubscriptionId = subscription.Id,
-            DisplayName = subscription.Name,
+            DisplayName = FormatSubscriptionDisplayName(subscription.Name, isInvalid),
             AutoRefreshMinutes = existing?.AutoRefreshMinutes,
-            CreatedAtUtc = existing?.CreatedAtUtc ?? DateTime.UtcNow
+            CreatedAtUtc = existing?.CreatedAtUtc ?? DateTime.UtcNow,
+            TrafficExhausted = existing?.TrafficExhausted ?? false
         };
         _settings.SubscriptionSources[subscription.Name] = source;
         return source;
+    }
+
+    private void MarkServerSubscriptionInvalid(ServerSubscription subscription)
+    {
+        var source = RegisterServerSubscriptionSource(subscription, isInvalid: true);
+        _settings.SubscriptionSources[subscription.Name] = source;
+    }
+
+    private void MarkSubscriptionSourceInvalid(string subscriptionName)
+    {
+        if (!_settings.SubscriptionSources.TryGetValue(subscriptionName, out var source))
+        {
+            return;
+        }
+
+        var cleanName = RemoveInvalidSubscriptionSuffix(source.DisplayName ?? subscriptionName);
+        source.DisplayName = $"{cleanName}{InvalidSubscriptionSuffix}";
+    }
+
+    private static string FormatSubscriptionDisplayName(string subscriptionName, bool isInvalid)
+    {
+        var cleanName = RemoveInvalidSubscriptionSuffix(subscriptionName);
+        return isInvalid ? $"{cleanName}{InvalidSubscriptionSuffix}" : cleanName;
+    }
+
+    private static string RemoveInvalidSubscriptionSuffix(string value)
+    {
+        var trimmed = value.Trim();
+        return trimmed.EndsWith(InvalidSubscriptionSuffix, StringComparison.Ordinal)
+            ? trimmed[..^InvalidSubscriptionSuffix.Length].TrimEnd()
+            : trimmed;
     }
 
     private void ReconcileProxyUiState()
@@ -2033,16 +2352,14 @@ public partial class MainWindow : Window
 
     private async void EditRoutingButton_Click(object sender, RoutedEventArgs e)
     {
-        var dialog = new CustomRoutingDialog(_settings.CustomRouting) { Owner = this };
+        var dialog = new CustomRoutingDialog(_settings.CustomRouting, _settings.RoutingMode) { Owner = this };
         if (dialog.ShowDialog() != true)
         {
             return;
         }
 
         _settings.CustomRouting = dialog.Routing;
-        _settings.RoutingMode = "Custom";
         _settingsStore.Save(_settings);
-        SelectRoutingCombo(_settings.RoutingMode);
         UpdateRoutingEditorVisibility();
 
         if (_coreService.IsRunning)
@@ -2197,7 +2514,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        EditRoutingButton.Visibility = _settings.RoutingMode == "Custom" ? Visibility.Visible : Visibility.Collapsed;
+        EditRoutingButton.Visibility = Visibility.Visible;
     }
 
     private static SolidColorBrush GreenBrush() => new(Color.FromRgb(0x16, 0xA3, 0x4A));
@@ -2423,15 +2740,7 @@ public partial class MainWindow : Window
         var existing = _profiles.FirstOrDefault(p => p.Id == saved.Id);
         if (existing is null)
         {
-            if (_authService.IsAuthenticated)
-            {
-                MarkProfileAsCloudManaged(saved);
-            }
-            else
-            {
-                MarkProfileAsLocalManual(saved);
-            }
-
+            MarkProfileAsLocalManual(saved);
             _profiles.Add(saved);
         }
         else
@@ -2815,19 +3124,22 @@ public partial class MainWindow : Window
                 return;
             }
 
-            UpdateStatusText.Text = $"发现新版本 {release.TagName}，正在下载 {installer.Name}。";
-            UpdateProgressPanel.Visibility = Visibility.Visible;
-            UpdateProgressText.Text = $"准备下载 {installer.Name}（{FormatBytes(installer.Size)}）";
-            var installerPath = await DownloadInstallerAsync(installer, new Progress<DownloadProgress>(UpdateDownloadProgress));
-            UpdateProgressText.Text = $"下载完成：{FormatBytes(installer.Size)}";
-            UpdateStatusText.Text = "下载完成，正在启动安装程序。";
-            Process.Start(new ProcessStartInfo
+            var dialog = new UpdateConfirmDialog(
+                release.TagName,
+                currentVersion,
+                release.Body,
+                installer.Name,
+                installer.Size)
             {
-                FileName = installerPath,
-                UseShellExecute = true
-            });
-            _isExiting = true;
-            Application.Current.Shutdown();
+                Owner = this
+            };
+            if (dialog.ShowDialog() != true)
+            {
+                UpdateStatusText.Text = $"已取消更新。当前版本 {currentVersion}，可更新至 {release.TagName}。";
+                return;
+            }
+
+            await DownloadAndInstallUpdateAsync(release, installer);
         }
         catch (Exception ex)
         {
@@ -2838,6 +3150,23 @@ public partial class MainWindow : Window
         {
             UpdatePageCheckButton.IsEnabled = true;
         }
+    }
+
+    private async Task DownloadAndInstallUpdateAsync(ReleaseInfo release, ReleaseAsset installer)
+    {
+        UpdateStatusText.Text = $"正在下载 {release.TagName}：{installer.Name}";
+        UpdateProgressPanel.Visibility = Visibility.Visible;
+        UpdateProgressText.Text = $"准备下载 {installer.Name}（{FormatBytes(installer.Size)}）";
+        var installerPath = await DownloadInstallerAsync(installer, new Progress<DownloadProgress>(UpdateDownloadProgress));
+        UpdateProgressText.Text = $"下载完成：{FormatBytes(installer.Size)}";
+        UpdateStatusText.Text = "下载完成，正在启动安装程序。";
+        Process.Start(new ProcessStartInfo
+        {
+            FileName = installerPath,
+            UseShellExecute = true
+        });
+        _isExiting = true;
+        Application.Current.Shutdown();
     }
 
     private async Task<ReleaseInfo> GetLatestReleaseAsync()
@@ -2853,6 +3182,7 @@ public partial class MainWindow : Window
         var root = document.RootElement;
         var tagName = root.GetProperty("tag_name").GetString() ?? "";
         var htmlUrl = root.GetProperty("html_url").GetString() ?? ProjectUrl;
+        var body = root.TryGetProperty("body", out var bodyElement) ? bodyElement.GetString() ?? "" : "";
         var assets = new List<ReleaseAsset>();
         if (root.TryGetProperty("assets", out var assetsElement))
         {
@@ -2870,7 +3200,7 @@ public partial class MainWindow : Window
             throw new InvalidOperationException("Release 信息缺少版本号。");
         }
 
-        return new ReleaseInfo(tagName, htmlUrl, assets);
+        return new ReleaseInfo(tagName, htmlUrl, body, assets);
     }
 
     private async Task<string> DownloadInstallerAsync(ReleaseAsset asset, IProgress<DownloadProgress> progress)
@@ -2972,6 +3302,7 @@ public partial class MainWindow : Window
                 Path = InlinePathBox.Text.Trim()
             };
             ProfileMetadataHelper.ApplyNew(profile);
+            MarkProfileAsLocalManual(profile);
 
             _profiles.Add(profile);
             SaveProfiles(profile.Id);
@@ -3097,7 +3428,15 @@ public partial class MainWindow : Window
 
         foreach (var profile in result.Profiles)
         {
-            MarkProfileAsLocalManual(profile);
+            if (source is null)
+            {
+                MarkProfileAsLocalManual(profile);
+            }
+            else
+            {
+                MarkProfileAsLocalSubscription(profile);
+            }
+
             _profiles.Add(profile);
         }
 
@@ -3182,7 +3521,7 @@ public partial class MainWindow : Window
         }
 
         var timer = new DispatcherTimer { Interval = TimeSpan.FromMinutes(minutes) };
-        timer.Tick += async (_, _) => await RefreshSubscriptionAsync(subscriptionName);
+        timer.Tick += async (_, _) => await RefreshSubscriptionAsync(subscriptionName, silent: true);
         timer.Start();
         _subscriptionRefreshTimers[subscriptionName] = timer;
     }
@@ -3422,6 +3761,12 @@ public partial class MainWindow : Window
             return;
         }
 
+        if (silent && IsSubscriptionTrafficExhausted(subscriptionName))
+        {
+            ApplyTimeoutLatencyToSubscription(subscriptionName);
+            return;
+        }
+
         if (!_settings.SubscriptionSources.TryGetValue(subscriptionName, out var source) ||
             string.IsNullOrWhiteSpace(source.Url))
         {
@@ -3441,6 +3786,26 @@ public partial class MainWindow : Window
             }
 
             var result = await SubscriptionImportService.ImportAsync(source.Url);
+            source.DisplayName = RemoveInvalidSubscriptionSuffix(source.DisplayName ?? subscriptionName);
+
+            if (SubscriptionTrafficHelper.IsTrafficExhausted(result.TrafficInfo) ||
+                SubscriptionTrafficHelper.AreProfilesTrafficExhausted(result.Profiles))
+            {
+                ApplySubscriptionTrafficInfo(result.TrafficInfo);
+                SetSubscriptionTrafficExhausted(subscriptionName);
+                if (!silent)
+                {
+                    MessageBox.Show(
+                        $"订阅「{subscriptionName}」流量已用尽，已保留现有节点并显示超时。充值后可手动刷新。",
+                        "Nexora",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Information);
+                }
+
+                return;
+            }
+
+            ClearSubscriptionTrafficExhausted(subscriptionName);
             var previousActive = GetSelectedProfileOrNull();
             var removed = _profiles
                 .Where(profile => string.Equals(profile.SubscriptionName, subscriptionName, StringComparison.OrdinalIgnoreCase))
@@ -3510,7 +3875,7 @@ public partial class MainWindow : Window
             {
                 foreach (var profile in result.Profiles)
                 {
-                    MarkProfileAsLocalManual(profile);
+                    MarkProfileAsLocalSubscription(profile);
                 }
 
                 if (!silent)
@@ -3549,21 +3914,50 @@ public partial class MainWindow : Window
             ProfilesGrid.Items.Refresh();
             ScheduleRegionEnrichment(result.Profiles);
 
-            if (!silent && result.Profiles.Count > 0)
+            if (result.Profiles.Count > 0)
             {
+                if (!silent)
+                {
+                    SetCloudSubscriptionStatus($"订阅「{subscriptionName}」已刷新，正在重新测速 {result.Profiles.Count} 个节点...");
+                }
+
                 await RunTcpLatencyTestsAsync(result.Profiles, parallel: true);
             }
         }
         catch (Exception ex)
         {
+            if (ShouldTreatRefreshFailureAsTrafficExhausted(subscriptionName, ex.Message, ex))
+            {
+                SetSubscriptionTrafficExhausted(subscriptionName);
+                if (!silent)
+                {
+                    MessageBox.Show(
+                        $"订阅「{subscriptionName}」流量可能已用尽或订阅源暂时不可用，已保留现有节点并显示超时。充值后可手动刷新。",
+                        "Nexora",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Information);
+                }
+
+                return;
+            }
+
             if (!silent)
             {
+                MarkSubscriptionSourceInvalid(subscriptionName);
+                RemoveProfilesForSubscription(subscriptionName);
+                var nextActiveId = _profiles.FirstOrDefault(profile => profile.Id == _settings.SelectedProfileId)?.Id
+                    ?? _profiles.FirstOrDefault()?.Id;
+                SaveProfiles(nextActiveId);
+                RefreshNodePicker();
+                SyncNodePickerDisplay();
+                RefreshRegionFilterOptions();
+                RefreshSubscriptionFilterOptions();
+                ProfilesGrid.Items.Refresh();
+                ProfilesGrid.SelectedItem = _profiles.FirstOrDefault(profile => profile.Id == nextActiveId);
                 ShowError(ex);
             }
-            else
-            {
-                DiagnosticLogService.Warning($"Subscription auto refresh failed for \"{subscriptionName}\": {ex.Message}");
-            }
+
+            DiagnosticLogService.Warning($"Subscription refresh failed for \"{subscriptionName}\": {ex.Message}");
         }
     }
 
@@ -4168,7 +4562,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private sealed record ReleaseInfo(string TagName, string HtmlUrl, List<ReleaseAsset> Assets);
+    private sealed record ReleaseInfo(string TagName, string HtmlUrl, string Body, List<ReleaseAsset> Assets);
 
     private sealed record ReleaseAsset(string Name, string DownloadUrl, long Size);
 

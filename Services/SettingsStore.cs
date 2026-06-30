@@ -34,8 +34,10 @@ public sealed class SettingsStore
             }
 
             var settings = JsonSerializer.Deserialize<AppSettings>(json, JsonOptions()) ?? new AppSettings();
+            var beforeMigration = JsonSerializer.Serialize(settings, JsonOptions());
             var migrated = MigrateSettings(settings);
-            if (!string.Equals(settings.AuthApiBaseUrl, migrated.AuthApiBaseUrl, StringComparison.Ordinal))
+            var afterMigration = JsonSerializer.Serialize(migrated, JsonOptions());
+            if (!string.Equals(beforeMigration, afterMigration, StringComparison.Ordinal))
             {
                 Save(migrated);
             }
@@ -106,7 +108,67 @@ public sealed class SettingsStore
             settings.ThemeAccentColor = ThemeService.DefaultAccentHex;
         }
 
+        settings.RoutingMode = NormalizeRoutingMode(settings.RoutingMode);
+        RemoveBuiltInDirectRulesFromVisibleSettings(settings);
+
         return settings;
+    }
+
+    private static void RemoveBuiltInDirectRulesFromVisibleSettings(AppSettings settings)
+    {
+        settings.CustomRouting ??= new CustomRoutingSettings();
+        settings.CustomRouting.DirectDomains.RemoveAll(IsBuiltInMicrosoftStoreDomainRule);
+        settings.CustomRouting.DirectProcesses.RemoveAll(IsBuiltInMicrosoftStoreProcessRule);
+    }
+
+    private static bool IsBuiltInMicrosoftStoreDomainRule(string value) =>
+        BuiltInMicrosoftStoreDomainRules.Contains(value, StringComparer.OrdinalIgnoreCase);
+
+    private static bool IsBuiltInMicrosoftStoreProcessRule(string value) =>
+        BuiltInMicrosoftStoreProcessRules.Contains(value, StringComparer.OrdinalIgnoreCase);
+
+    private static readonly string[] BuiltInMicrosoftStoreDomainRules =
+    [
+        "domain:microsoft.com",
+        "domain:windows.com",
+        "domain:live.com",
+        "domain:microsoftonline.com",
+        "domain:xboxlive.com",
+        "domain:msftconnecttest.com",
+        "domain:msftncsi.com",
+        "domain:mp.microsoft.com",
+        "domain:delivery.mp.microsoft.com",
+        "domain:storeedgefd.dsx.mp.microsoft.com",
+        "domain:displaycatalog.mp.microsoft.com",
+        "domain:purchase.mp.microsoft.com",
+        "domain:licensing.mp.microsoft.com"
+    ];
+
+    private static readonly string[] BuiltInMicrosoftStoreProcessRules =
+    [
+        "WinStore.App.exe",
+        "Microsoft.WindowsStore.exe",
+        "RuntimeBroker.exe"
+    ];
+
+    private static string NormalizeRoutingMode(string? mode)
+    {
+        if (string.IsNullOrWhiteSpace(mode))
+        {
+            return "BypassChina";
+        }
+
+        return mode.Trim() switch
+        {
+            "Global" or "全局代理" => "Global",
+            "BypassChina" or "绕过大陆" or "V4-绕过大陆 (Whitelist)" => "BypassChina",
+            "BypassLan" or "绕过局域网" => "BypassLan",
+            "Direct" or "直连模式" => "Direct",
+            "Custom" or "自定义规则" => "Custom",
+            var value when value.Contains("Whitelist", StringComparison.OrdinalIgnoreCase) => "BypassChina",
+            var value when value.Contains("绕过大陆", StringComparison.OrdinalIgnoreCase) => "BypassChina",
+            _ => "BypassChina"
+        };
     }
 
     private static JsonSerializerOptions JsonOptions()

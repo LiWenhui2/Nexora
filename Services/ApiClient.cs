@@ -8,6 +8,7 @@ namespace NaiwaProxy.Services;
 
 public sealed class ApiClient
 {
+    private const int RequestTimeoutSeconds = 60;
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNameCaseInsensitive = true,
@@ -22,7 +23,7 @@ public sealed class ApiClient
     {
         _getAccessTokenAsync = getAccessTokenAsync;
         _refreshTokenAsync = refreshTokenAsync;
-        _http = new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
+        _http = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
     }
 
     public async Task<ApiResult<T>> GetAsync<T>(string baseUrl, string path, bool requireAuth = true, CancellationToken cancellationToken = default)
@@ -88,9 +89,31 @@ public sealed class ApiClient
             }
         }
 
-        using var response = await _http.SendAsync(request, cancellationToken);
-        var text = await response.Content.ReadAsStringAsync(cancellationToken);
-        return ParseResponse<T>(text);
+        using var timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeoutSource.CancelAfter(TimeSpan.FromSeconds(RequestTimeoutSeconds));
+
+        try
+        {
+            using var response = await _http.SendAsync(request, timeoutSource.Token);
+            var text = await response.Content.ReadAsStringAsync(timeoutSource.Token);
+            return ParseResponse<T>(text);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            return new ApiResult<T>
+            {
+                Code = 408,
+                Message = $"请求超时：服务端 {RequestTimeoutSeconds} 秒内未响应，请稍后重试。"
+            };
+        }
+        catch (HttpRequestException ex)
+        {
+            return new ApiResult<T>
+            {
+                Code = 500,
+                Message = $"网络请求失败：{ex.Message}"
+            };
+        }
     }
 
     internal static ApiResult<T> ParseResponse<T>(string text)
@@ -118,8 +141,30 @@ public sealed class ApiClient
             Content = JsonContent.Create(body, options: JsonOptions)
         };
 
-        using var response = await _http.SendAsync(request, cancellationToken);
-        var text = await response.Content.ReadAsStringAsync(cancellationToken);
-        return ParseResponse<T>(text);
+        using var timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeoutSource.CancelAfter(TimeSpan.FromSeconds(RequestTimeoutSeconds));
+
+        try
+        {
+            using var response = await _http.SendAsync(request, timeoutSource.Token);
+            var text = await response.Content.ReadAsStringAsync(timeoutSource.Token);
+            return ParseResponse<T>(text);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            return new ApiResult<T>
+            {
+                Code = 408,
+                Message = $"请求超时：服务端 {RequestTimeoutSeconds} 秒内未响应，请稍后重试。"
+            };
+        }
+        catch (HttpRequestException ex)
+        {
+            return new ApiResult<T>
+            {
+                Code = 500,
+                Message = $"网络请求失败：{ex.Message}"
+            };
+        }
     }
 }

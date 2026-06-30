@@ -1,3 +1,4 @@
+using System.IO;
 using System.Text.Json;
 using NaiwaProxy.Models;
 
@@ -288,12 +289,12 @@ public static class CoreConfigBuilder
             }
         };
 
+        AddCustomOverlayRules(rules, settings.CustomRouting);
+        AddBuiltInDirectRules(rules);
+
         switch (settings.RoutingMode)
         {
             case "Custom":
-                AddCustomRule(rules, settings.CustomRouting.BlockDomains, settings.CustomRouting.BlockIps, "block");
-                AddCustomRule(rules, settings.CustomRouting.DirectDomains, settings.CustomRouting.DirectIps, "direct");
-                AddCustomRule(rules, settings.CustomRouting.ProxyDomains, settings.CustomRouting.ProxyIps, "proxy");
                 break;
             case "Direct":
                 rules.Add(new
@@ -333,10 +334,74 @@ public static class CoreConfigBuilder
         };
     }
 
-    private static void AddCustomRule(List<object> rules, List<string> domains, List<string> ips, string outboundTag)
+    private static void AddCustomOverlayRules(List<object> rules, CustomRoutingSettings routing)
+    {
+        AddCustomRule(rules, routing.BlockDomains, routing.BlockIps, routing.BlockProcesses, "block");
+        AddCustomRule(rules, routing.DirectDomains, routing.DirectIps, routing.DirectProcesses, "direct");
+        AddBypassChinaRules(rules, routing.BypassChinaDomains, routing.BypassChinaIps, routing.BypassChinaProcesses);
+        AddCustomRule(rules, routing.ProxyDomains, routing.ProxyIps, routing.ProxyProcesses, "proxy");
+    }
+
+    private static void AddBuiltInDirectRules(List<object> rules)
+    {
+        AddCustomRule(
+            rules,
+            BuiltInMicrosoftStoreDomainRules.ToList(),
+            [],
+            [],
+            "direct");
+        AddCustomRule(
+            rules,
+            [],
+            [],
+            BuiltInMicrosoftStoreProcessRules.ToList(),
+            "direct");
+    }
+
+    private static void AddBypassChinaRules(
+        List<object> rules,
+        List<string> domains,
+        List<string> ips,
+        List<string> processes)
+    {
+        AddCustomRule(rules, domains, ips, processes, "direct");
+
+        var normalizedProcesses = processes
+            .Select(NormalizeProcessRule)
+            .Where(rule => !string.IsNullOrWhiteSpace(rule))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        if (normalizedProcesses.Length == 0)
+        {
+            return;
+        }
+
+        rules.Add(new Dictionary<string, object>
+        {
+            ["type"] = "field",
+            ["process"] = normalizedProcesses,
+            ["ip"] = new[] { "geoip:private", "geoip:cn" },
+            ["outboundTag"] = "direct"
+        });
+        rules.Add(new Dictionary<string, object>
+        {
+            ["type"] = "field",
+            ["process"] = normalizedProcesses,
+            ["domain"] = new[] { "geosite:cn" },
+            ["outboundTag"] = "direct"
+        });
+    }
+
+    private static void AddCustomRule(
+        List<object> rules,
+        List<string> domains,
+        List<string> ips,
+        List<string> processes,
+        string outboundTag)
     {
         var normalizedDomains = domains
-            .Select(NormalizeDomainRule)
+            .SelectMany(ExpandDomainRule)
             .Where(rule => !string.IsNullOrWhiteSpace(rule))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
@@ -345,8 +410,13 @@ public static class CoreConfigBuilder
             .Where(rule => !string.IsNullOrWhiteSpace(rule))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
+        var normalizedProcesses = processes
+            .Select(NormalizeProcessRule)
+            .Where(rule => !string.IsNullOrWhiteSpace(rule))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
 
-        if (normalizedDomains.Length == 0 && normalizedIps.Length == 0)
+        if (normalizedDomains.Length == 0 && normalizedIps.Length == 0 && normalizedProcesses.Length == 0)
         {
             return;
         }
@@ -367,8 +437,75 @@ public static class CoreConfigBuilder
             rule["ip"] = normalizedIps;
         }
 
+        if (normalizedProcesses.Length > 0)
+        {
+            rule["process"] = normalizedProcesses;
+        }
+
         rules.Add(rule);
     }
+
+    private static IEnumerable<string> ExpandDomainRule(string value)
+    {
+        var normalized = NormalizeDomainRule(value);
+        if (string.IsNullOrWhiteSpace(normalized))
+        {
+            yield break;
+        }
+
+        if (IsWindowsServiceGeositeAlias(normalized))
+        {
+            foreach (var replacement in WindowsServiceDomainRules)
+            {
+                yield return replacement;
+            }
+
+            yield break;
+        }
+
+        yield return normalized;
+    }
+
+    private static bool IsWindowsServiceGeositeAlias(string rule) =>
+        string.Equals(rule, "geosite:windows", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(rule, "geosite:win-spy", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(rule, "geosite:microsoft", StringComparison.OrdinalIgnoreCase);
+
+    private static readonly string[] WindowsServiceDomainRules =
+    [
+        "domain:microsoft.com",
+        "domain:windows.com",
+        "domain:live.com",
+        "domain:microsoftonline.com",
+        "domain:xboxlive.com",
+        "domain:msftconnecttest.com",
+        "domain:msftncsi.com",
+        "domain:mp.microsoft.com"
+    ];
+
+    private static readonly string[] BuiltInMicrosoftStoreDomainRules =
+    [
+        "domain:microsoft.com",
+        "domain:windows.com",
+        "domain:live.com",
+        "domain:microsoftonline.com",
+        "domain:xboxlive.com",
+        "domain:msftconnecttest.com",
+        "domain:msftncsi.com",
+        "domain:mp.microsoft.com",
+        "domain:delivery.mp.microsoft.com",
+        "domain:storeedgefd.dsx.mp.microsoft.com",
+        "domain:displaycatalog.mp.microsoft.com",
+        "domain:purchase.mp.microsoft.com",
+        "domain:licensing.mp.microsoft.com"
+    ];
+
+    private static readonly string[] BuiltInMicrosoftStoreProcessRules =
+    [
+        "WinStore.App.exe",
+        "Microsoft.WindowsStore.exe",
+        "RuntimeBroker.exe"
+    ];
 
     private static string NormalizeDomainRule(string value)
     {
@@ -398,6 +535,23 @@ public static class CoreConfigBuilder
     {
         var trimmed = value.Trim();
         return string.IsNullOrWhiteSpace(trimmed) ? "" : trimmed;
+    }
+
+    private static string NormalizeProcessRule(string value)
+    {
+        var trimmed = value.Trim();
+        if (string.IsNullOrWhiteSpace(trimmed))
+        {
+            return "";
+        }
+
+        var fileName = Path.GetFileName(trimmed);
+        if (string.IsNullOrWhiteSpace(fileName))
+        {
+            return "";
+        }
+
+        return fileName.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ? fileName : $"{fileName}.exe";
     }
 
     private static object BuildPrivateDirectRule()

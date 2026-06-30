@@ -7,4 +7,5 @@ public sealed class SubscriptionSource
     public int? ServerSubscriptionId { get; set; }
     public string? DisplayName { get; set; }
     public DateTime? CreatedAtUtc { get; set; }
+    public bool TrafficExhausted { get; set; }
 }

@@ -9,11 +9,13 @@ public sealed partial class AuthService
 {
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
     private static readonly TimeSpan AccessTokenLifetime = TimeSpan.FromHours(2);
+    private static readonly TimeSpan AccessTokenRefreshSkew = TimeSpan.FromMinutes(1);
 
     private readonly string _sessionPath;
     private readonly ApiClient _apiClient;
     private readonly SubscriptionApiService _subscriptionApi;
     private readonly SubscriptionSyncService _subscriptionSync;
+    private readonly SemaphoreSlim _refreshLock = new(1, 1);
     private string _apiBaseUrl = "";
     private AuthSession? _session;
 
@@ -48,9 +50,11 @@ public sealed partial class AuthService
 
     public bool IsConfigured => !string.IsNullOrWhiteSpace(_apiBaseUrl);
 
-    public bool IsAuthenticated => _session is not null &&
-                                   !string.IsNullOrWhiteSpace(_session.AccessToken) &&
-                                   !string.IsNullOrWhiteSpace(_session.RefreshToken);
+    public bool IsAuthenticated =>
+        _session is not null &&
+        !string.IsNullOrWhiteSpace(_session.RefreshToken) &&
+        !string.IsNullOrWhiteSpace(_session.AccessToken) &&
+        !IsAccessTokenExpired(_session);
 
     public AuthSession? CurrentSession => _session;
 
@@ -69,6 +73,21 @@ public sealed partial class AuthService
         password.Length >= 6 &&
         PasswordLetterRegex().IsMatch(password) &&
         PasswordDigitRegex().IsMatch(password);
+
+    public async Task<bool> TryRestoreSessionAsync(CancellationToken cancellationToken = default)
+    {
+        if (_session is null || string.IsNullOrWhiteSpace(_session.RefreshToken))
+        {
+            return false;
+        }
+
+        if (!IsAccessTokenExpired(_session))
+        {
+            return true;
+        }
+
+        return await RefreshTokenInternalAsync(cancellationToken);
+    }
 
     public async Task<AuthResult> SendRegisterCodeAsync(string email, CancellationToken cancellationToken = default)
     {
@@ -237,7 +256,7 @@ public sealed partial class AuthService
             return null;
         }
 
-        if (_session.AccessTokenExpiresAtUtc <= DateTime.UtcNow.AddMinutes(1))
+        if (IsAccessTokenExpired(_session))
         {
             var refreshed = await RefreshTokenInternalAsync(cancellationToken);
             if (!refreshed)
@@ -256,8 +275,19 @@ public sealed partial class AuthService
             return false;
         }
 
+        await _refreshLock.WaitAsync(cancellationToken);
         try
         {
+            if (_session is null || string.IsNullOrWhiteSpace(_session.RefreshToken))
+            {
+                return false;
+            }
+
+            if (!IsAccessTokenExpired(_session))
+            {
+                return true;
+            }
+
             var result = await _apiClient.PostPublicAsync<TokenData>(
                 _apiBaseUrl,
                 "auth/token/refresh",
@@ -266,7 +296,15 @@ public sealed partial class AuthService
 
             if (!result.IsSuccess || result.Data is null)
             {
-                ClearSession();
+                if (ShouldClearSessionAfterRefreshFailure(result.Code))
+                {
+                    ClearSession();
+                }
+                else
+                {
+                    DiagnosticLogService.Warning($"Token refresh failed without clearing saved session: {result.Message}");
+                }
+
                 return false;
             }
 
@@ -274,15 +312,25 @@ public sealed partial class AuthService
             _session.RefreshToken = result.Data.RefreshToken;
             _session.AccessTokenExpiresAtUtc = DateTime.UtcNow.Add(AccessTokenLifetime);
             SaveSession(_session);
+            AuthStateChanged?.Invoke();
             return true;
         }
         catch (Exception ex)
         {
-            DiagnosticLogService.Warning($"Token refresh failed: {ex.Message}");
-            ClearSession();
+            DiagnosticLogService.Warning($"Token refresh failed without clearing saved session: {ex.Message}");
             return false;
         }
+        finally
+        {
+            _refreshLock.Release();
+        }
     }
+
+    private static bool IsAccessTokenExpired(AuthSession session) =>
+        session.AccessTokenExpiresAtUtc <= DateTime.UtcNow.Add(AccessTokenRefreshSkew);
+
+    private static bool ShouldClearSessionAfterRefreshFailure(int code) =>
+        code is 400 or 401 or 403;
 
     private static AuthSession CreateSession(LoginData data) =>
         new()
@@ -303,6 +351,45 @@ public sealed partial class AuthService
         }
 
         _session.Subscriptions.RemoveAll(subscription => subscription.Id == subscriptionId);
+        SaveSession(_session);
+    }
+
+    public void AddOrUpdateSubscriptionInSession(ServerSubscription subscription)
+    {
+        if (_session is null || subscription.Id <= 0)
+        {
+            return;
+        }
+
+        var existing = _session.Subscriptions.FirstOrDefault(item => item.Id == subscription.Id);
+        if (existing is null)
+        {
+            existing = _session.Subscriptions.FirstOrDefault(item =>
+                string.Equals(item.Url, subscription.Url, StringComparison.OrdinalIgnoreCase));
+        }
+
+        if (existing is null)
+        {
+            _session.Subscriptions.Add(subscription);
+        }
+        else
+        {
+            existing.Id = subscription.Id;
+            existing.Name = subscription.Name;
+            existing.Url = subscription.Url;
+        }
+
+        SaveSession(_session);
+    }
+
+    public void ReplaceSessionSubscriptions(IReadOnlyList<ServerSubscription> subscriptions)
+    {
+        if (_session is null)
+        {
+            return;
+        }
+
+        _session.Subscriptions = subscriptions.ToList();
         SaveSession(_session);
     }
 
@@ -334,7 +421,24 @@ public sealed partial class AuthService
         try
         {
             var json = File.ReadAllText(_sessionPath);
-            return JsonSerializer.Deserialize<AuthSession>(json, JsonOptions);
+            var persisted = JsonSerializer.Deserialize<PersistedAuthSession>(json, JsonOptions);
+            if (persisted is not null && persisted.FormatVersion >= PersistedAuthSession.CurrentFormatVersion)
+            {
+                return FromPersistedSession(persisted);
+            }
+
+            var legacy = JsonSerializer.Deserialize<AuthSession>(json, JsonOptions);
+            if (legacy is null)
+            {
+                return null;
+            }
+
+            if (!string.IsNullOrWhiteSpace(legacy.AccessToken) || !string.IsNullOrWhiteSpace(legacy.RefreshToken))
+            {
+                SaveSession(legacy);
+            }
+
+            return legacy;
         }
         catch (Exception ex)
         {
@@ -345,7 +449,33 @@ public sealed partial class AuthService
 
     private void SaveSession(AuthSession session)
     {
-        var json = JsonSerializer.Serialize(session, JsonOptions);
-        File.WriteAllText(_sessionPath, json);
+        var persisted = ToPersistedSession(session);
+        var json = JsonSerializer.Serialize(persisted, JsonOptions);
+        var tempPath = $"{_sessionPath}.tmp";
+        File.WriteAllText(tempPath, json);
+        File.Move(tempPath, _sessionPath, overwrite: true);
     }
+
+    private static AuthSession FromPersistedSession(PersistedAuthSession persisted) =>
+        new()
+        {
+            UserId = persisted.UserId,
+            Email = persisted.Email,
+            AccessToken = SessionTokenProtection.Unprotect(persisted.ProtectedAccessToken),
+            RefreshToken = SessionTokenProtection.Unprotect(persisted.ProtectedRefreshToken),
+            AccessTokenExpiresAtUtc = persisted.AccessTokenExpiresAtUtc,
+            Subscriptions = persisted.Subscriptions
+        };
+
+    private static PersistedAuthSession ToPersistedSession(AuthSession session) =>
+        new()
+        {
+            FormatVersion = PersistedAuthSession.CurrentFormatVersion,
+            UserId = session.UserId,
+            Email = session.Email,
+            ProtectedAccessToken = SessionTokenProtection.Protect(session.AccessToken),
+            ProtectedRefreshToken = SessionTokenProtection.Protect(session.RefreshToken),
+            AccessTokenExpiresAtUtc = session.AccessTokenExpiresAtUtc,
+            Subscriptions = session.Subscriptions
+        };
 }
