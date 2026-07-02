@@ -11,6 +11,29 @@ public sealed class LoginSubscriptionLoadItem
     public bool Success => ImportResult is not null;
 }
 
+public sealed class ServerSubscriptionFetchResult
+{
+    public IReadOnlyList<ServerSubscription> Subscriptions { get; init; } = [];
+    public bool RetrievedFromServer { get; init; }
+    public bool IsTransientFailure { get; init; }
+    public string? ErrorMessage { get; init; }
+
+    public static ServerSubscriptionFetchResult FromServer(IReadOnlyList<ServerSubscription> subscriptions) =>
+        new() { Subscriptions = subscriptions, RetrievedFromServer = true };
+
+    public static ServerSubscriptionFetchResult CachedFailure(
+        IReadOnlyList<ServerSubscription> subscriptions,
+        bool isTransient,
+        string? message) =>
+        new()
+        {
+            Subscriptions = subscriptions,
+            RetrievedFromServer = false,
+            IsTransientFailure = isTransient,
+            ErrorMessage = message
+        };
+}
+
 public sealed class SubscriptionSyncService
 {
     private readonly AuthService _authService;
@@ -65,24 +88,37 @@ public sealed class SubscriptionSyncService
         return await Task.WhenAll(tasks);
     }
 
-    public async Task<IReadOnlyList<ServerSubscription>> GetLoginSubscriptionsAsync(
+    public async Task<ServerSubscriptionFetchResult> FetchLoginSubscriptionsAsync(
         CancellationToken cancellationToken = default)
     {
-        if (!_authService.IsAuthenticated)
+        if (!await _authService.TryRestoreSessionAsync(cancellationToken))
         {
-            return [];
+            return ServerSubscriptionFetchResult.CachedFailure([], isTransient: false, "登录已过期，请重新登录。");
         }
 
         var listResult = await _subscriptionApi.ListAsync(cancellationToken);
         if (listResult.IsSuccess && listResult.Data is not null)
         {
             _authService.ReplaceSessionSubscriptions(listResult.Data);
-            return listResult.Data;
+            return ServerSubscriptionFetchResult.FromServer(listResult.Data);
         }
 
+        var isTransient = listResult.Code == 408 ||
+                          SubscriptionTrafficHelper.IsTransientNetworkError(listResult.Message);
         DiagnosticLogService.Warning(
             $"Failed to fetch subscription list from server: {listResult.Message}. Using cached session list.");
-        return _authService.CurrentSession?.Subscriptions ?? [];
+
+        return ServerSubscriptionFetchResult.CachedFailure(
+            _authService.CurrentSession?.Subscriptions ?? [],
+            isTransient,
+            listResult.Message);
+    }
+
+    public async Task<IReadOnlyList<ServerSubscription>> GetLoginSubscriptionsAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var fetchResult = await FetchLoginSubscriptionsAsync(cancellationToken);
+        return fetchResult.Subscriptions;
     }
 
     public async Task<IReadOnlyList<LoginSubscriptionLoadItem>> LoadLoginSubscriptionsAsync(
@@ -388,18 +424,18 @@ public sealed class SubscriptionSyncService
 
     public async Task PullServerSubscriptionsAsync(AppSettings settings, CancellationToken cancellationToken = default)
     {
-        if (!_authService.IsAuthenticated)
+        if (!await _authService.TryRestoreSessionAsync(cancellationToken))
         {
             return;
         }
 
-        var subscriptions = await GetLoginSubscriptionsAsync(cancellationToken);
-        if (subscriptions.Count == 0)
+        var fetchResult = await FetchLoginSubscriptionsAsync(cancellationToken);
+        if (!fetchResult.RetrievedFromServer || fetchResult.Subscriptions.Count == 0)
         {
             return;
         }
 
-        foreach (var serverSubscription in subscriptions)
+        foreach (var serverSubscription in fetchResult.Subscriptions)
         {
             var matchedKey = settings.SubscriptionSources
                 .FirstOrDefault(pair => string.Equals(pair.Value.Url, serverSubscription.Url, StringComparison.OrdinalIgnoreCase))

@@ -471,6 +471,8 @@ public partial class MainWindow : Window
     {
         Loaded -= MainWindow_Loaded;
 
+        ClearStaleLocalSystemProxyIfNeeded();
+
         if (await _authService.TryRestoreSessionAsync())
         {
             StartAuthRefreshTimer();
@@ -585,6 +587,23 @@ public partial class MainWindow : Window
         ApplyStartupSettings(save: false);
         RestoreSubscriptionAutoRefreshTimers();
         ReconcileSubscriptionTrafficExhaustedState();
+        ClearStaleLocalSystemProxyIfNeeded();
+    }
+
+    private void ClearStaleLocalSystemProxyIfNeeded()
+    {
+        if (_coreService.IsRunning)
+        {
+            return;
+        }
+
+        if (!SystemProxyService.IsHttpProxyEnabled(_settings.HttpPort))
+        {
+            return;
+        }
+
+        SystemProxyService.DisableProxy();
+        DiagnosticLogService.Info("Cleared stale local system proxy because core is not running.");
     }
 
     private void StartSubscriptionGlobalAutoRefresh()
@@ -1321,7 +1340,7 @@ public partial class MainWindow : Window
 
     private void SyncAuthRefreshTimer()
     {
-        if (_authService.IsAuthenticated)
+        if (_authService.HasPersistedSession)
         {
             StartAuthRefreshTimer();
         }
@@ -1377,7 +1396,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (_authService.IsAuthenticated)
+        if (_authService.HasPersistedSession)
         {
             AuthGuestPanel.Visibility = Visibility.Collapsed;
             AuthUserPanel.Visibility = Visibility.Visible;
@@ -1411,9 +1430,15 @@ public partial class MainWindow : Window
 
     private async void SyncCloudSubscriptionsButton_Click(object sender, RoutedEventArgs e)
     {
-        if (!_authService.IsAuthenticated)
+        if (!_authService.HasPersistedSession)
         {
             MessageBox.Show("请先登录后再从云端更新节点。", "Nexora", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        if (!await _authService.TryRestoreSessionAsync())
+        {
+            MessageBox.Show("登录已过期，请重新登录后再更新订阅。", "Nexora", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
 
@@ -1612,13 +1637,31 @@ public partial class MainWindow : Window
 
     private async Task ReloadCloudSubscriptionsAsync(bool showSuccessMessage)
     {
-        if (!_authService.IsAuthenticated)
+        if (!await _authService.TryRestoreSessionAsync())
         {
+            SetCloudSubscriptionStatus("登录已过期，请重新登录。", isError: true);
             return;
         }
 
-        var subscriptions = await _authService.SubscriptionSync.GetLoginSubscriptionsAsync();
-        PruneStaleCloudSubscriptions(subscriptions);
+        var fetchResult = await _authService.SubscriptionSync.FetchLoginSubscriptionsAsync();
+        if (!fetchResult.RetrievedFromServer)
+        {
+            if (fetchResult.IsTransientFailure || fetchResult.Subscriptions.Count == 0)
+            {
+                SetCloudSubscriptionStatus(
+                    string.IsNullOrWhiteSpace(fetchResult.ErrorMessage)
+                        ? "无法连接云端，已保留本地节点。"
+                        : $"无法连接云端，已保留本地节点：{fetchResult.ErrorMessage}",
+                    isError: true);
+                return;
+            }
+        }
+
+        var subscriptions = fetchResult.Subscriptions;
+        if (fetchResult.RetrievedFromServer)
+        {
+            PruneStaleCloudSubscriptions(subscriptions);
+        }
 
         foreach (var subscription in subscriptions)
         {
@@ -1658,6 +1701,11 @@ public partial class MainWindow : Window
                     SetSubscriptionTrafficExhausted(item.Subscription.Name);
                     DiagnosticLogService.Warning(
                         $"Cloud subscription \"{item.Subscription.Name}\" traffic exhausted; kept existing nodes and paused auto refresh.");
+                }
+                else if (SubscriptionTrafficHelper.IsTransientNetworkError(item.ErrorMessage))
+                {
+                    DiagnosticLogService.Warning(
+                        $"Cloud subscription \"{item.Subscription.Name}\" fetch failed (transient): {item.ErrorMessage ?? "network error"}; kept existing nodes.");
                 }
                 else
                 {
@@ -3839,9 +3887,26 @@ public partial class MainWindow : Window
             return;
         }
 
+        var requiresAuth = source.ServerSubscriptionId is > 0 ||
+                           _profiles.Any(profile =>
+                               profile.IsCloudManaged &&
+                               string.Equals(profile.SubscriptionName, subscriptionName, StringComparison.OrdinalIgnoreCase));
+        if (requiresAuth)
+        {
+            if (!await _authService.TryRestoreSessionAsync())
+            {
+                if (!silent)
+                {
+                    MessageBox.Show("登录已过期，请重新登录后再刷新订阅。", "Nexora", MessageBoxButton.OK, MessageBoxImage.Information);
+                }
+
+                return;
+            }
+        }
+
         try
         {
-            if (_authService.IsAuthenticated)
+            if (requiresAuth)
             {
                 _authService.SubscriptionSync.ResolveAndAssignServerSubscriptionId(source, subscriptionName);
             }
@@ -3896,7 +3961,7 @@ public partial class MainWindow : Window
 
             ApplySubscriptionTrafficInfo(result.TrafficInfo);
 
-            if (_authService.IsAuthenticated)
+            if (requiresAuth)
             {
                 var syncResult = await _authService.SubscriptionSync.SyncRefreshAsync(
                     new SubscriptionImportResult
@@ -3994,6 +4059,21 @@ public partial class MainWindow : Window
                 {
                     MessageBox.Show(
                         $"订阅「{subscriptionName}」流量可能已用尽或订阅源暂时不可用，已保留现有节点并显示超时。充值后可手动刷新。",
+                        "Nexora",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Information);
+                }
+
+                return;
+            }
+
+            if (SubscriptionTrafficHelper.IsTransientNetworkError(ex.Message, ex))
+            {
+                DiagnosticLogService.Warning($"Subscription refresh failed for \"{subscriptionName}\" (transient): {ex.Message}");
+                if (!silent)
+                {
+                    MessageBox.Show(
+                        $"订阅「{subscriptionName}」暂时无法刷新，已保留现有节点：{ex.Message}",
                         "Nexora",
                         MessageBoxButton.OK,
                         MessageBoxImage.Information);

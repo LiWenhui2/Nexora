@@ -1,3 +1,4 @@
+using System.Net.Http;
 using NaiwaProxy.Models;
 
 namespace NaiwaProxy.Services;
@@ -78,5 +79,29 @@ public static class SubscriptionTrafficHelper
                message.Contains("Gone", StringComparison.OrdinalIgnoreCase) ||
                message.Contains("503", StringComparison.Ordinal) ||
                message.Contains("Service Unavailable", StringComparison.OrdinalIgnoreCase);
+    }
+
+    public static bool IsTransientNetworkError(string? message, Exception? exception = null)
+    {
+        if (exception is TimeoutException or HttpRequestException)
+        {
+            return true;
+        }
+
+        if (exception is OperationCanceledException)
+        {
+            return true;
+        }
+
+        if (string.IsNullOrWhiteSpace(message))
+        {
+            return false;
+        }
+
+        return message.Contains("超时", StringComparison.Ordinal) ||
+               message.Contains("未响应", StringComparison.Ordinal) ||
+               message.Contains("网络请求失败", StringComparison.Ordinal) ||
+               message.Contains("Timeout", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("408", StringComparison.Ordinal);
     }
 }

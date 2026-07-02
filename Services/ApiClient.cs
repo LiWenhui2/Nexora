@@ -23,7 +23,7 @@ public sealed class ApiClient
     {
         _getAccessTokenAsync = getAccessTokenAsync;
         _refreshTokenAsync = refreshTokenAsync;
-        _http = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
+        _http = DirectHttpClientFactory.Shared;
     }
 
     public async Task<ApiResult<T>> GetAsync<T>(string baseUrl, string path, bool requireAuth = true, CancellationToken cancellationToken = default)

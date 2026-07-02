@@ -8,10 +8,7 @@ namespace NaiwaProxy.Services;
 public static class SubscriptionImportService
 {
     private const int SubscriptionRequestTimeoutSeconds = 5;
-    private static readonly HttpClient HttpClient = new()
-    {
-        Timeout = Timeout.InfiniteTimeSpan
-    };
+    private static HttpClient HttpClient => DirectHttpClientFactory.Shared;
 
     public static async Task<SubscriptionImportResult> ImportAsync(string input, CancellationToken cancellationToken = default)
     {

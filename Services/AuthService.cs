@@ -50,6 +50,9 @@ public sealed partial class AuthService
 
     public bool IsConfigured => !string.IsNullOrWhiteSpace(_apiBaseUrl);
 
+    public bool HasPersistedSession =>
+        _session is not null && !string.IsNullOrWhiteSpace(_session.RefreshToken);
+
     public bool IsAuthenticated =>
         _session is not null &&
         !string.IsNullOrWhiteSpace(_session.RefreshToken) &&
