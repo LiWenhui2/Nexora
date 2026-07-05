@@ -25,6 +25,9 @@ public sealed class AppSettings
     public bool RunAtStartupSilent { get; set; }
     public bool AllowLanAccess { get; set; }
     public string ThemeAccentColor { get; set; } = "#2563EB";
+    public bool AutoDownloadNewVersion { get; set; } = true;
+    public int? DownloadedUpdateReleaseId { get; set; }
+    public string? DownloadedUpdateFilePath { get; set; }
     public Dictionary<string, SubscriptionSource> SubscriptionSources { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 }
 

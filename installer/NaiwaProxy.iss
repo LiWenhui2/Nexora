@@ -1,5 +1,5 @@
 #define MyAppName "Nexora"
-#define MyAppVersion "1.1.4"
+#define MyAppVersion "1.1.5"
 #define MyAppPublisher "LiWenhui2"
 #define MyAppExeName "Nexora.exe"
 

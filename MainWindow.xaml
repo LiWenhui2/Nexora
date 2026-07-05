@@ -111,7 +111,10 @@
         <Geometry x:Key="IconGitHub">M12,.297c-6.63,0-12,5.373-12,12 0,5.303 3.438,9.8 8.205,11.385 .6,.113 .82,-.258 .82,-.577 0,-.285-.01,-1.04-.015,-2.04-3.338,.724-4.042,-1.61-4.042,-1.61C4.422,18.07 3.633,17.7 3.633,17.7c-1.087,-.744 .084,-.729 .084,-.729 1.205,.084 1.838,1.236 1.838,1.236 1.07,1.835 2.809,1.305 3.495,.998 .108,-.776 .417,-1.305 .76,-1.605-2.665,-.3-5.466,-1.332-5.466,-5.93 0,-1.31 .465,-2.38 1.235,-3.22-.135,-.303-.54,-1.523 .105,-3.176 0,0 1.005,-.322 3.3,1.23 .96,-.267 1.98,-.399 3,-.405 1.02,.006 2.04,.138 3,.405 2.28,-1.552 3.285,-1.23 3.285,-1.23 .645,1.653 .24,2.873 .12,3.176 .765,.84 1.23,1.91 1.23,3.22 0,4.61-2.805,5.625-5.475,5.92 .42,.36 .81,1.096 .81,2.22 0,1.606-.015,2.896-.015,3.286 0,.315 .21,.69 .825,.57C20.565,22.092 24,17.592 24,12.297c0,-6.627-5.373,-12-12,-12</Geometry>
         <Geometry x:Key="IconFolder">M22,19 A2,2 0 0 1 20,21 L4,21 A2,2 0 0 1 2,19 L2,7 A2,2 0 0 1 4,5 L9,5 L11,3 L20,3 A2,2 0 0 1 22,5 Z</Geometry>
         <Geometry x:Key="IconUser">M20,21 A8,8 0 0 0 4,21 M16,7 A4,4 0 1 1 8,7 A4,4 0 0 1 16,7</Geometry>
+        <Geometry x:Key="IconEdit">M12,20 L20,20 M15.5,4.5 L18.5,7.5 L7,19 L3,20 L4,16 Z</Geometry>
         <Geometry x:Key="IconMail">M4,4 L20,4 A2,2 0 0 1 22,6 L22,18 A2,2 0 0 1 20,20 L4,20 A2,2 0 0 1 2,18 L2,6 A2,2 0 0 1 4,4 M22,6 L12,13 L2,6</Geometry>
+        <Geometry x:Key="IconBell">M18,8 A6,6 0 0 0 6,8 C6,15 3,17 3,17 L21,17 C21,17 18,15 18,8 M13.73,21 A2,2 0 0 1 10.27,21</Geometry>
+        <Geometry x:Key="IconMessage">M21,15 A2,2 0 0 1 19,17 L7,17 L3,21 L3,5 A2,2 0 0 1 5,3 L19,3 A2,2 0 0 1 21,5 Z</Geometry>
         <Geometry x:Key="IconLock">M6,10 L6,20 L18,20 L18,10 Z M8,10 L8,7 A4,4 0 0 1 16,7 L16,10 M12,14 L12,16</Geometry>
         <Geometry x:Key="IconKey">M21,2 L19,4 M15.5,7.5 L18,5 M7,14 A4,4 0 1 0 7,22 A4,4 0 0 0 7,14 M10,17 L21,6</Geometry>
         <Geometry x:Key="IconClose">M6,6 L18,18 M18,6 L6,18</Geometry>
@@ -131,6 +134,40 @@
         <Style x:Key="NavFillIconStyle" TargetType="Path" BasedOn="{StaticResource NavLineIconStyle}">
             <Setter Property="StrokeThickness" Value="0"/>
             <Setter Property="Fill" Value="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
+        </Style>
+
+        <Style x:Key="NavTintedIconStyle" TargetType="Rectangle">
+            <Setter Property="Width" Value="20"/>
+            <Setter Property="Height" Value="20"/>
+            <Setter Property="Margin" Value="0,0,10,0"/>
+            <Setter Property="Fill" Value="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
+        </Style>
+
+        <Style x:Key="AnnouncementCardButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Margin" Value="0,0,0,10"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Root" Background="{TemplateBinding Background}" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" CornerRadius="14" Padding="16">
+                            <ContentPresenter/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Root" Property="Background" Value="#F8FAFC"/>
+                                <Setter TargetName="Root" Property="BorderBrush" Value="#BFDBFE"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Root" Property="Background" Value="#EFF6FF"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
 
         <Style x:Key="FolderIconButtonStyle" TargetType="Button">
@@ -295,6 +332,31 @@
             <Setter Property="Padding" Value="0"/>
             <Setter Property="Background" Value="#FFFFFF"/>
             <Setter Property="Foreground" Value="#64748B"/>
+        </Style>
+
+        <Style x:Key="SideIconButtonStyle" TargetType="Button">
+            <Setter Property="Width" Value="28"/>
+            <Setter Property="Height" Value="28"/>
+            <Setter Property="MinWidth" Value="28"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="ToolTip" Value="编辑资料"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Root" Background="{TemplateBinding Background}" CornerRadius="6">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Root" Property="Background" Value="#E2E8F0"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
 
         <Style TargetType="DataGrid">
@@ -587,6 +649,26 @@
                             </StackPanel>
                         </Button>
 
+                        <TextBlock Style="{StaticResource NavGroupHeaderStyle}" Text="通知"/>
+                        <Button x:Name="AnnouncementNavButton" Style="{StaticResource NavChildButtonStyle}" Click="AnnouncementNavButton_Click">
+                            <StackPanel Orientation="Horizontal">
+                                <Rectangle x:Name="AnnouncementNavIcon" Style="{StaticResource NavTintedIconStyle}"/>
+                                <TextBlock Text="公告"/>
+                            </StackPanel>
+                        </Button>
+                        <Button x:Name="ContactAdminNavButton" Style="{StaticResource NavChildButtonStyle}" Click="ContactAdminNavButton_Click">
+                            <StackPanel Orientation="Horizontal">
+                                <Rectangle x:Name="ContactAdminNavIcon" Style="{StaticResource NavTintedIconStyle}"/>
+                                <TextBlock Text="联系管理员"/>
+                            </StackPanel>
+                        </Button>
+                        <Button x:Name="VersionUpdateNavButton" Style="{StaticResource NavChildButtonStyle}" Click="VersionUpdateNavButton_Click">
+                            <StackPanel Orientation="Horizontal">
+                                <Path Style="{StaticResource NavLineIconStyle}" Data="{StaticResource IconRefresh}"/>
+                                <TextBlock Text="版本更新"/>
+                            </StackPanel>
+                        </Button>
+
                         <TextBlock Style="{StaticResource NavGroupHeaderStyle}" Text="系统"/>
                         <Button x:Name="SettingsNavButton" Style="{StaticResource NavChildButtonStyle}" Click="SettingsNavButton_Click">
                             <StackPanel Orientation="Horizontal">
@@ -604,12 +686,6 @@
                             <StackPanel Orientation="Horizontal">
                                 <Path Style="{StaticResource NavLineIconStyle}" Data="{StaticResource IconAbout}"/>
                                 <TextBlock Text="关于"/>
-                            </StackPanel>
-                        </Button>
-                        <Button x:Name="UpdateNavButton" Style="{StaticResource NavChildButtonStyle}" Click="UpdateNavButton_Click">
-                            <StackPanel Orientation="Horizontal">
-                                <Path Style="{StaticResource NavLineIconStyle}" Data="{StaticResource IconRefresh}"/>
-                                <TextBlock Text="检查更新"/>
                             </StackPanel>
                         </Button>
                         <Button Style="{StaticResource NavChildButtonStyle}" Click="GithubNavButton_Click">
@@ -631,11 +707,26 @@
                             <Button x:Name="SideLoginButton" Content="登录 / 注册" Style="{StaticResource PrimaryButtonStyle}" HorizontalAlignment="Stretch" Click="SideLoginButton_Click"/>
                         </StackPanel>
                         <StackPanel x:Name="AuthUserPanel" Visibility="Collapsed">
-                            <StackPanel Orientation="Horizontal">
-                                <Path Style="{StaticResource NavLineIconStyle}" Data="{StaticResource IconUser}" Stroke="#16A34A" Margin="0,0,8,0"/>
-                                <TextBlock Text="已登录" FontSize="19" FontWeight="Bold"/>
-                            </StackPanel>
-                            <TextBlock x:Name="SideAuthEmailText" Foreground="{StaticResource MutedBrush}" FontSize="15" Margin="0,6,0,10" TextTrimming="CharacterEllipsis"/>
+                            <Grid Margin="0,0,0,10">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <Border Grid.Column="0" Width="40" Height="40" CornerRadius="20" Background="#F1F5F9" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" ClipToBounds="True" VerticalAlignment="Center">
+                                    <Grid>
+                                        <Image x:Name="SideAuthAvatarImage" Stretch="UniformToFill" Visibility="Collapsed"/>
+                                        <Path x:Name="SideAuthAvatarPlaceholder" Style="{StaticResource NavLineIconStyle}" Data="{StaticResource IconUser}" Stroke="#16A34A" Width="22" Height="22" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    </Grid>
+                                </Border>
+                                <StackPanel Grid.Column="1" Margin="10,0,8,0" VerticalAlignment="Center">
+                                    <TextBlock x:Name="SideAuthNicknameText" FontSize="17" FontWeight="Bold" TextTrimming="CharacterEllipsis"/>
+                                    <TextBlock x:Name="SideAuthEmailText" Foreground="{StaticResource MutedBrush}" FontSize="13" TextTrimming="CharacterEllipsis"/>
+                                </StackPanel>
+                                <Button x:Name="SideEditProfileButton" Grid.Column="2" Style="{StaticResource SideIconButtonStyle}" Click="SideEditProfileButton_Click" VerticalAlignment="Top">
+                                    <Path Data="{StaticResource IconEdit}" Stretch="Uniform" Width="14" Height="14" Stroke="#64748B" StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"/>
+                                </Button>
+                            </Grid>
                             <Button x:Name="SideLogoutButton" Content="退出登录" Style="{StaticResource DarkButtonStyle}" HorizontalAlignment="Stretch" Click="SideLogoutButton_Click"/>
                         </StackPanel>
                         <TextBlock x:Name="SideNodeText" Text="节点：-" Foreground="{StaticResource MutedBrush}" FontSize="16" Margin="0,12,0,0" TextTrimming="CharacterEllipsis"/>
@@ -1116,27 +1207,6 @@
                 </StackPanel>
             </ScrollViewer>
 
-            <ScrollViewer x:Name="UpdatePageScroll" Grid.Row="1" VerticalScrollBarVisibility="Auto" Visibility="Collapsed">
-                <StackPanel Margin="24,22,24,28">
-                    <Border Style="{StaticResource CardBorderStyle}">
-                        <StackPanel>
-                            <TextBlock Text="检查更新" FontSize="24" FontWeight="Bold" Margin="0,0,0,12"/>
-                            <TextBlock x:Name="UpdateStatusText" Text="点击按钮检查 GitHub Release 中的最新版本。" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,0,0,12"/>
-                            <TextBlock Text="若无法更新，请手动将路由规则设为「全局代理」，然后重新检查或下载更新。" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,0,0,16"/>
-                            <Border x:Name="UpdateProgressPanel" Background="{StaticResource Panel2Brush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" CornerRadius="12" Padding="14" Margin="0,0,0,16" Visibility="Collapsed">
-                                <StackPanel>
-                                    <TextBlock x:Name="UpdateProgressText" Text="准备下载..." Foreground="{StaticResource MutedBrush}" Margin="0,0,0,10"/>
-                                    <ProgressBar x:Name="UpdateProgressBar" Height="10" Minimum="0" Maximum="100" Value="0"/>
-                                </StackPanel>
-                            </Border>
-                            <WrapPanel>
-                                <Button x:Name="UpdatePageCheckButton" Content="检查更新" Style="{StaticResource PrimaryButtonStyle}" Margin="0,0,8,8" Click="UpdatePageCheckButton_Click"/>
-                            </WrapPanel>
-                        </StackPanel>
-                    </Border>
-                </StackPanel>
-            </ScrollViewer>
-
             <ScrollViewer x:Name="LogPageScroll" Grid.Row="1" VerticalScrollBarVisibility="Auto" Visibility="Collapsed">
                 <Border Margin="24,22,24,28" Style="{StaticResource CardBorderStyle}">
                     <Grid MinHeight="640">
@@ -1471,6 +1541,20 @@
                                     <CheckBox Grid.Column="1" x:Name="AllowLanAccessToggle" Style="{StaticResource ToggleSwitchStyle}" VerticalAlignment="Center" Checked="AllowLanAccessToggle_Changed" Unchecked="AllowLanAccessToggle_Changed"/>
                                 </Grid>
                             </Border>
+                            <Border Style="{StaticResource SettingsToggleCardStyle}">
+                                <Grid VerticalAlignment="Center">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,12,0">
+                                        <TextBlock Text="自动下载新版本" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                        <Image x:Name="AutoDownloadUpdateInfoIcon" Style="{StaticResource InfoHintIconStyle}"
+                                               ToolTipService.ToolTip="开启后，检测到新版本时将自动在后台下载安装包；下载完成后会提示你点击安装。关闭后需手动下载。"/>
+                                    </StackPanel>
+                                    <CheckBox Grid.Column="1" x:Name="AutoDownloadNewVersionToggle" Style="{StaticResource ToggleSwitchStyle}" VerticalAlignment="Center" IsChecked="True" Checked="AutoDownloadNewVersionToggle_Changed" Unchecked="AutoDownloadNewVersionToggle_Changed"/>
+                                </Grid>
+                            </Border>
                         </WrapPanel>
                     </Border>
                     <Border Style="{StaticResource CardBorderStyle}" Margin="0,16,0,0">
@@ -1486,6 +1570,332 @@
                         </StackPanel>
                     </Border>
                 </StackPanel>
+            </ScrollViewer>
+
+            <ScrollViewer x:Name="VersionUpdatePageScroll" Grid.Row="1" VerticalScrollBarVisibility="Auto" Visibility="Collapsed">
+                <StackPanel Margin="24,22,24,28">
+                    <Border Style="{StaticResource CardBorderStyle}">
+                        <Grid MinHeight="640">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+
+                            <Grid Grid.Row="0" Margin="0,0,0,16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <Border Width="44" Height="44" CornerRadius="12" Background="#ECFDF5" BorderBrush="#86EFAC" BorderThickness="1" Margin="0,0,14,0">
+                                        <Path Width="22" Height="22" Stretch="Uniform" Stroke="#16A34A" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Data="{StaticResource IconRefresh}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    </Border>
+                                    <StackPanel VerticalAlignment="Center">
+                                        <TextBlock Text="版本更新" FontSize="24" FontWeight="Bold"/>
+                                        <TextBlock Text="查看管理员发布的最新版本，获取安装包下载与更新说明" Foreground="{StaticResource MutedBrush}" FontSize="14" Margin="0,4,0,0"/>
+                                    </StackPanel>
+                                </StackPanel>
+                                <Button x:Name="RefreshVersionUpdateButton" Grid.Column="1" Style="{StaticResource DarkButtonStyle}" VerticalAlignment="Center" Click="RefreshVersionUpdateButton_Click">
+                                    <StackPanel Orientation="Horizontal">
+                                        <Path Width="14" Height="14" Stretch="Uniform" Stroke="#334155" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Data="{StaticResource IconRefresh}" Margin="0,0,6,0"/>
+                                        <TextBlock Text="检查更新" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </Button>
+                            </Grid>
+
+                            <Border Grid.Row="1" Background="{StaticResource Panel2Brush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" CornerRadius="12" Padding="14,10" Margin="0,0,0,14">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock x:Name="VersionUpdateStatusText" Foreground="{StaticResource MutedBrush}" FontSize="14" TextWrapping="Wrap" VerticalAlignment="Center"/>
+                                    <Border x:Name="VersionUpdateBadge" Grid.Column="1" Background="#DCFCE7" BorderBrush="#86EFAC" BorderThickness="1" CornerRadius="999" Padding="10,4" Margin="12,0,0,0" Visibility="Collapsed">
+                                        <TextBlock x:Name="VersionUpdateBadgeText" Foreground="#166534" FontSize="13" FontWeight="SemiBold"/>
+                                    </Border>
+                                </Grid>
+                            </Border>
+
+                            <StackPanel x:Name="VersionUpdateGuestPanel" Grid.Row="2" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="0,48,0,0">
+                                <Border Width="72" Height="72" CornerRadius="20" Background="#F8FAFC" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" HorizontalAlignment="Center" Margin="0,0,0,18">
+                                    <Path Width="36" Height="36" Stretch="Uniform" Stroke="#94A3B8" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Data="{StaticResource IconRefresh}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Border>
+                                <TextBlock Text="登录后查看版本更新" FontSize="18" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,0,0,8"/>
+                                <TextBlock Text="登录账号后可检查最新版本并下载 Windows 安装包" Foreground="{StaticResource MutedBrush}" FontSize="14" HorizontalAlignment="Center" Margin="0,0,0,18"/>
+                                <Button Content="登录 / 注册" Style="{StaticResource PrimaryButtonStyle}" HorizontalAlignment="Center" MinWidth="180" Click="VersionUpdateLoginButton_Click"/>
+                            </StackPanel>
+
+                            <StackPanel x:Name="VersionUpdateUpToDatePanel" Grid.Row="2" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="0,48,0,0" Visibility="Collapsed">
+                                <Border Width="72" Height="72" CornerRadius="20" Background="#ECFDF5" BorderBrush="#86EFAC" BorderThickness="1" HorizontalAlignment="Center" Margin="0,0,0,18">
+                                    <TextBlock Text="✓" FontSize="34" FontWeight="Bold" Foreground="#16A34A" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Border>
+                                <TextBlock Text="当前已是最新版本" FontSize="18" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,0,0,8"/>
+                                <TextBlock x:Name="VersionUpdateCurrentOnlyText" Foreground="{StaticResource MutedBrush}" FontSize="14" HorizontalAlignment="Center"/>
+                            </StackPanel>
+
+                            <ScrollViewer x:Name="VersionUpdateAvailableScroll" Grid.Row="2" VerticalScrollBarVisibility="Auto" Visibility="Collapsed">
+                                <StackPanel>
+                                    <Border Background="{StaticResource Panel2Brush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" CornerRadius="14" Padding="18" Margin="0,0,0,12">
+                                        <StackPanel>
+                                            <WrapPanel Margin="0,0,0,10">
+                                                <Border x:Name="VersionUpdateForceBadge" Background="#FEF2F2" BorderBrush="#FECACA" BorderThickness="1" CornerRadius="999" Padding="10,4" Margin="0,0,10,0" Visibility="Collapsed">
+                                                    <TextBlock Text="强制更新" Foreground="#DC2626" FontSize="13" FontWeight="SemiBold"/>
+                                                </Border>
+                                                <TextBlock x:Name="VersionUpdatePublishedAtText" Foreground="#94A3B8" FontSize="13" VerticalAlignment="Center"/>
+                                            </WrapPanel>
+                                            <TextBlock x:Name="VersionUpdateTitleText" FontSize="22" FontWeight="Bold" TextWrapping="Wrap" Margin="0,0,0,8"/>
+                                            <TextBlock x:Name="VersionUpdateVersionLineText" Foreground="{StaticResource AccentTextBrush}" FontSize="15" FontWeight="SemiBold" Margin="0,0,0,12"/>
+                                            <TextBlock x:Name="VersionUpdateContentText" FontSize="15" LineHeight="26" TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}"/>
+                                        </StackPanel>
+                                    </Border>
+
+                                    <Border Background="#FFFFFF" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" CornerRadius="14" Padding="18" Margin="0,0,0,12">
+                                        <StackPanel>
+                                            <TextBlock Text="安装包信息" FontSize="17" FontWeight="SemiBold" Margin="0,0,0,12"/>
+                                            <Grid Margin="0,0,0,8">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="108"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="文件名" Foreground="{StaticResource MutedBrush}"/>
+                                                <TextBlock x:Name="VersionUpdateFileNameText" Grid.Column="1" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                                            </Grid>
+                                            <Grid Margin="0,0,0,8">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="108"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="文件大小" Foreground="{StaticResource MutedBrush}"/>
+                                                <TextBlock x:Name="VersionUpdateFileSizeText" Grid.Column="1"/>
+                                            </Grid>
+                                            <Grid Margin="0,0,0,8">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="108"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="SHA-256" Foreground="{StaticResource MutedBrush}" VerticalAlignment="Top"/>
+                                                <TextBlock x:Name="VersionUpdateSha256Text" Grid.Column="1" FontFamily="Consolas, Cascadia Mono, Microsoft YaHei UI" FontSize="12" TextWrapping="Wrap"/>
+                                            </Grid>
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="108"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="下载链接" Foreground="{StaticResource MutedBrush}" VerticalAlignment="Top"/>
+                                                <TextBlock x:Name="VersionUpdateDownloadUrlText" Grid.Column="1" TextWrapping="Wrap">
+                                                    <Hyperlink x:Name="VersionUpdateDownloadLink" Click="VersionUpdateDownloadLink_Click">打开下载链接</Hyperlink>
+                                                </TextBlock>
+                                            </Grid>
+                                        </StackPanel>
+                                    </Border>
+
+                                    <Border x:Name="VersionUpdateProgressPanel" Background="{StaticResource Panel2Brush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" CornerRadius="12" Padding="14" Margin="0,0,0,12" Visibility="Collapsed">
+                                        <StackPanel>
+                                            <TextBlock x:Name="VersionUpdateProgressText" Text="准备下载..." Foreground="{StaticResource MutedBrush}" Margin="0,0,0,10"/>
+                                            <ProgressBar x:Name="VersionUpdateProgressBar" Height="10" Minimum="0" Maximum="100" Value="0"/>
+                                        </StackPanel>
+                                    </Border>
+
+                                    <WrapPanel>
+                                        <Button x:Name="VersionUpdateDownloadButton" Content="下载安装包" Style="{StaticResource PrimaryButtonStyle}" MinWidth="140" Margin="0,0,10,0" Click="VersionUpdateDownloadButton_Click"/>
+                                        <Button x:Name="VersionUpdateInstallButton" Content="立即安装" Style="{StaticResource DarkButtonStyle}" MinWidth="120" Margin="0,0,10,0" IsEnabled="False" Click="VersionUpdateInstallButton_Click"/>
+                                        <Button x:Name="VersionUpdateOpenFolderButton" Content="打开下载目录" Style="{StaticResource DarkButtonStyle}" MinWidth="140" Click="VersionUpdateOpenFolderButton_Click"/>
+                                    </WrapPanel>
+                                </StackPanel>
+                            </ScrollViewer>
+                        </Grid>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+
+            <ScrollViewer x:Name="AnnouncementPageScroll" Grid.Row="1" VerticalScrollBarVisibility="Auto" Visibility="Collapsed">
+                <StackPanel Margin="24,22,24,28">
+                    <Grid x:Name="AnnouncementListView">
+                        <Border Style="{StaticResource CardBorderStyle}">
+                            <Grid MinHeight="640">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="*"/>
+                                </Grid.RowDefinitions>
+
+                                <Grid Grid.Row="0" Margin="0,0,0,16">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                        <Border Width="44" Height="44" CornerRadius="12" Background="#EFF6FF" BorderBrush="#BFDBFE" BorderThickness="1" Margin="0,0,14,0">
+                                            <Image x:Name="AnnouncementPageIcon" Width="24" Height="24" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        </Border>
+                                        <StackPanel VerticalAlignment="Center">
+                                            <TextBlock Text="公告中心" FontSize="24" FontWeight="Bold"/>
+                                            <TextBlock Text="查看系统通知、维护公告与重要提醒" Foreground="{StaticResource MutedBrush}" FontSize="14" Margin="0,4,0,0"/>
+                                        </StackPanel>
+                                    </StackPanel>
+                                    <Button x:Name="RefreshAnnouncementsButton" Grid.Column="1" Style="{StaticResource DarkButtonStyle}" VerticalAlignment="Center" Click="RefreshAnnouncementsButton_Click">
+                                        <StackPanel Orientation="Horizontal">
+                                            <Path Width="14" Height="14" Stretch="Uniform" Stroke="#334155" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Data="{StaticResource IconRefresh}" Margin="0,0,6,0"/>
+                                            <TextBlock Text="刷新" VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                    </Button>
+                                </Grid>
+
+                                <Border Grid.Row="1" Background="{StaticResource Panel2Brush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" CornerRadius="12" Padding="14,10" Margin="0,0,0,14">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock x:Name="AnnouncementStatusText" Foreground="{StaticResource MutedBrush}" FontSize="14" TextWrapping="Wrap" VerticalAlignment="Center"/>
+                                        <Border x:Name="AnnouncementUnreadBadge" Grid.Column="1" Background="#DBEAFE" BorderBrush="#93C5FD" BorderThickness="1" CornerRadius="999" Padding="10,4" Margin="12,0,0,0" Visibility="Collapsed">
+                                            <TextBlock x:Name="AnnouncementUnreadBadgeText" Foreground="#1D4ED8" FontSize="13" FontWeight="SemiBold"/>
+                                        </Border>
+                                    </Grid>
+                                </Border>
+
+                                <StackPanel x:Name="AnnouncementGuestPanel" Grid.Row="2" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="0,48,0,0">
+                                    <Border Width="72" Height="72" CornerRadius="20" Background="#F8FAFC" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" HorizontalAlignment="Center" Margin="0,0,0,18">
+                                        <Image x:Name="AnnouncementGuestIcon" Width="36" Height="36" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center" Opacity="0.72"/>
+                                    </Border>
+                                    <TextBlock Text="登录后查看公告" FontSize="18" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,0,0,8"/>
+                                    <TextBlock Text="管理员发布的通知与维护公告将显示在这里" Foreground="{StaticResource MutedBrush}" FontSize="14" HorizontalAlignment="Center" Margin="0,0,0,18"/>
+                                    <Button Content="登录 / 注册" Style="{StaticResource PrimaryButtonStyle}" HorizontalAlignment="Center" MinWidth="180" Click="AnnouncementLoginButton_Click"/>
+                                </StackPanel>
+
+                                <StackPanel x:Name="AnnouncementEmptyPanel" Grid.Row="2" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="0,48,0,0" Visibility="Collapsed">
+                                    <Border Width="72" Height="72" CornerRadius="20" Background="#F8FAFC" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" HorizontalAlignment="Center" Margin="0,0,0,18">
+                                        <Image x:Name="AnnouncementEmptyIcon" Width="36" Height="36" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center" Opacity="0.55"/>
+                                    </Border>
+                                    <TextBlock Text="暂无公告" FontSize="18" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,0,0,8"/>
+                                    <TextBlock Text="当前没有新的系统通知" Foreground="{StaticResource MutedBrush}" FontSize="14" HorizontalAlignment="Center"/>
+                                </StackPanel>
+
+                                <ScrollViewer x:Name="AnnouncementItemsScroll" Grid.Row="2" VerticalScrollBarVisibility="Auto" Visibility="Collapsed">
+                                    <StackPanel x:Name="AnnouncementItemsPanel"/>
+                                </ScrollViewer>
+                            </Grid>
+                        </Border>
+                    </Grid>
+
+                    <Grid x:Name="AnnouncementDetailView" Visibility="Collapsed">
+                        <Border Style="{StaticResource CardBorderStyle}">
+                            <Grid MinHeight="640">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="*"/>
+                                </Grid.RowDefinitions>
+
+                                <Button x:Name="AnnouncementBackButton" Style="{StaticResource DarkButtonStyle}" HorizontalAlignment="Left" Margin="0,0,0,18" Click="AnnouncementBackButton_Click">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="←" FontSize="16" Margin="0,0,6,0"/>
+                                        <TextBlock Text="返回列表"/>
+                                    </StackPanel>
+                                </Button>
+
+                                <StackPanel Grid.Row="1" Margin="0,0,0,18">
+                                    <WrapPanel Margin="0,0,0,10">
+                                        <Border x:Name="AnnouncementDetailLevelBadge" Background="#EFF6FF" BorderBrush="#BFDBFE" BorderThickness="1" CornerRadius="999" Padding="10,4" Margin="0,0,10,0">
+                                            <TextBlock x:Name="AnnouncementDetailLevelText" Foreground="#1D4ED8" FontSize="13" FontWeight="SemiBold"/>
+                                        </Border>
+                                        <TextBlock x:Name="AnnouncementDetailTimeText" Foreground="#94A3B8" FontSize="14" VerticalAlignment="Center"/>
+                                    </WrapPanel>
+                                    <TextBlock x:Name="AnnouncementDetailTitleText" FontSize="28" FontWeight="Bold" TextWrapping="Wrap"/>
+                                </StackPanel>
+
+                                <Border Grid.Row="2" Background="{StaticResource Panel2Brush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" CornerRadius="14" Padding="20">
+                                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                        <TextBlock x:Name="AnnouncementDetailBodyText" FontSize="16" LineHeight="28" TextWrapping="Wrap"/>
+                                    </ScrollViewer>
+                                </Border>
+                            </Grid>
+                        </Border>
+                    </Grid>
+                </StackPanel>
+            </ScrollViewer>
+
+            <ScrollViewer x:Name="ContactAdminPageScroll" Grid.Row="1" VerticalScrollBarVisibility="Disabled" Visibility="Collapsed">
+                <Border Margin="24,22,24,28" Style="{StaticResource CardBorderStyle}">
+                    <Grid MinHeight="680">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+
+                        <StackPanel x:Name="ContactAdminGuestPanel" Grid.Row="1" VerticalAlignment="Center" HorizontalAlignment="Center">
+                            <Border Width="72" Height="72" CornerRadius="20" Background="#F8FAFC" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" HorizontalAlignment="Center" Margin="0,0,0,18">
+                                <Rectangle x:Name="ContactAdminGuestIcon" Width="36" Height="36" HorizontalAlignment="Center" VerticalAlignment="Center" Fill="#64748B"/>
+                            </Border>
+                            <TextBlock Text="登录后联系管理员" FontSize="18" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,0,0,8"/>
+                            <TextBlock Text="登录账号后可与管理员实时沟通，消息将通过 WebSocket 即时推送" Foreground="{StaticResource MutedBrush}" FontSize="14" HorizontalAlignment="Center" TextWrapping="Wrap" MaxWidth="360" Margin="0,0,0,18"/>
+                            <Button Content="登录 / 注册" Style="{StaticResource PrimaryButtonStyle}" HorizontalAlignment="Center" MinWidth="180" Click="ContactAdminLoginButton_Click"/>
+                        </StackPanel>
+
+                        <Grid x:Name="ContactAdminChatPanel" Grid.Row="1" Visibility="Collapsed">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+
+                            <Border Grid.Row="0" Background="{StaticResource Panel2Brush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" CornerRadius="14" Padding="16" Margin="0,0,0,12">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Border Width="48" Height="48" CornerRadius="14" Background="#EFF6FF" BorderBrush="#BFDBFE" BorderThickness="1" Margin="0,0,14,0">
+                                        <TextBlock Text="管" FontSize="18" FontWeight="Bold" Foreground="#1D4ED8" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    </Border>
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                        <TextBlock Text="在线客服" FontSize="18" FontWeight="Bold"/>
+                                        <TextBlock Text="管理员会尽快回复您的咨询" Foreground="{StaticResource MutedBrush}" FontSize="13" Margin="0,4,0,0"/>
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                                        <Ellipse x:Name="ChatConnectionDot" Width="8" Height="8" Fill="#94A3B8" Margin="0,0,8,0"/>
+                                        <TextBlock x:Name="ChatConnectionStatusText" Text="未连接" Foreground="{StaticResource MutedBrush}" FontSize="13"/>
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
+
+                            <Border Grid.Row="1" Background="#F8FAFC" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" CornerRadius="14" ClipToBounds="True" MinHeight="500">
+                                <Grid>
+                                    <ScrollViewer x:Name="ChatMessagesScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="16,12" PreviewMouseWheel="ChatMessagesScroll_PreviewMouseWheel">
+                                        <StackPanel x:Name="ChatMessagesPanel"/>
+                                    </ScrollViewer>
+                                    <StackPanel x:Name="ChatEmptyPanel" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="24">
+                                        <Border Width="64" Height="64" CornerRadius="18" Background="#FFFFFF" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" HorizontalAlignment="Center" Margin="0,0,0,14">
+                                            <Rectangle x:Name="ChatEmptyIcon" Width="30" Height="30" Fill="#94A3B8" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        </Border>
+                                        <TextBlock Text="暂无消息" FontSize="17" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,0,0,6"/>
+                                        <TextBlock Text="发送第一条消息开始对话" Foreground="{StaticResource MutedBrush}" FontSize="14" HorizontalAlignment="Center"/>
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
+
+                            <Border Grid.Row="2" Background="{StaticResource Panel2Brush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" CornerRadius="14" Padding="12" Margin="0,12,0,0">
+                                <Grid>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                    </Grid.RowDefinitions>
+                                    <TextBlock x:Name="ContactAdminStatusText" Foreground="{StaticResource MutedBrush}" FontSize="13" Margin="0,0,0,8" TextWrapping="Wrap" Visibility="Collapsed"/>
+                                    <Grid Grid.Row="1">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBox x:Name="ChatInputBox" MinHeight="44" MaxLength="2000" VerticalContentAlignment="Center" Padding="14,10" KeyDown="ChatInputBox_KeyDown"/>
+                                        <Button x:Name="SendChatMessageButton" Grid.Column="1" Content="发送" Style="{StaticResource PrimaryButtonStyle}" MinWidth="104" Height="44" Margin="10,0,0,0" Click="SendChatMessageButton_Click"/>
+                                    </Grid>
+                                </Grid>
+                            </Border>
+                        </Grid>
+                    </Grid>
+                </Border>
             </ScrollViewer>
 
             <Grid x:Name="AuthDialogOverlay" Grid.RowSpan="2" Visibility="Collapsed" Panel.ZIndex="40">
@@ -1607,5 +2017,33 @@
                 </Border>
             </Grid>
         </Grid>
+
+        <Border x:Name="ChatToastPanel" Grid.Column="0" Grid.ColumnSpan="2" HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="24,0,0,32" Visibility="Collapsed" Panel.ZIndex="50" MaxWidth="360" Cursor="Hand" MouseLeftButtonUp="ChatToastPanel_MouseLeftButtonUp">
+            <Border Background="#FFFFFF" BorderBrush="#BFDBFE" BorderThickness="1" CornerRadius="14" Padding="14">
+                <Border.Effect>
+                    <DropShadowEffect Color="#0F172A" BlurRadius="24" ShadowDepth="6" Opacity="0.18"/>
+                </Border.Effect>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <Border Width="40" Height="40" CornerRadius="12" Background="#EFF6FF" BorderBrush="#BFDBFE" BorderThickness="1" Margin="0,0,12,0">
+                        <TextBlock Text="管" FontSize="16" FontWeight="Bold" Foreground="#1D4ED8" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                        <TextBlock x:Name="ChatToastTitleText" Text="管理员新消息" FontSize="15" FontWeight="SemiBold"/>
+                        <TextBlock x:Name="ChatToastBodyText" Foreground="{StaticResource MutedBrush}" FontSize="13" TextTrimming="CharacterEllipsis" MaxHeight="40" TextWrapping="Wrap" Margin="0,4,0,0"/>
+                    </StackPanel>
+                    <Button Grid.Column="2" Style="{StaticResource AuthCloseButtonStyle}" Width="28" Height="28" Margin="10,0,0,0" Click="ChatToastCloseButton_Click" ToolTip="关闭">
+                        <Path Data="{StaticResource IconClose}" Style="{StaticResource AuthInputIconStyle}" Stroke="#94A3B8" Width="12" Height="12" Margin="0"/>
+                    </Button>
+                </Grid>
+            </Border>
+            <Border.RenderTransform>
+                <TranslateTransform x:Name="ChatToastTransform" X="-380"/>
+            </Border.RenderTransform>
+        </Border>
     </Grid>
 </Window>

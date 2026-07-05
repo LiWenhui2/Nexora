@@ -6,13 +6,13 @@ using System.Net;
 using System.Net.Http;
 using System.Reflection;
 using System.Text;
-using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using Microsoft.Win32;
@@ -38,10 +38,14 @@ public partial class MainWindow : Window
     private const double AboutTwoColumnBreakpoint = 980;
     private static readonly DateTime AppStartTime = DateTime.Now;
     private const string ProjectUrl = "https://github.com/LiWenhui2/NaiwaProxy";
-    private const string LatestReleaseApi = "https://api.github.com/repos/LiWenhui2/NaiwaProxy/releases/latest";
     private readonly SettingsStore _settingsStore = new();
     private readonly CoreService _coreService = new();
     private readonly AuthService _authService = new();
+    private readonly BackendWebSocketService _backendWebSocket;
+    private readonly AppUpdateDownloadService _appUpdateDownloadService = new();
+    private readonly ObservableCollection<NotificationItem> _announcements = [];
+    private readonly List<ChatMessage> _chatMessages = [];
+    private readonly HashSet<int> _chatMessageIds = [];
     private readonly ObservableCollection<VmessProfile> _profiles = [];
     private readonly ObservableCollection<WebsiteTestItem> _websiteTests = [];
     private readonly DispatcherTimer _trafficTimer = new() { Interval = TimeSpan.FromSeconds(1) };
@@ -59,6 +63,7 @@ public partial class MainWindow : Window
     private bool _suppressNodePickerComboEvent;
     private bool _suppressRegionFilterComboEvent;
     private bool _suppressRunAtStartupToggleEvent;
+    private bool _suppressAutoDownloadNewVersionToggleEvent;
     private bool _suppressRunAtStartupSilentToggleEvent;
     private bool _suppressAllowLanAccessToggleEvent;
     private bool _startSilent;
@@ -73,6 +78,15 @@ public partial class MainWindow : Window
     private readonly DispatcherTimer _registerCodeCooldownTimer = new() { Interval = TimeSpan.FromSeconds(1) };
     private readonly DispatcherTimer _authRefreshTimer = new() { Interval = TimeSpan.FromMinutes(30) };
     private readonly DispatcherTimer _aboutRuntimeTimer = new() { Interval = TimeSpan.FromSeconds(1) };
+    private readonly DispatcherTimer _backendWebSocketPingTimer = new() { Interval = TimeSpan.FromSeconds(30) };
+    private readonly DispatcherTimer _backendWebSocketReconnectTimer = new() { Interval = TimeSpan.FromSeconds(5) };
+    private readonly DispatcherTimer _chatToastHideTimer = new() { Interval = TimeSpan.FromSeconds(6) };
+    private BitmapImage? _chatMessageIcon;
+    private AppUpdateRelease? _cachedLatestRelease;
+    private string? _downloadedUpdatePath;
+    private int? _downloadedReleaseId;
+    private bool _isDownloadingAppUpdate;
+    private CancellationTokenSource? _appUpdateDownloadCts;
     private readonly DispatcherTimer _subscriptionGlobalRefreshTimer = new() { Interval = TimeSpan.FromSeconds(30) };
     private readonly Dictionary<string, DispatcherTimer> _subscriptionRefreshTimers = new(StringComparer.OrdinalIgnoreCase);
     private bool _subscriptionGlobalRefreshInProgress;
@@ -84,15 +98,29 @@ public partial class MainWindow : Window
     public MainWindow(bool startSilent = false)
     {
         _startSilent = startSilent;
+        _backendWebSocket = new BackendWebSocketService(
+            () => _authService.GetAccessTokenAsync(CancellationToken.None),
+            () => string.IsNullOrWhiteSpace(_authService.ApiBaseUrl)
+                ? ApiDefaults.NormalizeAuthApiBaseUrl(_settings.AuthApiBaseUrl)
+                : _authService.ApiBaseUrl);
         DiagnosticLogService.Startup("MainWindow constructor begin");
         InitializeComponent();
         RefreshLogView();
         LoadBrandIcon();
         LoadInfoHintIcons();
+        LoadNotificationNavIcons();
         InitializeTray();
         _trafficTimer.Tick += TrafficTimer_Tick;
         _coreService.CoreExited += CoreService_CoreExited;
         _authService.AuthStateChanged += AuthService_AuthStateChanged;
+        _backendWebSocket.ChatMessageReceived += BackendWebSocket_ChatMessageReceived;
+        _backendWebSocket.BroadcastReceived += BackendWebSocket_BroadcastReceived;
+        _backendWebSocket.VersionUpdateReceived += BackendWebSocket_VersionUpdateReceived;
+        _backendWebSocket.ConnectionStateChanged += BackendWebSocket_ConnectionStateChanged;
+        _backendWebSocket.Disconnected += BackendWebSocket_Disconnected;
+        _backendWebSocketPingTimer.Tick += BackendWebSocketPingTimer_Tick;
+        _backendWebSocketReconnectTimer.Tick += BackendWebSocketReconnectTimer_Tick;
+        _chatToastHideTimer.Tick += ChatToastHideTimer_Tick;
         _registerCodeCooldownTimer.Tick += RegisterCodeCooldownTimer_Tick;
         _authRefreshTimer.Tick += AuthRefreshTimer_Tick;
         _aboutRuntimeTimer.Tick += AboutRuntimeTimer_Tick;
@@ -113,6 +141,20 @@ public partial class MainWindow : Window
         {
             DiagnosticLogService.EntryAdded -= DiagnosticLogService_EntryAdded;
             _authService.AuthStateChanged -= AuthService_AuthStateChanged;
+            _backendWebSocket.ChatMessageReceived -= BackendWebSocket_ChatMessageReceived;
+            _backendWebSocket.BroadcastReceived -= BackendWebSocket_BroadcastReceived;
+            _backendWebSocket.VersionUpdateReceived -= BackendWebSocket_VersionUpdateReceived;
+            _backendWebSocket.ConnectionStateChanged -= BackendWebSocket_ConnectionStateChanged;
+            _backendWebSocket.Disconnected -= BackendWebSocket_Disconnected;
+            _backendWebSocketPingTimer.Stop();
+            _backendWebSocketPingTimer.Tick -= BackendWebSocketPingTimer_Tick;
+            _backendWebSocketReconnectTimer.Stop();
+            _backendWebSocketReconnectTimer.Tick -= BackendWebSocketReconnectTimer_Tick;
+            _chatToastHideTimer.Stop();
+            _chatToastHideTimer.Tick -= ChatToastHideTimer_Tick;
+            _appUpdateDownloadCts?.Cancel();
+            _appUpdateDownloadCts?.Dispose();
+            _backendWebSocket.Dispose();
             _registerCodeCooldownTimer.Stop();
             _registerCodeCooldownTimer.Tick -= RegisterCodeCooldownTimer_Tick;
             _authRefreshTimer.Stop();
@@ -142,6 +184,44 @@ public partial class MainWindow : Window
         };
     }
 
+    private void LoadNotificationNavIcons()
+    {
+        var announcementIcon = TryLoadAppBitmap("assets/icons/announcement.png");
+        _chatMessageIcon = TryLoadAppBitmap("assets/icons/message.png");
+        ApplyNavTintedIcon(AnnouncementNavIcon, announcementIcon);
+        ApplyNavTintedIcon(ContactAdminNavIcon, _chatMessageIcon);
+        ApplyTintedIconFill(ContactAdminGuestIcon, _chatMessageIcon);
+        ApplyTintedIconFill(ChatEmptyIcon, _chatMessageIcon);
+
+        if (announcementIcon is not null)
+        {
+            AnnouncementPageIcon.Source = announcementIcon;
+            AnnouncementGuestIcon.Source = announcementIcon;
+            AnnouncementEmptyIcon.Source = announcementIcon;
+        }
+    }
+
+    private static void ApplyNavTintedIcon(System.Windows.Shapes.Rectangle iconRect, BitmapImage? bitmap)
+    {
+        if (bitmap is null)
+        {
+            return;
+        }
+
+        iconRect.OpacityMask = new ImageBrush(bitmap) { Stretch = Stretch.Uniform };
+    }
+
+    private static void ApplyTintedIconFill(System.Windows.Shapes.Rectangle iconRect, BitmapImage? bitmap)
+    {
+        if (bitmap is null)
+        {
+            return;
+        }
+
+        iconRect.OpacityMask = new ImageBrush(bitmap) { Stretch = Stretch.Uniform };
+        iconRect.Fill = new SolidColorBrush(Color.FromRgb(100, 116, 139));
+    }
+
     private void LoadBrandIcon()
     {
         var bitmap = TryLoadAppBitmap("assets/app-icon.png");
@@ -164,6 +244,7 @@ public partial class MainWindow : Window
 
         RunAtStartupSilentInfoIcon.Source = bitmap;
         AllowLanAccessInfoIcon.Source = bitmap;
+        AutoDownloadUpdateInfoIcon.Source = bitmap;
     }
 
     private void LoadWindowIcon()
@@ -476,6 +557,8 @@ public partial class MainWindow : Window
         if (await _authService.TryRestoreSessionAsync())
         {
             StartAuthRefreshTimer();
+            await SyncBackendWebSocketAsync();
+            await CheckAppUpdateOnStartupAsync();
             try
             {
                 await ReloadCloudSubscriptionsAsync(showSuccessMessage: false);
@@ -577,6 +660,7 @@ public partial class MainWindow : Window
         ConfigureAuthService();
         ApplyTheme();
         UpdateAuthSidebar();
+        UpdateNotificationPagesAuthState();
         UpdateSidebarStatus();
         UpdateTrafficStatsDisplay();
         RefreshRegionFilterOptions();
@@ -584,10 +668,12 @@ public partial class MainWindow : Window
         ScheduleRegionEnrichment();
         SyncRunAtStartupFromSettings();
         SyncAllowLanAccessFromSettings();
+        SyncAutoDownloadUpdateFromSettings();
         ApplyStartupSettings(save: false);
         RestoreSubscriptionAutoRefreshTimers();
         ReconcileSubscriptionTrafficExhaustedState();
         ClearStaleLocalSystemProxyIfNeeded();
+        RestoreDownloadedUpdateState();
     }
 
     private void ClearStaleLocalSystemProxyIfNeeded()
@@ -1335,7 +1421,170 @@ public partial class MainWindow : Window
         {
             UpdateAuthSidebar();
             SyncAuthRefreshTimer();
+            UpdateNotificationPagesAuthState();
+            _ = SyncBackendWebSocketAsync();
         });
+    }
+
+    private async Task SyncBackendWebSocketAsync()
+    {
+        if (_authService.IsAuthenticated)
+        {
+            UpdateChatConnectionStatus("connecting");
+            await _backendWebSocket.ConnectAsync();
+            if (_backendWebSocket.IsConnected)
+            {
+                _backendWebSocketReconnectTimer.Stop();
+                if (!_backendWebSocketPingTimer.IsEnabled)
+                {
+                    _backendWebSocketPingTimer.Start();
+                }
+            }
+            else if (!_backendWebSocketReconnectTimer.IsEnabled)
+            {
+                _backendWebSocketReconnectTimer.Start();
+            }
+        }
+        else
+        {
+            _backendWebSocketPingTimer.Stop();
+            _backendWebSocketReconnectTimer.Stop();
+            await _backendWebSocket.DisconnectAsync();
+            UpdateChatConnectionStatus("disconnected");
+            _chatMessages.Clear();
+            _chatMessageIds.Clear();
+            if (ChatMessagesPanel is not null)
+            {
+                ChatMessagesPanel.Children.Clear();
+            }
+
+            UpdateChatEmptyState();
+        }
+    }
+
+    private void BackendWebSocket_ConnectionStateChanged(string state)
+    {
+        Dispatcher.Invoke(() => UpdateChatConnectionStatus(state));
+    }
+
+    private void BackendWebSocket_Disconnected()
+    {
+        Dispatcher.Invoke(() =>
+        {
+            UpdateChatConnectionStatus("disconnected");
+            if (_authService.IsAuthenticated && !_backendWebSocketReconnectTimer.IsEnabled)
+            {
+                _backendWebSocketReconnectTimer.Start();
+            }
+        });
+    }
+
+    private async void BackendWebSocketReconnectTimer_Tick(object? sender, EventArgs e)
+    {
+        if (!_authService.IsAuthenticated || _backendWebSocket.IsConnected)
+        {
+            _backendWebSocketReconnectTimer.Stop();
+            return;
+        }
+
+        await SyncBackendWebSocketAsync();
+    }
+
+    private void UpdateChatConnectionStatus(string state)
+    {
+        if (ChatConnectionStatusText is null || ChatConnectionDot is null)
+        {
+            return;
+        }
+
+        switch (state)
+        {
+            case "connected":
+                ChatConnectionStatusText.Text = "实时连接已建立";
+                ChatConnectionDot.Fill = new SolidColorBrush(Color.FromRgb(34, 197, 94));
+                break;
+            case "connecting":
+                ChatConnectionStatusText.Text = "正在连接...";
+                ChatConnectionDot.Fill = new SolidColorBrush(Color.FromRgb(245, 158, 11));
+                break;
+            default:
+                ChatConnectionStatusText.Text = "未连接";
+                ChatConnectionDot.Fill = new SolidColorBrush(Color.FromRgb(148, 163, 184));
+                break;
+        }
+    }
+
+    private async void BackendWebSocketPingTimer_Tick(object? sender, EventArgs e)
+    {
+        await _backendWebSocket.SendPingAsync();
+        if (!_backendWebSocket.IsConnected && _authService.IsAuthenticated && !_backendWebSocketReconnectTimer.IsEnabled)
+        {
+            _backendWebSocketReconnectTimer.Start();
+        }
+    }
+
+    private void BackendWebSocket_ChatMessageReceived(ChatMessage message)
+    {
+        Dispatcher.Invoke(() =>
+        {
+            var isNew = !_chatMessageIds.Contains(message.Id);
+            AppendChatMessage(message);
+            if (!isNew)
+            {
+                return;
+            }
+
+            if (message.IsFromAdmin)
+            {
+                ShowChatMessageToast(message);
+            }
+
+            if (ContactAdminChatPanel.Visibility == Visibility.Visible)
+            {
+                ScrollChatToEnd();
+            }
+        });
+    }
+
+    private void BackendWebSocket_BroadcastReceived(BroadcastPushMessage message)
+    {
+        Dispatcher.Invoke(() =>
+        {
+            if (AnnouncementPageScroll.Visibility == Visibility.Visible && _authService.IsAuthenticated)
+            {
+                var detailTitle = AnnouncementDetailView.Visibility == Visibility.Visible
+                    ? AnnouncementDetailTitleText.Text
+                    : null;
+                _ = LoadAnnouncementsAsync(detailTitle);
+            }
+        });
+    }
+
+    private void BackendWebSocket_VersionUpdateReceived(VersionUpdatePushMessage message)
+    {
+        Dispatcher.Invoke(() =>
+        {
+            if (!message.HasWindows)
+            {
+                return;
+            }
+
+            _ = HandleVersionUpdatePushAsync(message);
+        });
+    }
+
+    private async Task HandleVersionUpdatePushAsync(VersionUpdatePushMessage message)
+    {
+        await RefreshLatestVersionAsync(showLoadingStatus: false, triggerAutoDownload: true);
+        if (VersionUpdatePageScroll.Visibility == Visibility.Visible)
+        {
+            return;
+        }
+
+        if (_cachedLatestRelease is not null && IsAppUpdateAvailable(_cachedLatestRelease))
+        {
+            SetVersionUpdateStatus($"收到新版本推送：v{message.VersionName}");
+        }
     }
 
     private void SyncAuthRefreshTimer()
@@ -1400,7 +1649,12 @@ public partial class MainWindow : Window
         {
             AuthGuestPanel.Visibility = Visibility.Collapsed;
             AuthUserPanel.Visibility = Visibility.Visible;
-            SideAuthEmailText.Text = _authService.CurrentEmail ?? "";
+            var nickname = _authService.CurrentNickname;
+            var email = _authService.CurrentEmail ?? "";
+            SideAuthNicknameText.Text = !string.IsNullOrWhiteSpace(nickname) ? nickname : "已登录";
+            SideAuthEmailText.Text = email;
+            SetSideAuthAvatar(_authService.CurrentAvatarUrl);
+
             if (SyncCloudSubscriptionsButton is not null)
             {
                 SyncCloudSubscriptionsButton.Visibility = Visibility.Visible;
@@ -1419,10 +1673,108 @@ public partial class MainWindow : Window
         }
     }
 
+    private void SetSideAuthAvatar(string? avatarUrl)
+    {
+        if (SideAuthAvatarImage is null || SideAuthAvatarPlaceholder is null)
+        {
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(avatarUrl))
+        {
+            SideAuthAvatarImage.Visibility = Visibility.Collapsed;
+            SideAuthAvatarPlaceholder.Visibility = Visibility.Visible;
+            SideAuthAvatarImage.Source = null;
+            return;
+        }
+
+        try
+        {
+            var bitmap = new System.Windows.Media.Imaging.BitmapImage();
+            bitmap.BeginInit();
+            bitmap.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
+            bitmap.UriSource = new Uri(avatarUrl, UriKind.Absolute);
+            bitmap.EndInit();
+            SideAuthAvatarImage.Source = bitmap;
+            SideAuthAvatarImage.Visibility = Visibility.Visible;
+            SideAuthAvatarPlaceholder.Visibility = Visibility.Collapsed;
+        }
+        catch
+        {
+            SideAuthAvatarImage.Visibility = Visibility.Collapsed;
+            SideAuthAvatarPlaceholder.Visibility = Visibility.Visible;
+            SideAuthAvatarImage.Source = null;
+        }
+    }
+
+    private async void SideEditProfileButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (!_authService.HasPersistedSession)
+        {
+            ShowLoginPage();
+            return;
+        }
+
+        if (!await _authService.TryRestoreSessionAsync())
+        {
+            MessageBox.Show("登录已过期，请重新登录。", "Nexora", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var dialog = new Dialogs.ProfileEditDialog(
+            _authService.CurrentEmail ?? "",
+            _authService.CurrentNickname,
+            _authService.CurrentAvatarUrl)
+        {
+            Owner = this
+        };
+
+        if (dialog.ShowDialog() != true)
+        {
+            return;
+        }
+
+        SideEditProfileButton.IsEnabled = false;
+        try
+        {
+            var result = await _authService.UpdateProfileAsync(
+                dialog.ShouldUpdateNickname,
+                dialog.Nickname,
+                dialog.SelectedAvatarFilePath);
+            if (!result.Success)
+            {
+                var errorMessage = string.IsNullOrWhiteSpace(result.Message) ? "资料更新失败。" : result.Message;
+                MessageBox.Show(errorMessage, "编辑资料", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            UpdateAuthSidebar();
+            MessageBox.Show("资料已更新成功。", "编辑资料", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"资料更新失败：{ex.Message}", "Nexora", MessageBoxButton.OK, MessageBoxImage.Error);
+            DiagnosticLogService.Error("Profile edit failed.", ex);
+        }
+        finally
+        {
+            SideEditProfileButton.IsEnabled = true;
+        }
+    }
+
     private void SideLoginButton_Click(object sender, RoutedEventArgs e) => ShowLoginPage();
 
     private async void SideLogoutButton_Click(object sender, RoutedEventArgs e)
     {
+        if (MessageBox.Show(
+                "确定退出登录吗？退出后将清除本机云端节点与订阅缓存。",
+                "退出登录",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Question) != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
         await _authService.LogoutAsync();
         ClearCloudProfilesOnLogout();
         ClearAuthMessages();
@@ -1540,6 +1892,7 @@ public partial class MainWindow : Window
             ShowAuthMessage(LoginMessageText, result.Message, isSuccess: true);
             CloseAuthDialog();
             await ReloadCloudSubscriptionsAsync(showSuccessMessage: false);
+            await CheckAppUpdateOnStartupAsync();
             ShowNodePage();
         }
         finally
@@ -1626,6 +1979,7 @@ public partial class MainWindow : Window
             ShowAuthMessage(RegisterMessageText, result.Message, isSuccess: true);
             CloseAuthDialog();
             await ReloadCloudSubscriptionsAsync(showSuccessMessage: false);
+            await CheckAppUpdateOnStartupAsync();
             ShowNodePage();
         }
         finally
@@ -2419,22 +2773,6 @@ public partial class MainWindow : Window
         ApplySystemProxyMode(mode, save: true);
     }
 
-    private HttpClient CreateProxiedHttpClient()
-    {
-        return new HttpClient(new HttpClientHandler
-        {
-            Proxy = new WebProxy($"http://127.0.0.1:{_settings.HttpPort}"),
-            UseProxy = true
-        });
-    }
-
-    private HttpClient CreateUpdateHttpClient()
-    {
-        return _coreService.IsRunning
-            ? CreateProxiedHttpClient()
-            : new HttpClient();
-    }
-
     private async void RoutingCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (!_isUiReady || _suppressRoutingComboEvent)
@@ -2901,11 +3239,1243 @@ public partial class MainWindow : Window
 
     private void ExportNodeNavButton_Click(object sender, RoutedEventArgs e) => ShowExportPage();
 
-    private void UpdateNavButton_Click(object sender, RoutedEventArgs e) => ShowUpdatePage();
-
     private void GithubNavButton_Click(object sender, RoutedEventArgs e) => OpenPath(ProjectUrl);
 
     private void LogNavButton_Click(object sender, RoutedEventArgs e) => ShowLogPage();
+
+    private void AnnouncementNavButton_Click(object sender, RoutedEventArgs e) => ShowAnnouncementPage();
+
+    private void ContactAdminNavButton_Click(object sender, RoutedEventArgs e) => ShowContactAdminPage();
+
+    private void VersionUpdateNavButton_Click(object sender, RoutedEventArgs e) => ShowVersionUpdatePage();
+
+    private void VersionUpdateLoginButton_Click(object sender, RoutedEventArgs e) => ShowLoginPage();
+
+    private void AnnouncementLoginButton_Click(object sender, RoutedEventArgs e) => ShowLoginPage();
+
+    private void ContactAdminLoginButton_Click(object sender, RoutedEventArgs e) => ShowLoginPage();
+
+    private void ShowAnnouncementPage()
+    {
+        ShowAnnouncementListView();
+        UpdateNotificationPagesAuthState();
+        ShowPage(AnnouncementPageScroll, AnnouncementNavButton);
+        if (_authService.IsAuthenticated)
+        {
+            _ = LoadAnnouncementsAsync();
+        }
+    }
+
+    private void ShowContactAdminPage()
+    {
+        UpdateNotificationPagesAuthState();
+        ShowPage(ContactAdminPageScroll, ContactAdminNavButton);
+        HideChatMessageToast(animate: false);
+        if (_authService.IsAuthenticated)
+        {
+            _ = LoadChatMessagesAsync();
+            UpdateChatConnectionStatus(_backendWebSocket.IsConnected ? "connected" : "disconnected");
+        }
+    }
+
+    private void UpdateNotificationPagesAuthState()
+    {
+        if (!_isUiReady)
+        {
+            return;
+        }
+
+        var isAuthenticated = _authService.IsAuthenticated;
+        if (AnnouncementGuestPanel is not null)
+        {
+            AnnouncementGuestPanel.Visibility = isAuthenticated ? Visibility.Collapsed : Visibility.Visible;
+        }
+
+        if (AnnouncementListView is not null)
+        {
+            AnnouncementListView.Visibility = isAuthenticated ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        if (AnnouncementDetailView is not null && !isAuthenticated)
+        {
+            AnnouncementDetailView.Visibility = Visibility.Collapsed;
+        }
+
+        if (!isAuthenticated)
+        {
+            AnnouncementItemsScroll.Visibility = Visibility.Collapsed;
+            AnnouncementEmptyPanel.Visibility = Visibility.Collapsed;
+        }
+
+        if (ContactAdminGuestPanel is not null)
+        {
+            ContactAdminGuestPanel.Visibility = isAuthenticated ? Visibility.Collapsed : Visibility.Visible;
+        }
+
+        if (ContactAdminChatPanel is not null)
+        {
+            ContactAdminChatPanel.Visibility = isAuthenticated ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        if (VersionUpdateGuestPanel is not null)
+        {
+            VersionUpdateGuestPanel.Visibility = isAuthenticated ? Visibility.Collapsed : Visibility.Visible;
+        }
+
+        if (!isAuthenticated)
+        {
+            VersionUpdateUpToDatePanel.Visibility = Visibility.Collapsed;
+            VersionUpdateAvailableScroll.Visibility = Visibility.Collapsed;
+        }
+    }
+
+    private void ShowVersionUpdatePage()
+    {
+        UpdateNotificationPagesAuthState();
+        ShowPage(VersionUpdatePageScroll, VersionUpdateNavButton);
+        if (_authService.IsAuthenticated)
+        {
+            _ = RefreshLatestVersionAsync();
+        }
+        else
+        {
+            SetVersionUpdateStatus("请先登录后查看版本更新。");
+        }
+    }
+
+    private async Task CheckAppUpdateOnStartupAsync()
+    {
+        if (!_authService.IsAuthenticated)
+        {
+            return;
+        }
+
+        if (!await _authService.TryRestoreSessionAsync())
+        {
+            return;
+        }
+
+        await RefreshLatestVersionAsync(showLoadingStatus: false, triggerAutoDownload: true);
+    }
+
+    private async void RefreshVersionUpdateButton_Click(object sender, RoutedEventArgs e)
+    {
+        await RefreshLatestVersionAsync(triggerAutoDownload: false);
+    }
+
+    private async Task RefreshLatestVersionAsync(bool showLoadingStatus = true, bool triggerAutoDownload = false)
+    {
+        if (!_authService.IsAuthenticated)
+        {
+            SetVersionUpdateStatus("请先登录后查看版本更新。");
+            return;
+        }
+
+        if (!await _authService.TryRestoreSessionAsync())
+        {
+            SetVersionUpdateStatus("登录已过期，请重新登录。", isError: true);
+            UpdateNotificationPagesAuthState();
+            return;
+        }
+
+        if (showLoadingStatus)
+        {
+            SetVersionUpdateStatus("正在检查最新版本...");
+        }
+
+        RefreshVersionUpdateButton.IsEnabled = false;
+        try
+        {
+            var result = await _authService.UpdateApi.GetLatestAsync("WINDOWS");
+            if (!result.IsSuccess)
+            {
+                SetVersionUpdateStatus(result.Message, isError: true);
+                return;
+            }
+
+            _cachedLatestRelease = result.Data;
+            RestoreDownloadedUpdateState(_cachedLatestRelease?.Id);
+            RenderVersionUpdateUi();
+
+            if (triggerAutoDownload && _cachedLatestRelease is not null && IsAppUpdateAvailable(_cachedLatestRelease))
+            {
+                await TryAutoDownloadVersionUpdateAsync(_cachedLatestRelease, promptWhenReady: true);
+            }
+        }
+        catch (Exception ex)
+        {
+            SetVersionUpdateStatus($"检查更新失败：{ex.Message}", isError: true);
+            DiagnosticLogService.Error("Failed to refresh latest app version.", ex);
+        }
+        finally
+        {
+            RefreshVersionUpdateButton.IsEnabled = true;
+        }
+    }
+
+    private void RenderVersionUpdateUi()
+    {
+        var currentVersion = AppVersionHelper.GetCurrentVersionName();
+        if (_cachedLatestRelease is null || _cachedLatestRelease.File is null)
+        {
+            VersionUpdateGuestPanel.Visibility = _authService.IsAuthenticated ? Visibility.Collapsed : Visibility.Visible;
+            VersionUpdateUpToDatePanel.Visibility = _authService.IsAuthenticated ? Visibility.Visible : Visibility.Collapsed;
+            VersionUpdateAvailableScroll.Visibility = Visibility.Collapsed;
+            VersionUpdateBadge.Visibility = Visibility.Collapsed;
+            VersionUpdateCurrentOnlyText.Text = $"当前版本 v{currentVersion}";
+            SetVersionUpdateStatus("当前已是最新版本");
+            ResetVersionUpdateDownloadUi();
+            return;
+        }
+
+        if (!IsAppUpdateAvailable(_cachedLatestRelease))
+        {
+            VersionUpdateGuestPanel.Visibility = Visibility.Collapsed;
+            VersionUpdateUpToDatePanel.Visibility = Visibility.Visible;
+            VersionUpdateAvailableScroll.Visibility = Visibility.Collapsed;
+            VersionUpdateBadge.Visibility = Visibility.Collapsed;
+            VersionUpdateCurrentOnlyText.Text = $"当前版本 v{currentVersion}";
+            SetVersionUpdateStatus("当前已是最新版本");
+            ResetVersionUpdateDownloadUi();
+            return;
+        }
+
+        VersionUpdateGuestPanel.Visibility = Visibility.Collapsed;
+        VersionUpdateUpToDatePanel.Visibility = Visibility.Collapsed;
+        VersionUpdateAvailableScroll.Visibility = Visibility.Visible;
+        VersionUpdateBadge.Visibility = Visibility.Visible;
+        VersionUpdateBadgeText.Text = $"可更新至 v{_cachedLatestRelease.VersionName}";
+        VersionUpdateForceBadge.Visibility = _cachedLatestRelease.ForceUpdate ? Visibility.Visible : Visibility.Collapsed;
+        VersionUpdateTitleText.Text = _cachedLatestRelease.Title;
+        VersionUpdateVersionLineText.Text = $"v{currentVersion} → v{_cachedLatestRelease.VersionName}（Build {_cachedLatestRelease.VersionCode}）";
+        VersionUpdateContentText.Text = string.IsNullOrWhiteSpace(_cachedLatestRelease.Content)
+            ? "暂无更新说明。"
+            : _cachedLatestRelease.Content;
+        VersionUpdatePublishedAtText.Text = $"发布时间：{FormatAnnouncementTime(_cachedLatestRelease.PublishedAt)}";
+        VersionUpdateFileNameText.Text = _cachedLatestRelease.File.Filename;
+        VersionUpdateFileSizeText.Text = FormatBytes(_cachedLatestRelease.File.FileSize);
+        VersionUpdateSha256Text.Text = _cachedLatestRelease.File.Sha256;
+        VersionUpdateDownloadLink.NavigateUri = string.IsNullOrWhiteSpace(_cachedLatestRelease.File.DownloadUrl)
+            ? null
+            : new Uri(_cachedLatestRelease.File.DownloadUrl);
+        SetVersionUpdateStatus($"发现新版本 v{_cachedLatestRelease.VersionName}");
+
+        var installReady = _downloadedReleaseId == _cachedLatestRelease.Id &&
+                           !string.IsNullOrWhiteSpace(_downloadedUpdatePath) &&
+                           File.Exists(_downloadedUpdatePath);
+        VersionUpdateInstallButton.IsEnabled = installReady;
+        VersionUpdateDownloadButton.IsEnabled = !_isDownloadingAppUpdate;
+        VersionUpdateDownloadButton.Content = installReady ? "重新下载" : "下载安装包";
+    }
+
+    private static bool IsAppUpdateAvailable(AppUpdateRelease release) =>
+        AppVersionHelper.IsUpdateAvailable(release.VersionCode, release.VersionName);
+
+    private void SetVersionUpdateStatus(string message, bool isError = false)
+    {
+        if (VersionUpdateStatusText is null)
+        {
+            return;
+        }
+
+        VersionUpdateStatusText.Text = message;
+        VersionUpdateStatusText.Foreground = isError
+            ? (System.Windows.Media.Brush)FindResource("RedBrush")
+            : (System.Windows.Media.Brush)FindResource("MutedBrush");
+    }
+
+    private void ResetVersionUpdateDownloadUi()
+    {
+        VersionUpdateProgressPanel.Visibility = Visibility.Collapsed;
+        VersionUpdateProgressBar.Value = 0;
+        VersionUpdateInstallButton.IsEnabled = false;
+        if (VersionUpdateDownloadButton is not null)
+        {
+            VersionUpdateDownloadButton.IsEnabled = !_isDownloadingAppUpdate;
+            VersionUpdateDownloadButton.Content = "下载安装包";
+        }
+    }
+
+    private async Task TryAutoDownloadVersionUpdateAsync(AppUpdateRelease release, bool promptWhenReady)
+    {
+        if (!_settings.AutoDownloadNewVersion || _isDownloadingAppUpdate)
+        {
+            return;
+        }
+
+        if (_downloadedReleaseId == release.Id &&
+            !string.IsNullOrWhiteSpace(_downloadedUpdatePath) &&
+            File.Exists(_downloadedUpdatePath))
+        {
+            SetVersionUpdateStatus($"v{release.VersionName} 已下载，可直接安装。");
+            RenderVersionUpdateUi();
+            return;
+        }
+
+        await DownloadVersionUpdateAsync(release, promptWhenReady);
+    }
+
+    private async void VersionUpdateDownloadButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_cachedLatestRelease is null)
+        {
+            await RefreshLatestVersionAsync();
+            return;
+        }
+
+        await DownloadVersionUpdateAsync(_cachedLatestRelease, promptWhenReady: true);
+    }
+
+    private async Task DownloadVersionUpdateAsync(AppUpdateRelease release, bool promptWhenReady)
+    {
+        if (_isDownloadingAppUpdate)
+        {
+            return;
+        }
+
+        _appUpdateDownloadCts?.Cancel();
+        _appUpdateDownloadCts?.Dispose();
+        _appUpdateDownloadCts = new CancellationTokenSource();
+        var token = _appUpdateDownloadCts.Token;
+
+        _isDownloadingAppUpdate = true;
+        VersionUpdateDownloadButton.IsEnabled = false;
+        VersionUpdateInstallButton.IsEnabled = false;
+        VersionUpdateProgressPanel.Visibility = Visibility.Visible;
+        VersionUpdateProgressBar.IsIndeterminate = false;
+        VersionUpdateProgressBar.Value = 0;
+        SetVersionUpdateStatus($"正在下载 v{release.VersionName}...");
+
+        try
+        {
+            var path = await _appUpdateDownloadService.DownloadAsync(
+                release,
+                new Progress<Services.DownloadProgress>(UpdateVersionDownloadProgress),
+                token);
+            _downloadedUpdatePath = path;
+            _downloadedReleaseId = release.Id;
+            PersistDownloadedUpdateState(release.Id, path);
+            SetVersionUpdateStatus($"v{release.VersionName} 下载完成，SHA-256 校验通过。");
+            VersionUpdateInstallButton.IsEnabled = true;
+            VersionUpdateDownloadButton.Content = "重新下载";
+            RenderVersionUpdateUi();
+
+            if (promptWhenReady)
+            {
+                MessageBox.Show(
+                    $"新版本 v{release.VersionName} 已下载完成。\n\n请前往「通知 → 版本更新」点击「立即安装」，或稍后在此页面安装。",
+                    "版本更新",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            SetVersionUpdateStatus("下载已取消。");
+        }
+        catch (Exception ex)
+        {
+            SetVersionUpdateStatus($"下载失败：{ex.Message}", isError: true);
+            DiagnosticLogService.Error("App update download failed.", ex);
+        }
+        finally
+        {
+            _isDownloadingAppUpdate = false;
+            VersionUpdateDownloadButton.IsEnabled = true;
+            if (VersionUpdateProgressPanel.Visibility == Visibility.Visible && VersionUpdateProgressBar.Value >= 100)
+            {
+                VersionUpdateProgressPanel.Visibility = Visibility.Collapsed;
+            }
+        }
+    }
+
+    private void UpdateVersionDownloadProgress(Services.DownloadProgress progress)
+    {
+        if (progress.TotalBytes > 0)
+        {
+            var percentage = Math.Clamp(progress.DownloadedBytes * 100d / progress.TotalBytes, 0, 100);
+            VersionUpdateProgressBar.IsIndeterminate = false;
+            VersionUpdateProgressBar.Value = percentage;
+            VersionUpdateProgressText.Text = $"正在下载：{FormatBytes(progress.DownloadedBytes)} / {FormatBytes(progress.TotalBytes)}";
+            return;
+        }
+
+        VersionUpdateProgressBar.IsIndeterminate = true;
+        VersionUpdateProgressText.Text = $"正在下载：{FormatBytes(progress.DownloadedBytes)} / 未知大小";
+    }
+
+    private void VersionUpdateInstallButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (string.IsNullOrWhiteSpace(_downloadedUpdatePath) || !File.Exists(_downloadedUpdatePath))
+        {
+            SetVersionUpdateStatus("安装包不存在，请先下载。", isError: true);
+            return;
+        }
+
+        Process.Start(new ProcessStartInfo
+        {
+            FileName = _downloadedUpdatePath,
+            UseShellExecute = true
+        });
+        _isExiting = true;
+        Application.Current.Shutdown();
+    }
+
+    private void VersionUpdateOpenFolderButton_Click(object sender, RoutedEventArgs e)
+    {
+        var directory = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            "Nexora",
+            "updates");
+        Directory.CreateDirectory(directory);
+        OpenPath(directory);
+    }
+
+    private void VersionUpdateDownloadLink_Click(object sender, RoutedEventArgs e)
+    {
+        if (_cachedLatestRelease?.File?.DownloadUrl is not { Length: > 0 } url)
+        {
+            return;
+        }
+
+        Process.Start(new ProcessStartInfo
+        {
+            FileName = url,
+            UseShellExecute = true
+        });
+    }
+
+    private void RestoreDownloadedUpdateState(int? expectedReleaseId = null)
+    {
+        if (_settings.DownloadedUpdateReleaseId is not int releaseId ||
+            string.IsNullOrWhiteSpace(_settings.DownloadedUpdateFilePath) ||
+            !File.Exists(_settings.DownloadedUpdateFilePath))
+        {
+            ClearPersistedDownloadedUpdateState();
+            return;
+        }
+
+        if (expectedReleaseId is int expected && releaseId != expected)
+        {
+            _downloadedReleaseId = null;
+            _downloadedUpdatePath = null;
+            return;
+        }
+
+        _downloadedReleaseId = releaseId;
+        _downloadedUpdatePath = _settings.DownloadedUpdateFilePath;
+    }
+
+    private void PersistDownloadedUpdateState(int releaseId, string path)
+    {
+        _settings.DownloadedUpdateReleaseId = releaseId;
+        _settings.DownloadedUpdateFilePath = path;
+        _settingsStore.Save(_settings);
+    }
+
+    private void ClearPersistedDownloadedUpdateState()
+    {
+        _downloadedReleaseId = null;
+        _downloadedUpdatePath = null;
+        if (_settings.DownloadedUpdateReleaseId is null && string.IsNullOrWhiteSpace(_settings.DownloadedUpdateFilePath))
+        {
+            return;
+        }
+
+        _settings.DownloadedUpdateReleaseId = null;
+        _settings.DownloadedUpdateFilePath = null;
+        _settingsStore.Save(_settings);
+    }
+
+    private void SyncAutoDownloadUpdateFromSettings()
+    {
+        if (!_isUiReady || AutoDownloadNewVersionToggle is null)
+        {
+            return;
+        }
+
+        _suppressAutoDownloadNewVersionToggleEvent = true;
+        AutoDownloadNewVersionToggle.IsChecked = _settings.AutoDownloadNewVersion;
+        _suppressAutoDownloadNewVersionToggleEvent = false;
+    }
+
+    private void AutoDownloadNewVersionToggle_Changed(object sender, RoutedEventArgs e)
+    {
+        if (!_isUiReady || _suppressAutoDownloadNewVersionToggleEvent)
+        {
+            return;
+        }
+
+        _settings.AutoDownloadNewVersion = AutoDownloadNewVersionToggle.IsChecked == true;
+        _settingsStore.Save(_settings);
+    }
+
+    private async void RefreshAnnouncementsButton_Click(object sender, RoutedEventArgs e)
+    {
+        await LoadAnnouncementsAsync();
+    }
+
+    private async Task LoadAnnouncementsAsync(string? preserveDetailTitle = null)
+    {
+        if (!_authService.IsAuthenticated)
+        {
+            SetAnnouncementStatus("请先登录后查看公告。");
+            return;
+        }
+
+        if (!await _authService.TryRestoreSessionAsync())
+        {
+            SetAnnouncementStatus("登录已过期，请重新登录。", isError: true);
+            UpdateNotificationPagesAuthState();
+            return;
+        }
+
+        SetAnnouncementStatus("正在加载公告...");
+        RefreshAnnouncementsButton.IsEnabled = false;
+        try
+        {
+            var result = await _authService.NotificationApi.ListAsync();
+            if (!result.IsSuccess || result.Data is null)
+            {
+                SetAnnouncementStatus(result.Message, isError: true);
+                return;
+            }
+
+            _announcements.Clear();
+            foreach (var item in result.Data.OrderByDescending(n => n.CreatedAt))
+            {
+                _announcements.Add(item);
+            }
+
+            RenderAnnouncementList();
+            var unreadCount = _announcements.Count(item => !item.Read);
+            UpdateAnnouncementUnreadBadge(unreadCount);
+            SetAnnouncementStatus(_announcements.Count == 0
+                ? "暂无公告"
+                : $"共 {_announcements.Count} 条公告");
+
+            if (!string.IsNullOrWhiteSpace(preserveDetailTitle))
+            {
+                var current = _announcements.FirstOrDefault(item =>
+                    string.Equals(item.Title, preserveDetailTitle, StringComparison.Ordinal));
+                if (current is not null)
+                {
+                    ShowAnnouncementDetailView(current);
+                }
+                else
+                {
+                    ShowAnnouncementListView();
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            SetAnnouncementStatus($"加载公告失败：{ex.Message}", isError: true);
+            DiagnosticLogService.Error("Failed to load announcements.", ex);
+        }
+        finally
+        {
+            RefreshAnnouncementsButton.IsEnabled = true;
+        }
+    }
+
+    private void SetAnnouncementStatus(string message, bool isError = false)
+    {
+        if (AnnouncementStatusText is null)
+        {
+            return;
+        }
+
+        AnnouncementStatusText.Text = message;
+        AnnouncementStatusText.Foreground = isError
+            ? (System.Windows.Media.Brush)FindResource("RedBrush")
+            : (System.Windows.Media.Brush)FindResource("MutedBrush");
+    }
+
+    private void ShowAnnouncementListView()
+    {
+        if (AnnouncementListView is not null)
+        {
+            AnnouncementListView.Visibility = Visibility.Visible;
+        }
+
+        if (AnnouncementDetailView is not null)
+        {
+            AnnouncementDetailView.Visibility = Visibility.Collapsed;
+        }
+    }
+
+    private void ShowAnnouncementDetailView(NotificationItem notification)
+    {
+        if (AnnouncementListView is not null)
+        {
+            AnnouncementListView.Visibility = Visibility.Collapsed;
+        }
+
+        if (AnnouncementDetailView is not null)
+        {
+            AnnouncementDetailView.Visibility = Visibility.Visible;
+        }
+
+        AnnouncementDetailTitleText.Text = notification.Title;
+        AnnouncementDetailBodyText.Text = notification.DisplayBody;
+        AnnouncementDetailTimeText.Text = FormatAnnouncementTime(notification.CreatedAt);
+        ApplyAnnouncementLevelStyle(AnnouncementDetailLevelBadge, AnnouncementDetailLevelText, notification.DisplayLevel);
+    }
+
+    private void RenderAnnouncementList()
+    {
+        AnnouncementItemsPanel.Children.Clear();
+        if (_announcements.Count == 0)
+        {
+            AnnouncementItemsScroll.Visibility = Visibility.Collapsed;
+            AnnouncementEmptyPanel.Visibility = Visibility.Visible;
+            return;
+        }
+
+        AnnouncementEmptyPanel.Visibility = Visibility.Collapsed;
+        AnnouncementItemsScroll.Visibility = Visibility.Visible;
+        var announcementIcon = TryLoadAppBitmap("assets/icons/announcement.png");
+        foreach (var notification in _announcements)
+        {
+            AnnouncementItemsPanel.Children.Add(CreateAnnouncementCard(notification, announcementIcon));
+        }
+    }
+
+    private UIElement CreateAnnouncementCard(NotificationItem notification, BitmapImage? announcementIcon)
+    {
+        var cardButton = new System.Windows.Controls.Button
+        {
+            Style = (Style)FindResource("AnnouncementCardButtonStyle"),
+            Tag = notification
+        };
+        cardButton.Click += AnnouncementCardButton_Click;
+
+        var root = new Grid();
+        root.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        root.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        root.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        var iconHost = new Border
+        {
+            Width = 42,
+            Height = 42,
+            CornerRadius = new CornerRadius(12),
+            Background = notification.Read
+                ? new SolidColorBrush(Color.FromRgb(248, 250, 252))
+                : new SolidColorBrush(Color.FromRgb(239, 246, 255)),
+            BorderBrush = new SolidColorBrush(notification.Read ? Color.FromRgb(226, 232, 240) : Color.FromRgb(191, 219, 254)),
+            BorderThickness = new Thickness(1),
+            Margin = new Thickness(0, 0, 14, 0),
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        if (announcementIcon is not null)
+        {
+            iconHost.Child = new System.Windows.Controls.Image
+            {
+                Source = announcementIcon,
+                Width = 22,
+                Height = 22,
+                Stretch = Stretch.Uniform,
+                HorizontalAlignment = System.Windows.HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+                Opacity = notification.Read ? 0.72 : 1
+            };
+        }
+
+        Grid.SetColumn(iconHost, 0);
+        root.Children.Add(iconHost);
+
+        var contentPanel = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+        var titleRow = new Grid { Margin = new Thickness(0, 0, 0, 6) };
+        titleRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        titleRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        var titleText = new TextBlock
+        {
+            Text = notification.Title,
+            FontSize = 16,
+            FontWeight = notification.Read ? FontWeights.SemiBold : FontWeights.Bold,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            Margin = new Thickness(0, 0, 10, 0)
+        };
+        Grid.SetColumn(titleText, 0);
+        titleRow.Children.Add(titleText);
+
+        var levelBadge = new Border
+        {
+            CornerRadius = new CornerRadius(999),
+            Padding = new Thickness(8, 2, 8, 2),
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        var levelText = new TextBlock
+        {
+            FontSize = 12,
+            FontWeight = FontWeights.SemiBold
+        };
+        ApplyAnnouncementLevelStyle(levelBadge, levelText, notification.DisplayLevel);
+        levelBadge.Child = levelText;
+        Grid.SetColumn(levelBadge, 1);
+        titleRow.Children.Add(levelBadge);
+        contentPanel.Children.Add(titleRow);
+
+        contentPanel.Children.Add(new TextBlock
+        {
+            Text = TruncateAnnouncementPreview(notification.DisplayBody),
+            Foreground = new SolidColorBrush(Color.FromRgb(100, 116, 139)),
+            FontSize = 14,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            MaxHeight = 22
+        });
+        contentPanel.Children.Add(new TextBlock
+        {
+            Text = FormatAnnouncementTime(notification.CreatedAt),
+            Foreground = new SolidColorBrush(Color.FromRgb(148, 163, 184)),
+            FontSize = 12,
+            Margin = new Thickness(0, 8, 0, 0)
+        });
+        Grid.SetColumn(contentPanel, 1);
+        root.Children.Add(contentPanel);
+
+        var trailingPanel = new StackPanel
+        {
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(14, 0, 0, 0)
+        };
+        trailingPanel.Orientation = System.Windows.Controls.Orientation.Horizontal;
+        if (!notification.Read)
+        {
+            trailingPanel.Children.Add(new Border
+            {
+                Width = 8,
+                Height = 8,
+                CornerRadius = new CornerRadius(4),
+                Background = new SolidColorBrush(Color.FromRgb(37, 99, 235)),
+                Margin = new Thickness(0, 0, 10, 0)
+            });
+        }
+
+        trailingPanel.Children.Add(new TextBlock
+        {
+            Text = "›",
+            FontSize = 22,
+            Foreground = new SolidColorBrush(Color.FromRgb(148, 163, 184)),
+            VerticalAlignment = VerticalAlignment.Center
+        });
+        Grid.SetColumn(trailingPanel, 2);
+        root.Children.Add(trailingPanel);
+
+        cardButton.Content = root;
+        return cardButton;
+    }
+
+    private async void AnnouncementCardButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not System.Windows.Controls.Button { Tag: NotificationItem notification })
+        {
+            return;
+        }
+
+        ShowAnnouncementDetailView(notification);
+        await MarkAnnouncementReadAsync(notification);
+    }
+
+    private void AnnouncementBackButton_Click(object sender, RoutedEventArgs e)
+    {
+        ShowAnnouncementListView();
+    }
+
+    private async Task MarkAnnouncementReadAsync(NotificationItem notification)
+    {
+        if (notification.Read)
+        {
+            return;
+        }
+
+        try
+        {
+            var result = await _authService.NotificationApi.MarkReadAsync(notification.Id);
+            if (result.IsSuccess)
+            {
+                notification.Read = true;
+                RenderAnnouncementList();
+                UpdateAnnouncementUnreadBadge(_announcements.Count(item => !item.Read));
+            }
+        }
+        catch (Exception ex)
+        {
+            DiagnosticLogService.Warning($"Failed to mark notification read: {ex.Message}");
+        }
+    }
+
+    private void UpdateAnnouncementUnreadBadge(int unreadCount)
+    {
+        if (AnnouncementUnreadBadge is null || AnnouncementUnreadBadgeText is null)
+        {
+            return;
+        }
+
+        if (unreadCount <= 0)
+        {
+            AnnouncementUnreadBadge.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        AnnouncementUnreadBadge.Visibility = Visibility.Visible;
+        AnnouncementUnreadBadgeText.Text = $"{unreadCount} 条未读";
+    }
+
+    private static string TruncateAnnouncementPreview(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return "暂无内容";
+        }
+
+        var normalized = text.ReplaceLineEndings(" ").Trim();
+        return normalized.Length <= 72 ? normalized : normalized[..72] + "...";
+    }
+
+    private static string FormatAnnouncementTime(string createdAt)
+    {
+        if (DateTime.TryParse(createdAt, out var parsed))
+        {
+            return parsed.ToString("yyyy-MM-dd HH:mm");
+        }
+
+        return createdAt;
+    }
+
+    private static void ApplyAnnouncementLevelStyle(Border badge, TextBlock label, string level)
+    {
+        var normalized = string.IsNullOrWhiteSpace(level) ? "info" : level.Trim().ToLowerInvariant();
+        switch (normalized)
+        {
+            case "warn":
+            case "warning":
+                badge.Background = new SolidColorBrush(Color.FromRgb(255, 251, 235));
+                badge.BorderBrush = new SolidColorBrush(Color.FromRgb(253, 230, 138));
+                badge.BorderThickness = new Thickness(1);
+                label.Foreground = new SolidColorBrush(Color.FromRgb(180, 83, 9));
+                label.Text = "警告";
+                break;
+            case "error":
+            case "danger":
+                badge.Background = new SolidColorBrush(Color.FromRgb(254, 242, 242));
+                badge.BorderBrush = new SolidColorBrush(Color.FromRgb(252, 165, 165));
+                badge.BorderThickness = new Thickness(1);
+                label.Foreground = new SolidColorBrush(Color.FromRgb(220, 38, 38));
+                label.Text = "重要";
+                break;
+            case "info":
+                badge.Background = new SolidColorBrush(Color.FromRgb(239, 246, 255));
+                badge.BorderBrush = new SolidColorBrush(Color.FromRgb(191, 219, 254));
+                badge.BorderThickness = new Thickness(1);
+                label.Foreground = new SolidColorBrush(Color.FromRgb(29, 78, 216));
+                label.Text = "通知";
+                break;
+            default:
+                badge.Background = new SolidColorBrush(Color.FromRgb(248, 250, 252));
+                badge.BorderBrush = new SolidColorBrush(Color.FromRgb(226, 232, 240));
+                badge.BorderThickness = new Thickness(1);
+                label.Foreground = new SolidColorBrush(Color.FromRgb(71, 85, 105));
+                label.Text = level;
+                break;
+        }
+    }
+
+    private async Task LoadChatMessagesAsync()
+    {
+        if (!_authService.IsAuthenticated)
+        {
+            SetContactAdminStatus("请先登录后联系管理员。");
+            return;
+        }
+
+        if (!await _authService.TryRestoreSessionAsync())
+        {
+            SetContactAdminStatus("登录已过期，请重新登录。", isError: true);
+            UpdateNotificationPagesAuthState();
+            return;
+        }
+
+        SetContactAdminStatus("正在加载消息...");
+        try
+        {
+            var result = await _authService.ChatApi.ListMessagesAsync();
+            if (!result.IsSuccess || result.Data is null)
+            {
+                SetContactAdminStatus(result.Message, isError: true);
+                return;
+            }
+
+            _chatMessages.Clear();
+            _chatMessageIds.Clear();
+            ChatMessagesPanel.Children.Clear();
+            foreach (var message in result.Data.OrderBy(m => m.CreatedAt))
+            {
+                AppendChatMessage(message, scroll: false);
+            }
+
+            UpdateChatEmptyState();
+            ScrollChatToEnd();
+            SetContactAdminStatus(result.Data.Count == 0 ? "暂无消息，可向管理员发送咨询。" : "");
+        }
+        catch (Exception ex)
+        {
+            SetContactAdminStatus($"加载消息失败：{ex.Message}", isError: true);
+            DiagnosticLogService.Error("Failed to load chat messages.", ex);
+        }
+    }
+
+    private void AppendChatMessage(ChatMessage message, bool scroll = true)
+    {
+        if (!_chatMessageIds.Add(message.Id))
+        {
+            return;
+        }
+
+        _chatMessages.Add(message);
+        ChatMessagesPanel.Children.Add(CreateChatMessageElement(message));
+        UpdateChatEmptyState();
+        if (scroll)
+        {
+            ScrollChatToEnd();
+        }
+    }
+
+    private void UpdateChatEmptyState()
+    {
+        if (ChatEmptyPanel is null)
+        {
+            return;
+        }
+
+        ChatEmptyPanel.Visibility = _chatMessages.Count == 0
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+    }
+
+    private UIElement CreateChatMessageElement(ChatMessage message)
+    {
+        var isAdmin = message.IsFromAdmin;
+        var row = new Grid
+        {
+            Margin = new Thickness(0, 0, 0, 16),
+            HorizontalAlignment = isAdmin ? System.Windows.HorizontalAlignment.Left : System.Windows.HorizontalAlignment.Right,
+            MaxWidth = 720
+        };
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        var avatar = CreateChatAvatar(isAdmin);
+        var bubbleColumn = isAdmin ? 1 : 1;
+        var avatarColumn = isAdmin ? 0 : 2;
+
+        Grid.SetColumn(avatar, avatarColumn);
+        row.Children.Add(avatar);
+
+        var bubblePanel = new StackPanel
+        {
+            MaxWidth = 520,
+            HorizontalAlignment = isAdmin ? System.Windows.HorizontalAlignment.Left : System.Windows.HorizontalAlignment.Right,
+            Margin = isAdmin ? new Thickness(10, 0, 0, 0) : new Thickness(0, 0, 10, 0)
+        };
+
+        bubblePanel.Children.Add(new TextBlock
+        {
+            Text = isAdmin ? "管理员" : GetUserDisplayName(),
+            FontSize = 12,
+            FontWeight = FontWeights.SemiBold,
+            Foreground = new SolidColorBrush(isAdmin ? Color.FromRgb(29, 78, 216) : Color.FromRgb(71, 85, 105)),
+            Margin = new Thickness(isAdmin ? 2 : 0, 0, isAdmin ? 0 : 2, 4),
+            HorizontalAlignment = isAdmin ? System.Windows.HorizontalAlignment.Left : System.Windows.HorizontalAlignment.Right
+        });
+
+        var bubble = new Border
+        {
+            Background = isAdmin
+                ? new SolidColorBrush(Color.FromRgb(239, 246, 255))
+                : new SolidColorBrush(Color.FromRgb(37, 99, 235)),
+            BorderBrush = new SolidColorBrush(isAdmin ? Color.FromRgb(191, 219, 254) : Color.FromRgb(37, 99, 235)),
+            BorderThickness = new Thickness(1),
+            CornerRadius = isAdmin
+                ? new CornerRadius(4, 16, 16, 16)
+                : new CornerRadius(16, 4, 16, 16),
+            Padding = new Thickness(14, 10, 14, 10),
+            HorizontalAlignment = isAdmin ? System.Windows.HorizontalAlignment.Left : System.Windows.HorizontalAlignment.Right
+        };
+        bubble.Child = new TextBlock
+        {
+            Text = message.Content,
+            TextWrapping = TextWrapping.Wrap,
+            FontSize = 15,
+            Foreground = isAdmin
+                ? new SolidColorBrush(Color.FromRgb(15, 23, 42))
+                : new SolidColorBrush(Colors.White)
+        };
+        bubblePanel.Children.Add(bubble);
+        bubblePanel.Children.Add(new TextBlock
+        {
+            Text = FormatAnnouncementTime(message.CreatedAt),
+            FontSize = 11,
+            Foreground = new SolidColorBrush(Color.FromRgb(148, 163, 184)),
+            Margin = new Thickness(isAdmin ? 2 : 0, 6, isAdmin ? 0 : 2, 0),
+            HorizontalAlignment = isAdmin ? System.Windows.HorizontalAlignment.Left : System.Windows.HorizontalAlignment.Right
+        });
+
+        Grid.SetColumn(bubblePanel, bubbleColumn);
+        row.Children.Add(bubblePanel);
+        return row;
+    }
+
+    private UIElement CreateChatAvatar(bool isAdmin)
+    {
+        var host = new Border
+        {
+            Width = 40,
+            Height = 40,
+            CornerRadius = new CornerRadius(12),
+            Background = isAdmin
+                ? new SolidColorBrush(Color.FromRgb(239, 246, 255))
+                : new SolidColorBrush(Color.FromRgb(220, 252, 231)),
+            BorderBrush = new SolidColorBrush(isAdmin ? Color.FromRgb(191, 219, 254) : Color.FromRgb(134, 239, 172)),
+            BorderThickness = new Thickness(1),
+            VerticalAlignment = VerticalAlignment.Top
+        };
+
+        if (isAdmin)
+        {
+            host.Child = new TextBlock
+            {
+                Text = "管",
+                FontSize = 16,
+                FontWeight = FontWeights.Bold,
+                Foreground = new SolidColorBrush(Color.FromRgb(29, 78, 216)),
+                HorizontalAlignment = System.Windows.HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+        }
+        else
+        {
+            host.Child = new TextBlock
+            {
+                Text = GetUserAvatarInitial(),
+                FontSize = 16,
+                FontWeight = FontWeights.Bold,
+                Foreground = new SolidColorBrush(Color.FromRgb(22, 101, 52)),
+                HorizontalAlignment = System.Windows.HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+        }
+
+        return host;
+    }
+
+    private string GetUserDisplayName()
+    {
+        var email = _authService.CurrentEmail;
+        return string.IsNullOrWhiteSpace(email) ? "我" : email;
+    }
+
+    private string GetUserAvatarInitial()
+    {
+        var email = _authService.CurrentEmail;
+        if (string.IsNullOrWhiteSpace(email))
+        {
+            return "我";
+        }
+
+        return email.Trim()[0].ToString().ToUpperInvariant();
+    }
+
+    private void ChatMessagesScroll_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
+    {
+        if (sender is not ScrollViewer scrollViewer)
+        {
+            return;
+        }
+
+        e.Handled = true;
+        var nextOffset = scrollViewer.VerticalOffset - e.Delta;
+        if (nextOffset < 0)
+        {
+            nextOffset = 0;
+        }
+        else if (nextOffset > scrollViewer.ScrollableHeight)
+        {
+            nextOffset = scrollViewer.ScrollableHeight;
+        }
+
+        scrollViewer.ScrollToVerticalOffset(nextOffset);
+    }
+
+    private void ScrollChatToEnd()
+    {
+        if (ChatMessagesScroll is null)
+        {
+            return;
+        }
+
+        ChatMessagesScroll.Dispatcher.BeginInvoke(() =>
+        {
+            ChatMessagesScroll.UpdateLayout();
+            ChatMessagesScroll.ScrollToEnd();
+        }, DispatcherPriority.Loaded);
+    }
+
+    private void ShowChatMessageToast(ChatMessage message)
+    {
+        if (ChatToastPanel is null || ChatToastBodyText is null)
+        {
+            return;
+        }
+
+        ChatToastTitleText.Text = "管理员新消息";
+        ChatToastBodyText.Text = TruncateAnnouncementPreview(message.Content);
+        ChatToastPanel.Visibility = Visibility.Visible;
+
+        var animation = new DoubleAnimation
+        {
+            From = -380,
+            To = 0,
+            Duration = TimeSpan.FromMilliseconds(280),
+            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
+        };
+        ChatToastTransform.BeginAnimation(TranslateTransform.XProperty, animation);
+
+        _chatToastHideTimer.Stop();
+        _chatToastHideTimer.Start();
+    }
+
+    private void HideChatMessageToast(bool animate = true)
+    {
+        if (ChatToastPanel is null)
+        {
+            return;
+        }
+
+        _chatToastHideTimer.Stop();
+        if (!animate)
+        {
+            ChatToastPanel.Visibility = Visibility.Collapsed;
+            ChatToastTransform.X = -380;
+            return;
+        }
+
+        var animation = new DoubleAnimation
+        {
+            To = -380,
+            Duration = TimeSpan.FromMilliseconds(220),
+            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseIn }
+        };
+        animation.Completed += (_, _) =>
+        {
+            ChatToastPanel.Visibility = Visibility.Collapsed;
+        };
+        ChatToastTransform.BeginAnimation(TranslateTransform.XProperty, animation);
+    }
+
+    private void ChatToastHideTimer_Tick(object? sender, EventArgs e)
+    {
+        HideChatMessageToast();
+    }
+
+    private void ChatToastCloseButton_Click(object sender, RoutedEventArgs e)
+    {
+        HideChatMessageToast();
+    }
+
+    private void ChatToastPanel_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        HideChatMessageToast();
+        ShowContactAdminPage();
+        ScrollChatToEnd();
+    }
+
+    private void SetContactAdminStatus(string message, bool isError = false)
+    {
+        if (ContactAdminStatusText is null)
+        {
+            return;
+        }
+
+        ContactAdminStatusText.Text = message;
+        ContactAdminStatusText.Foreground = isError
+            ? (System.Windows.Media.Brush)FindResource("RedBrush")
+            : (System.Windows.Media.Brush)FindResource("MutedBrush");
+        ContactAdminStatusText.Visibility = string.IsNullOrWhiteSpace(message)
+            ? Visibility.Collapsed
+            : Visibility.Visible;
+    }
+
+    private async void SendChatMessageButton_Click(object sender, RoutedEventArgs e)
+    {
+        await SendChatMessageAsync();
+    }
+
+    private async void ChatInputBox_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter && Keyboard.Modifiers == ModifierKeys.None)
+        {
+            e.Handled = true;
+            await SendChatMessageAsync();
+        }
+    }
+
+    private async Task SendChatMessageAsync()
+    {
+        if (!_authService.IsAuthenticated)
+        {
+            SetContactAdminStatus("请先登录后发送消息。", isError: true);
+            return;
+        }
+
+        var content = ChatInputBox.Text?.Trim() ?? "";
+        if (string.IsNullOrWhiteSpace(content))
+        {
+            SetContactAdminStatus("消息内容不能为空。", isError: true);
+            return;
+        }
+
+        if (content.Length > 2000)
+        {
+            SetContactAdminStatus("消息内容最多 2000 个字符。", isError: true);
+            return;
+        }
+
+        if (!await _authService.TryRestoreSessionAsync())
+        {
+            SetContactAdminStatus("登录已过期，请重新登录。", isError: true);
+            UpdateNotificationPagesAuthState();
+            return;
+        }
+
+        SendChatMessageButton.IsEnabled = false;
+        SetContactAdminStatus("正在发送...");
+        try
+        {
+            var result = await _authService.ChatApi.SendMessageAsync(content);
+            if (!result.IsSuccess || result.Data is null)
+            {
+                SetContactAdminStatus(result.Message, isError: true);
+                return;
+            }
+
+            ChatInputBox.Text = "";
+            AppendChatMessage(result.Data);
+            SetContactAdminStatus("");
+        }
+        catch (Exception ex)
+        {
+            SetContactAdminStatus($"发送失败：{ex.Message}", isError: true);
+            DiagnosticLogService.Error("Failed to send chat message.", ex);
+        }
+        finally
+        {
+            SendChatMessageButton.IsEnabled = true;
+        }
+    }
 
     private void ShowLogPage()
     {
@@ -3018,18 +4588,13 @@ public partial class MainWindow : Window
         ShowPage(ExportPageScroll, ExportNodeNavButton);
     }
 
-    private void ShowUpdatePage()
-    {
-        UpdateStatusText.Text = "点击按钮检查 GitHub Release 中的最新版本。";
-        ShowPage(UpdatePageScroll, UpdateNavButton);
-    }
-
     private void SettingsNavButton_Click(object sender, RoutedEventArgs e) => ShowSettingsPage();
 
     private void ShowSettingsPage()
     {
         SyncRunAtStartupFromSettings();
         SyncAllowLanAccessFromSettings();
+        SyncAutoDownloadUpdateFromSettings();
         SyncThemeSettingsUi(ThemeService.ParseAccentColor(_settings.ThemeAccentColor));
         ShowPage(SettingsPageScroll, SettingsNavButton);
     }
@@ -3064,7 +4629,9 @@ public partial class MainWindow : Window
         ImportPageScroll.Visibility = Visibility.Collapsed;
         ExportPageScroll.Visibility = Visibility.Collapsed;
         NodeTestPageScroll.Visibility = Visibility.Collapsed;
-        UpdatePageScroll.Visibility = Visibility.Collapsed;
+        AnnouncementPageScroll.Visibility = Visibility.Collapsed;
+        ContactAdminPageScroll.Visibility = Visibility.Collapsed;
+        VersionUpdatePageScroll.Visibility = Visibility.Collapsed;
         SettingsPageScroll.Visibility = Visibility.Collapsed;
         AboutPageScroll.Visibility = Visibility.Collapsed;
         LogPageScroll.Visibility = Visibility.Collapsed;
@@ -3078,7 +4645,7 @@ public partial class MainWindow : Window
             _aboutRuntimeTimer.Stop();
         }
 
-        foreach (var button in new[] { NodeListNavButton, NewNodeNavButton, ImportNodeNavButton, ExportNodeNavButton, NodeTestNavButton, SettingsNavButton, LogNavButton, AboutNavButton, UpdateNavButton })
+        foreach (var button in new[] { NodeListNavButton, NewNodeNavButton, ImportNodeNavButton, ExportNodeNavButton, NodeTestNavButton, AnnouncementNavButton, ContactAdminNavButton, VersionUpdateNavButton, SettingsNavButton, LogNavButton, AboutNavButton })
         {
             button.Style = ReferenceEquals(button, activeButton)
                 ? (Style)FindResource("ActiveNavButtonStyle")
@@ -3206,158 +4773,6 @@ public partial class MainWindow : Window
     }
 
     private void AboutOpenRuntimeButton_Click(object sender, RoutedEventArgs e) => OpenPath(Path.Combine(AppContext.BaseDirectory, "cores"));
-
-    private async void UpdatePageCheckButton_Click(object sender, RoutedEventArgs e)
-    {
-        UpdatePageCheckButton.IsEnabled = false;
-        UpdateProgressPanel.Visibility = Visibility.Collapsed;
-        UpdateProgressBar.IsIndeterminate = false;
-        UpdateProgressBar.Value = 0;
-        try
-        {
-            UpdateStatusText.Text = "正在检查更新...";
-            var release = await GetLatestReleaseAsync();
-            var currentVersion = GetCurrentVersion();
-            if (CompareVersionText(release.TagName, currentVersion) <= 0)
-            {
-                UpdateStatusText.Text = $"当前已是最新版本：{currentVersion}。";
-                return;
-            }
-
-            var installer = release.Assets
-                .FirstOrDefault(asset => asset.Name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) &&
-                                         asset.Name.Contains("Setup", StringComparison.OrdinalIgnoreCase));
-            if (installer is null)
-            {
-                UpdateStatusText.Text = $"发现新版本 {release.TagName}，但 Release Assets 中没有找到安装包。请上传 Nexora-Setup-{release.TagName.TrimStart('v', 'V')}.exe。";
-                return;
-            }
-
-            var dialog = new UpdateConfirmDialog(
-                release.TagName,
-                currentVersion,
-                release.Body,
-                installer.Name,
-                installer.Size)
-            {
-                Owner = this
-            };
-            if (dialog.ShowDialog() != true)
-            {
-                UpdateStatusText.Text = $"已取消更新。当前版本 {currentVersion}，可更新至 {release.TagName}。";
-                return;
-            }
-
-            await DownloadAndInstallUpdateAsync(release, installer);
-        }
-        catch (Exception ex)
-        {
-            DiagnosticLogService.Error("Update check or download failed.", ex);
-            UpdateStatusText.Text = $"检查更新失败：无法连接 GitHub Release 下载域名，可能是当前网络阻止了 release-assets.githubusercontent.com:443。请先启用代理并确认代理可用后重试。详细信息：{ex.Message}";
-        }
-        finally
-        {
-            UpdatePageCheckButton.IsEnabled = true;
-        }
-    }
-
-    private async Task DownloadAndInstallUpdateAsync(ReleaseInfo release, ReleaseAsset installer)
-    {
-        UpdateStatusText.Text = $"正在下载 {release.TagName}：{installer.Name}";
-        UpdateProgressPanel.Visibility = Visibility.Visible;
-        UpdateProgressText.Text = $"准备下载 {installer.Name}（{FormatBytes(installer.Size)}）";
-        var installerPath = await DownloadInstallerAsync(installer, new Progress<DownloadProgress>(UpdateDownloadProgress));
-        UpdateProgressText.Text = $"下载完成：{FormatBytes(installer.Size)}";
-        UpdateStatusText.Text = "下载完成，正在启动安装程序。";
-        Process.Start(new ProcessStartInfo
-        {
-            FileName = installerPath,
-            UseShellExecute = true
-        });
-        _isExiting = true;
-        Application.Current.Shutdown();
-    }
-
-    private async Task<ReleaseInfo> GetLatestReleaseAsync()
-    {
-        using var request = new HttpRequestMessage(HttpMethod.Get, LatestReleaseApi);
-        request.Headers.UserAgent.ParseAdd("Nexora");
-        using var client = CreateUpdateHttpClient();
-        using var response = await client.SendAsync(request);
-        response.EnsureSuccessStatusCode();
-
-        using var stream = await response.Content.ReadAsStreamAsync();
-        using var document = await JsonDocument.ParseAsync(stream);
-        var root = document.RootElement;
-        var tagName = root.GetProperty("tag_name").GetString() ?? "";
-        var htmlUrl = root.GetProperty("html_url").GetString() ?? ProjectUrl;
-        var body = root.TryGetProperty("body", out var bodyElement) ? bodyElement.GetString() ?? "" : "";
-        var assets = new List<ReleaseAsset>();
-        if (root.TryGetProperty("assets", out var assetsElement))
-        {
-            foreach (var asset in assetsElement.EnumerateArray())
-            {
-                assets.Add(new ReleaseAsset(
-                    asset.GetProperty("name").GetString() ?? "",
-                    asset.GetProperty("browser_download_url").GetString() ?? "",
-                    asset.TryGetProperty("size", out var sizeElement) ? sizeElement.GetInt64() : 0));
-            }
-        }
-
-        if (string.IsNullOrWhiteSpace(tagName))
-        {
-            throw new InvalidOperationException("Release 信息缺少版本号。");
-        }
-
-        return new ReleaseInfo(tagName, htmlUrl, body, assets);
-    }
-
-    private async Task<string> DownloadInstallerAsync(ReleaseAsset asset, IProgress<DownloadProgress> progress)
-    {
-        if (string.IsNullOrWhiteSpace(asset.DownloadUrl))
-        {
-            throw new InvalidOperationException("安装包下载地址为空。");
-        }
-
-        var directory = Path.Combine(Path.GetTempPath(), "Nexora", "updates");
-        Directory.CreateDirectory(directory);
-        var targetPath = Path.Combine(directory, asset.Name);
-
-        using var client = CreateUpdateHttpClient();
-        using var response = await client.GetAsync(asset.DownloadUrl, HttpCompletionOption.ResponseHeadersRead);
-        response.EnsureSuccessStatusCode();
-        var totalBytes = response.Content.Headers.ContentLength ?? asset.Size;
-        progress.Report(new DownloadProgress(0, totalBytes));
-
-        await using var source = await response.Content.ReadAsStreamAsync();
-        await using var target = File.Create(targetPath);
-        var buffer = new byte[81920];
-        long downloadedBytes = 0;
-        int bytesRead;
-        while ((bytesRead = await source.ReadAsync(buffer)) > 0)
-        {
-            await target.WriteAsync(buffer.AsMemory(0, bytesRead));
-            downloadedBytes += bytesRead;
-            progress.Report(new DownloadProgress(downloadedBytes, totalBytes));
-        }
-
-        return targetPath;
-    }
-
-    private void UpdateDownloadProgress(DownloadProgress progress)
-    {
-        if (progress.TotalBytes > 0)
-        {
-            var percentage = Math.Clamp(progress.DownloadedBytes * 100d / progress.TotalBytes, 0, 100);
-            UpdateProgressBar.IsIndeterminate = false;
-            UpdateProgressBar.Value = percentage;
-            UpdateProgressText.Text = $"正在下载：{FormatBytes(progress.DownloadedBytes)} / {FormatBytes(progress.TotalBytes)}";
-            return;
-        }
-
-        UpdateProgressBar.IsIndeterminate = true;
-        UpdateProgressText.Text = $"正在下载：{FormatBytes(progress.DownloadedBytes)} / 未知大小";
-    }
 
     private void InlineClearNodeButton_Click(object sender, RoutedEventArgs e) => InlineClearNodeForm();
 
@@ -4653,40 +6068,6 @@ public partial class MainWindow : Window
         return output;
     }
 
-    private static int CompareVersionText(string left, string right)
-    {
-        var leftParts = ExtractVersionParts(left);
-        var rightParts = ExtractVersionParts(right);
-        for (var i = 0; i < 4; i++)
-        {
-            var comparison = leftParts[i].CompareTo(rightParts[i]);
-            if (comparison != 0)
-            {
-                return comparison;
-            }
-        }
-
-        return 0;
-    }
-
-    private static int[] ExtractVersionParts(string value)
-    {
-        var match = Regex.Match(value, @"\d+(?:\.\d+){0,3}");
-        if (!match.Success)
-        {
-            return [0, 0, 0, 0];
-        }
-
-        var parts = match.Value.Split('.');
-        var result = new[] { 0, 0, 0, 0 };
-        for (var i = 0; i < parts.Length && i < result.Length; i++)
-        {
-            _ = int.TryParse(parts[i], out result[i]);
-        }
-
-        return result;
-    }
-
     private static void OpenPath(string path)
     {
         try
@@ -4702,12 +6083,6 @@ public partial class MainWindow : Window
             MessageBox.Show(ex.Message, "Nexora", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
-
-    private sealed record ReleaseInfo(string TagName, string HtmlUrl, string Body, List<ReleaseAsset> Assets);
-
-    private sealed record ReleaseAsset(string Name, string DownloadUrl, long Size);
-
-    private sealed record DownloadProgress(long DownloadedBytes, long TotalBytes);
 
     private static void ShowError(Exception exception)
     {

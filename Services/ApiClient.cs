@@ -1,3 +1,4 @@
+using System.IO;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
@@ -39,6 +40,26 @@ public sealed class ApiClient
     public async Task<ApiResult<T>> PatchAsync<T>(string baseUrl, string path, object body, bool requireAuth = true, CancellationToken cancellationToken = default)
     {
         return await SendAsync<T>(HttpMethod.Patch, baseUrl, path, body, requireAuth, cancellationToken);
+    }
+
+    public async Task<ApiResult<T>> PostMultipartAsync<T>(
+        string baseUrl,
+        string path,
+        string fieldName,
+        string filePath,
+        bool requireAuth = true,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await SendMultipartCoreAsync<T>(baseUrl, path, fieldName, filePath, requireAuth, cancellationToken);
+        if (requireAuth && result.Code == 401)
+        {
+            if (await _refreshTokenAsync())
+            {
+                return await SendMultipartCoreAsync<T>(baseUrl, path, fieldName, filePath, requireAuth, cancellationToken);
+            }
+        }
+
+        return result;
     }
 
     public async Task<ApiResult<T>> DeleteAsync<T>(string baseUrl, string path, bool requireAuth = true, CancellationToken cancellationToken = default)
@@ -115,6 +136,70 @@ public sealed class ApiClient
             };
         }
     }
+
+    private async Task<ApiResult<T>> SendMultipartCoreAsync<T>(
+        string baseUrl,
+        string path,
+        string fieldName,
+        string filePath,
+        bool requireAuth,
+        CancellationToken cancellationToken)
+    {
+        using var form = new MultipartFormDataContent();
+        await using var stream = File.OpenRead(filePath);
+        var fileContent = new StreamContent(stream);
+        fileContent.Headers.ContentType = new MediaTypeHeaderValue(GetImageMimeType(filePath));
+        form.Add(fileContent, fieldName, Path.GetFileName(filePath));
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"{baseUrl.TrimEnd('/')}/{path.TrimStart('/')}")
+        {
+            Content = form
+        };
+
+        if (requireAuth)
+        {
+            var token = await _getAccessTokenAsync();
+            if (!string.IsNullOrWhiteSpace(token))
+            {
+                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            }
+        }
+
+        using var timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeoutSource.CancelAfter(TimeSpan.FromSeconds(RequestTimeoutSeconds));
+
+        try
+        {
+            using var response = await _http.SendAsync(request, timeoutSource.Token);
+            var text = await response.Content.ReadAsStringAsync(timeoutSource.Token);
+            return ParseResponse<T>(text);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            return new ApiResult<T>
+            {
+                Code = 408,
+                Message = $"请求超时：服务端 {RequestTimeoutSeconds} 秒内未响应，请稍后重试。"
+            };
+        }
+        catch (HttpRequestException ex)
+        {
+            return new ApiResult<T>
+            {
+                Code = 500,
+                Message = $"网络请求失败：{ex.Message}"
+            };
+        }
+    }
+
+    private static string GetImageMimeType(string filePath) =>
+        Path.GetExtension(filePath).ToLowerInvariant() switch
+        {
+            ".jpg" or ".jpeg" => "image/jpeg",
+            ".png" => "image/png",
+            ".webp" => "image/webp",
+            _ => "application/octet-stream"
+        };
 
     internal static ApiResult<T> ParseResponse<T>(string text)
     {

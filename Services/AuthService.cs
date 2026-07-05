@@ -15,6 +15,10 @@ public sealed partial class AuthService
     private readonly ApiClient _apiClient;
     private readonly SubscriptionApiService _subscriptionApi;
     private readonly SubscriptionSyncService _subscriptionSync;
+    private readonly NotificationApiService _notificationApi;
+    private readonly ChatApiService _chatApi;
+    private readonly UpdateApiService _updateApi;
+    private readonly UserProfileApiService _userProfileApi;
     private readonly SemaphoreSlim _refreshLock = new(1, 1);
     private string _apiBaseUrl = "";
     private AuthSession? _session;
@@ -43,12 +47,22 @@ public sealed partial class AuthService
             () => RefreshTokenInternalAsync(CancellationToken.None, forceRefresh: true));
         _subscriptionApi = new SubscriptionApiService(_apiClient, () => _apiBaseUrl);
         _subscriptionSync = new SubscriptionSyncService(this, _subscriptionApi);
+        _notificationApi = new NotificationApiService(_apiClient, () => _apiBaseUrl);
+        _chatApi = new ChatApiService(_apiClient, () => _apiBaseUrl);
+        _updateApi = new UpdateApiService(_apiClient, () => _apiBaseUrl);
+        _userProfileApi = new UserProfileApiService(_apiClient, () => _apiBaseUrl);
     }
 
     public SubscriptionApiService SubscriptionApi => _subscriptionApi;
     public SubscriptionSyncService SubscriptionSync => _subscriptionSync;
+    public NotificationApiService NotificationApi => _notificationApi;
+    public ChatApiService ChatApi => _chatApi;
+    public UpdateApiService UpdateApi => _updateApi;
+    public UserProfileApiService UserProfileApi => _userProfileApi;
 
     public bool IsConfigured => !string.IsNullOrWhiteSpace(_apiBaseUrl);
+
+    public string ApiBaseUrl => _apiBaseUrl;
 
     public bool HasPersistedSession =>
         _session is not null && !string.IsNullOrWhiteSpace(_session.RefreshToken);
@@ -62,6 +76,10 @@ public sealed partial class AuthService
     public AuthSession? CurrentSession => _session;
 
     public string? CurrentEmail => _session?.Email;
+
+    public string? CurrentNickname => _session?.Nickname;
+
+    public string? CurrentAvatarUrl => _session?.AvatarUrl;
 
     public void Configure(string apiBaseUrl)
     {
@@ -255,6 +273,115 @@ public sealed partial class AuthService
         ClearSession();
     }
 
+    public async Task<AuthResult> UpdateProfileAsync(
+        bool updateNickname,
+        string nickname,
+        string? avatarFilePath,
+        CancellationToken cancellationToken = default)
+    {
+        if (_session is null || string.IsNullOrWhiteSpace(_session.RefreshToken))
+        {
+            return AuthResult.Fail("请先登录。");
+        }
+
+        if (!IsConfigured)
+        {
+            return AuthResult.Fail("认证服务尚未配置，暂时无法修改资料。");
+        }
+
+        var trimmedNickname = nickname.Trim();
+        var hasAvatarChange = !string.IsNullOrWhiteSpace(avatarFilePath);
+        if (!updateNickname && !hasAvatarChange)
+        {
+            return AuthResult.Fail("请修改昵称或选择新头像。");
+        }
+
+        if (updateNickname)
+        {
+            if (string.IsNullOrWhiteSpace(trimmedNickname))
+            {
+                return AuthResult.Fail("昵称不能为空。");
+            }
+
+            if (trimmedNickname.Length > 50)
+            {
+                return AuthResult.Fail("昵称最多 50 个字符。");
+            }
+        }
+
+        if (hasAvatarChange)
+        {
+            var avatarValidation = ValidateAvatarFile(avatarFilePath!);
+            if (avatarValidation is not null)
+            {
+                return AuthResult.Fail(avatarValidation);
+            }
+        }
+
+        if (!await TryRestoreSessionAsync(cancellationToken))
+        {
+            return AuthResult.Fail("登录已过期，请重新登录。");
+        }
+
+        try
+        {
+            UserProfile? profile = null;
+
+            if (updateNickname)
+            {
+                var nicknameResult = await _userProfileApi.UpdateNicknameAsync(trimmedNickname, cancellationToken);
+                if (!nicknameResult.IsSuccess)
+                {
+                    return AuthResult.Fail(string.IsNullOrWhiteSpace(nicknameResult.Message)
+                        ? "修改昵称失败。"
+                        : nicknameResult.Message);
+                }
+
+                if (nicknameResult.Data is not null)
+                {
+                    profile = nicknameResult.Data;
+                }
+                else
+                {
+                    _session!.Nickname = trimmedNickname;
+                }
+            }
+
+            if (hasAvatarChange)
+            {
+                var avatarResult = await _userProfileApi.UploadAvatarAsync(avatarFilePath!, cancellationToken);
+                if (!avatarResult.IsSuccess)
+                {
+                    return AuthResult.Fail(string.IsNullOrWhiteSpace(avatarResult.Message)
+                        ? "修改头像失败。"
+                        : avatarResult.Message);
+                }
+
+                if (avatarResult.Data is not null)
+                {
+                    profile = avatarResult.Data;
+                }
+            }
+
+            if (profile is not null)
+            {
+                ApplyProfileToSession(profile);
+            }
+            else if (updateNickname)
+            {
+                SaveSession(_session!);
+                AuthStateChanged?.Invoke();
+            }
+
+            return AuthResult.Ok(_session!, "资料已更新成功。");
+        }
+        catch (Exception ex)
+        {
+            DiagnosticLogService.Error("Failed to update user profile.", ex);
+            return AuthResult.Fail($"资料更新失败：{ex.Message}");
+        }
+    }
+
     public async Task<string?> GetAccessTokenAsync(CancellationToken cancellationToken = default)
     {
         if (_session is null)
@@ -345,11 +472,56 @@ public sealed partial class AuthService
         {
             UserId = data.UserInfo.Id,
             Email = data.UserInfo.Email,
+            Nickname = data.UserInfo.Nickname,
+            AvatarUrl = data.UserInfo.ResolvedAvatarUrl,
             AccessToken = data.AccessToken,
             RefreshToken = data.RefreshToken,
             AccessTokenExpiresAtUtc = DateTime.UtcNow.Add(AccessTokenLifetime),
             Subscriptions = data.Subscriptions
         };
+
+    private void ApplyProfileToSession(UserProfile profile)
+    {
+        if (_session is null)
+        {
+            return;
+        }
+
+        _session.UserId = profile.Id;
+        _session.Email = profile.Email;
+        _session.Nickname = profile.Nickname;
+        _session.AvatarUrl = profile.AvatarUrl;
+        SaveSession(_session);
+        AuthStateChanged?.Invoke();
+    }
+
+    private static string? ValidateAvatarFile(string filePath)
+    {
+        if (!File.Exists(filePath))
+        {
+            return "头像文件不存在。";
+        }
+
+        var extension = Path.GetExtension(filePath);
+        if (!IsSupportedAvatarExtension(extension))
+        {
+            return "头像仅支持 JPG、PNG、WebP 格式。";
+        }
+
+        var fileInfo = new FileInfo(filePath);
+        if (fileInfo.Length > 5 * 1024 * 1024)
+        {
+            return "头像文件不能超过 5MB。";
+        }
+
+        return null;
+    }
+
+    private static bool IsSupportedAvatarExtension(string extension) =>
+        extension.Equals(".jpg", StringComparison.OrdinalIgnoreCase) ||
+        extension.Equals(".jpeg", StringComparison.OrdinalIgnoreCase) ||
+        extension.Equals(".png", StringComparison.OrdinalIgnoreCase) ||
+        extension.Equals(".webp", StringComparison.OrdinalIgnoreCase);
 
     public void RemoveSubscriptionFromSession(int subscriptionId)
     {
@@ -469,6 +641,8 @@ public sealed partial class AuthService
         {
             UserId = persisted.UserId,
             Email = persisted.Email,
+            Nickname = persisted.Nickname,
+            AvatarUrl = persisted.AvatarUrl,
             AccessToken = SessionTokenProtection.Unprotect(persisted.ProtectedAccessToken),
             RefreshToken = SessionTokenProtection.Unprotect(persisted.ProtectedRefreshToken),
             AccessTokenExpiresAtUtc = persisted.AccessTokenExpiresAtUtc,
@@ -481,6 +655,8 @@ public sealed partial class AuthService
             FormatVersion = PersistedAuthSession.CurrentFormatVersion,
             UserId = session.UserId,
             Email = session.Email,
+            Nickname = session.Nickname,
+            AvatarUrl = session.AvatarUrl,
             ProtectedAccessToken = SessionTokenProtection.Protect(session.AccessToken),
             ProtectedRefreshToken = SessionTokenProtection.Protect(session.RefreshToken),
             AccessTokenExpiresAtUtc = session.AccessTokenExpiresAtUtc,

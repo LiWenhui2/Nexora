@@ -11,10 +11,10 @@
     <ApplicationIcon>assets\app-icon.ico</ApplicationIcon>
     <AssemblyName>Nexora</AssemblyName>
     <RootNamespace>NaiwaProxy</RootNamespace>
-    <Version>1.1.4</Version>
-    <AssemblyVersion>1.1.4.0</AssemblyVersion>
-    <FileVersion>1.1.4.0</FileVersion>
-    <InformationalVersion>1.1.4</InformationalVersion>
+    <Version>1.1.5</Version>
+    <AssemblyVersion>1.1.5.0</AssemblyVersion>
+    <FileVersion>1.1.5.0</FileVersion>
+    <InformationalVersion>1.1.5</InformationalVersion>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
   </PropertyGroup>
 
@@ -33,6 +33,11 @@
       <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
     </Content>
     <Content Include="assets\app-icon.ico">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>Always</CopyToPublishDirectory>
+      <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
+    </Content>
+    <Content Include="assets\icons\*.png">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>Always</CopyToPublishDirectory>
       <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
