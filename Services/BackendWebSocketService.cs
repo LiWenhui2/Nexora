@@ -19,6 +19,7 @@ public sealed class BackendWebSocketService : IDisposable
     private ClientWebSocket? _socket;
     private CancellationTokenSource? _lifecycleCts;
     private Task? _receiveTask;
+    private int _receiveLoopThreadId;
     private bool _disposed;
 
     public BackendWebSocketService(Func<Task<string?>> getAccessTokenAsync, Func<string> getBaseUrl)
@@ -32,6 +33,8 @@ public sealed class BackendWebSocketService : IDisposable
     public event Action<ChatMessage>? ChatMessageReceived;
     public event Action<BroadcastPushMessage>? BroadcastReceived;
     public event Action<VersionUpdatePushMessage>? VersionUpdateReceived;
+    public event Action? UserProfileUpdated;
+    public event Action<ForceLogoutPushMessage>? ForceLogoutReceived;
     public event Action? Connected;
     public event Action? Disconnected;
     public event Action<string>? ConnectionStateChanged;
@@ -123,6 +126,7 @@ public sealed class BackendWebSocketService : IDisposable
 
     private async Task ReceiveLoopAsync(CancellationToken cancellationToken)
     {
+        _receiveLoopThreadId = Environment.CurrentManagedThreadId;
         var buffer = new byte[8192];
         var builder = new StringBuilder();
 
@@ -137,7 +141,7 @@ public sealed class BackendWebSocketService : IDisposable
                     result = await _socket.ReceiveAsync(buffer, cancellationToken);
                     if (result.MessageType == WebSocketMessageType.Close)
                     {
-                        await DisconnectAsync();
+                        ScheduleDisconnect();
                         return;
                     }
 
@@ -157,6 +161,11 @@ public sealed class BackendWebSocketService : IDisposable
         }
         finally
         {
+            if (_receiveLoopThreadId == Environment.CurrentManagedThreadId)
+            {
+                _receiveLoopThreadId = 0;
+            }
+
             ConnectionStateChanged?.Invoke("disconnected");
             Disconnected?.Invoke();
         }
@@ -178,7 +187,7 @@ public sealed class BackendWebSocketService : IDisposable
             }
 
             var type = typeElement.GetString();
-            switch (type)
+            switch (type?.ToUpperInvariant())
             {
                 case "AUTH_SUCCESS":
                     ConnectionStateChanged?.Invoke("connected");
@@ -204,12 +213,40 @@ public sealed class BackendWebSocketService : IDisposable
                         VersionUpdateReceived?.Invoke(versionUpdate);
                     }
                     break;
+                case "USER_PROFILE_UPDATED":
+                    UserProfileUpdated?.Invoke();
+                    break;
+                case "FORCE_LOGOUT":
+                    var forceLogout = JsonSerializer.Deserialize<ForceLogoutPushMessage>(json, JsonOptions);
+                    if (forceLogout is not null)
+                    {
+                        DiagnosticLogService.Info(
+                            $"FORCE_LOGOUT received. reason={forceLogout.Reason ?? "-"}, kickedSessionId={forceLogout.ResolvedKickedSessionId ?? "-"}");
+                        ForceLogoutReceived?.Invoke(forceLogout);
+                    }
+                    ScheduleDisconnect();
+                    break;
             }
         }
         catch (Exception ex)
         {
             DiagnosticLogService.Warning($"Backend WebSocket message parse failed: {ex.Message}");
         }
+    }
+
+    private void ScheduleDisconnect()
+    {
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await DisconnectAsync();
+            }
+            catch (Exception ex)
+            {
+                DiagnosticLogService.Warning($"Backend WebSocket disconnect failed: {ex.Message}");
+            }
+        });
     }
 
     private async Task DisconnectCoreAsync()
@@ -221,17 +258,18 @@ public sealed class BackendWebSocketService : IDisposable
             _lifecycleCts = null;
         }
 
-        if (_receiveTask is not null)
+        var receiveTask = _receiveTask;
+        _receiveTask = null;
+        if (receiveTask is not null &&
+            Environment.CurrentManagedThreadId != _receiveLoopThreadId)
         {
             try
             {
-                await _receiveTask;
+                await receiveTask;
             }
             catch
             {
             }
-
-            _receiveTask = null;
         }
 
         if (_socket is not null)
@@ -262,6 +300,89 @@ public sealed class BackendWebSocketService : IDisposable
         _disposed = true;
         _ = DisconnectAsync();
         _connectLock.Dispose();
+    }
+}
+
+public sealed class ForceLogoutDeviceInfo
+{
+    public string? SessionId { get; set; }
+    public string? ClientType { get; set; }
+    public string? DeviceId { get; set; }
+    public string? DeviceName { get; set; }
+    public string? OsName { get; set; }
+    public string? OsVersion { get; set; }
+    public string? AppVersion { get; set; }
+    public string? IpAddress { get; set; }
+    public string? Country { get; set; }
+    public string? Region { get; set; }
+    public string? City { get; set; }
+    public string? Isp { get; set; }
+}
+
+public sealed class ForceLogoutPushMessage
+{
+    public string Type { get; set; } = "";
+    public string? Reason { get; set; }
+    public int? MaxActiveDevices { get; set; }
+    public string? Message { get; set; }
+    public string? KickedSessionId { get; set; }
+    public string? SessionId { get; set; }
+    public ForceLogoutDeviceInfo? NewLoginDevice { get; set; }
+    public long Timestamp { get; set; }
+
+    public string? ResolvedKickedSessionId =>
+        !string.IsNullOrWhiteSpace(KickedSessionId) ? KickedSessionId : SessionId;
+
+    public string GetDisplayMessage()
+    {
+        if (!string.IsNullOrWhiteSpace(Message))
+        {
+            return Message.Trim();
+        }
+
+        if (string.Equals(Reason, "DEVICE_LIMIT_EXCEEDED", StringComparison.OrdinalIgnoreCase))
+        {
+            return "当前账号已在新设备登录，登录设备数量超过限制，此设备已被下线。";
+        }
+
+        return "当前账号登录设备数量已达上限，本设备已被强制下线，请重新登录。";
+    }
+
+    public static string FormatValue(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? "未知" : value.Trim();
+
+    public static string FormatReason(string? reason)
+    {
+        if (string.IsNullOrWhiteSpace(reason))
+        {
+            return "未知";
+        }
+
+        return reason.Trim() switch
+        {
+            "DEVICE_LIMIT_EXCEEDED" => "设备数量超限",
+            _ => reason.Trim()
+        };
+    }
+
+    public static string FormatMaxActiveDevices(int? maxActiveDevices) =>
+        maxActiveDevices is null or <= 0 ? "未知" : $"{maxActiveDevices.Value} 台";
+
+    public static string FormatClientType(string? clientType)
+    {
+        if (string.IsNullOrWhiteSpace(clientType))
+        {
+            return "未知";
+        }
+
+        return clientType.Trim().ToUpperInvariant() switch
+        {
+            "WINDOWS" => "Windows",
+            "ANDROID" => "Android",
+            "IOS" => "iOS",
+            "WEB" => "Web",
+            _ => clientType.Trim()
+        };
     }
 }
 

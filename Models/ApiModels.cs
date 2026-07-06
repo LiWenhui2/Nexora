@@ -26,12 +26,34 @@ public sealed class UserProfile
     public int Id { get; set; }
     public string Email { get; set; } = "";
     public string? Nickname { get; set; }
+    public string? Avatar { get; set; }
     public string? AvatarUrl { get; set; }
+
+    public string? ResolvedAvatarUrl =>
+        !string.IsNullOrWhiteSpace(AvatarUrl) ? AvatarUrl : Avatar;
 }
 
 public sealed class UpdateNicknameRequest
 {
     public string Nickname { get; set; } = "";
+}
+
+public sealed class ResetPasswordRequest
+{
+    public string Email { get; set; } = "";
+    public string Code { get; set; } = "";
+    public string NewPassword { get; set; } = "";
+    public string ConfirmPassword { get; set; } = "";
+}
+
+public sealed class ClientDeviceInfo
+{
+    public string ClientType { get; set; } = "";
+    public string DeviceId { get; set; } = "";
+    public string DeviceName { get; set; } = "";
+    public string OsName { get; set; } = "";
+    public string OsVersion { get; set; } = "";
+    public string AppVersion { get; set; } = "";
 }
 
 public sealed class ServerSubscription

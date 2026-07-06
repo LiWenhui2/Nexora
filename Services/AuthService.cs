@@ -113,7 +113,17 @@ public sealed partial class AuthService
     public Task<bool> RefreshSessionAsync(CancellationToken cancellationToken = default) =>
         RefreshTokenInternalAsync(cancellationToken, forceRefresh: true);
 
-    public async Task<AuthResult> SendRegisterCodeAsync(string email, CancellationToken cancellationToken = default)
+    public async Task<AuthResult> SendRegisterCodeAsync(string email, CancellationToken cancellationToken = default) =>
+        await SendEmailCodeAsync(email, "register", "注册", cancellationToken);
+
+    public async Task<AuthResult> SendResetPasswordCodeAsync(string email, CancellationToken cancellationToken = default) =>
+        await SendEmailCodeAsync(email, "reset_password", "重置密码", cancellationToken);
+
+    private async Task<AuthResult> SendEmailCodeAsync(
+        string email,
+        string scene,
+        string sceneLabel,
+        CancellationToken cancellationToken)
     {
         if (!IsValidEmail(email))
         {
@@ -130,7 +140,7 @@ public sealed partial class AuthService
             var result = await _apiClient.PostPublicAsync<object?>(
                 _apiBaseUrl,
                 "auth/email/code",
-                new { email = email.Trim(), scene = "register" },
+                new { email = email.Trim(), scene },
                 cancellationToken);
 
             return result.IsSuccess
@@ -139,8 +149,65 @@ public sealed partial class AuthService
         }
         catch (Exception ex)
         {
-            DiagnosticLogService.Error("Failed to send register verification code.", ex);
+            DiagnosticLogService.Error($"Failed to send {sceneLabel} verification code.", ex);
             return AuthResult.Fail($"验证码发送失败：{ex.Message}");
+        }
+    }
+
+    public async Task<AuthResult> ResetPasswordAsync(
+        string email,
+        string code,
+        string newPassword,
+        string confirmPassword,
+        CancellationToken cancellationToken = default)
+    {
+        if (!IsValidEmail(email))
+        {
+            return AuthResult.Fail("请输入有效的邮箱地址。");
+        }
+
+        if (string.IsNullOrWhiteSpace(code))
+        {
+            return AuthResult.Fail("请输入邮箱验证码。");
+        }
+
+        if (!IsValidPassword(newPassword))
+        {
+            return AuthResult.Fail("密码至少 6 位，且必须同时包含字母和数字。");
+        }
+
+        if (!string.Equals(newPassword, confirmPassword, StringComparison.Ordinal))
+        {
+            return AuthResult.Fail("两次输入的密码不一致。");
+        }
+
+        if (!IsConfigured)
+        {
+            return AuthResult.Fail("认证服务尚未配置，暂时无法重置密码。");
+        }
+
+        try
+        {
+            var result = await _apiClient.PostPublicAsync<object?>(
+                _apiBaseUrl,
+                "auth/password/reset",
+                new ResetPasswordRequest
+                {
+                    Email = email.Trim(),
+                    Code = code.Trim(),
+                    NewPassword = newPassword,
+                    ConfirmPassword = confirmPassword
+                },
+                cancellationToken);
+
+            return result.IsSuccess
+                ? AuthResult.Ok(_session ?? new AuthSession(), result.Message)
+                : AuthResult.Fail(result.Message);
+        }
+        catch (Exception ex)
+        {
+            DiagnosticLogService.Error("Password reset failed.", ex);
+            return AuthResult.Fail($"重置密码失败：{ex.Message}");
         }
     }
 
@@ -231,7 +298,8 @@ public sealed partial class AuthService
                 new
                 {
                     email = email.Trim(),
-                    password
+                    password,
+                    device = ClientDeviceInfoProvider.CreatePayload()
                 },
                 cancellationToken);
 
@@ -242,7 +310,8 @@ public sealed partial class AuthService
 
             var session = CreateSession(result.Data);
             ApplySession(session);
-            return AuthResult.Ok(session, result.Message);
+            await RefreshProfileFromServerAsync(cancellationToken);
+            return AuthResult.Ok(_session!, result.Message);
         }
         catch (Exception ex)
         {
@@ -271,6 +340,45 @@ public sealed partial class AuthService
         }
 
         ClearSession();
+    }
+
+    public void ForceLogoutLocally()
+    {
+        ClearSession();
+    }
+
+    public async Task<bool> RefreshProfileFromServerAsync(CancellationToken cancellationToken = default)
+    {
+        if (_session is null || string.IsNullOrWhiteSpace(_session.RefreshToken) || !IsConfigured)
+        {
+            return false;
+        }
+
+        if (!await TryRestoreSessionAsync(cancellationToken))
+        {
+            return false;
+        }
+
+        try
+        {
+            var result = await _userProfileApi.GetProfileAsync(cancellationToken);
+            if (!result.IsSuccess || result.Data is null)
+            {
+                DiagnosticLogService.Warning(
+                    string.IsNullOrWhiteSpace(result.Message)
+                        ? "Failed to refresh user profile."
+                        : $"Failed to refresh user profile: {result.Message}");
+                return false;
+            }
+
+            ApplyProfileToSession(result.Data);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            DiagnosticLogService.Warning($"Failed to refresh user profile: {ex.Message}");
+            return false;
+        }
     }
 
     public async Task<AuthResult> UpdateProfileAsync(
@@ -426,7 +534,11 @@ public sealed partial class AuthService
             var result = await _apiClient.PostPublicAsync<TokenData>(
                 _apiBaseUrl,
                 "auth/token/refresh",
-                new { refreshToken = _session.RefreshToken },
+                new
+                {
+                    refreshToken = _session.RefreshToken,
+                    device = ClientDeviceInfoProvider.CreatePayload()
+                },
                 cancellationToken);
 
             if (!result.IsSuccess || result.Data is null)
@@ -490,7 +602,7 @@ public sealed partial class AuthService
         _session.UserId = profile.Id;
         _session.Email = profile.Email;
         _session.Nickname = profile.Nickname;
-        _session.AvatarUrl = profile.AvatarUrl;
+        _session.AvatarUrl = profile.ResolvedAvatarUrl;
         SaveSession(_session);
         AuthStateChanged?.Invoke();
     }

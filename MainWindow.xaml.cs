@@ -76,6 +76,7 @@ public partial class MainWindow : Window
     private CancellationTokenSource? _regionEnrichmentCancellation;
     private CancellationTokenSource? _websiteTestCancellation;
     private readonly DispatcherTimer _registerCodeCooldownTimer = new() { Interval = TimeSpan.FromSeconds(1) };
+    private readonly DispatcherTimer _forgotPasswordCodeCooldownTimer = new() { Interval = TimeSpan.FromSeconds(1) };
     private readonly DispatcherTimer _authRefreshTimer = new() { Interval = TimeSpan.FromMinutes(30) };
     private readonly DispatcherTimer _aboutRuntimeTimer = new() { Interval = TimeSpan.FromSeconds(1) };
     private readonly DispatcherTimer _backendWebSocketPingTimer = new() { Interval = TimeSpan.FromSeconds(30) };
@@ -83,6 +84,7 @@ public partial class MainWindow : Window
     private readonly DispatcherTimer _chatToastHideTimer = new() { Interval = TimeSpan.FromSeconds(6) };
     private BitmapImage? _chatMessageIcon;
     private AppUpdateRelease? _cachedLatestRelease;
+    private RequiredVersionUpdateDialog? _requiredVersionUpdateDialog;
     private string? _downloadedUpdatePath;
     private int? _downloadedReleaseId;
     private bool _isDownloadingAppUpdate;
@@ -90,8 +92,10 @@ public partial class MainWindow : Window
     private readonly DispatcherTimer _subscriptionGlobalRefreshTimer = new() { Interval = TimeSpan.FromSeconds(30) };
     private readonly Dictionary<string, DispatcherTimer> _subscriptionRefreshTimers = new(StringComparer.OrdinalIgnoreCase);
     private bool _subscriptionGlobalRefreshInProgress;
+    private bool _isHandlingForceLogout;
     private bool _authRefreshInProgress;
     private int _registerCodeCooldownSeconds;
+    private int _forgotPasswordCodeCooldownSeconds;
     private string? _subscriptionContextMenuName;
     private const string InvalidSubscriptionSuffix = "（已失效）";
 
@@ -116,12 +120,16 @@ public partial class MainWindow : Window
         _backendWebSocket.ChatMessageReceived += BackendWebSocket_ChatMessageReceived;
         _backendWebSocket.BroadcastReceived += BackendWebSocket_BroadcastReceived;
         _backendWebSocket.VersionUpdateReceived += BackendWebSocket_VersionUpdateReceived;
+        _backendWebSocket.UserProfileUpdated += BackendWebSocket_UserProfileUpdated;
+        _backendWebSocket.ForceLogoutReceived += BackendWebSocket_ForceLogoutReceived;
+        _backendWebSocket.Connected += BackendWebSocket_Connected;
         _backendWebSocket.ConnectionStateChanged += BackendWebSocket_ConnectionStateChanged;
         _backendWebSocket.Disconnected += BackendWebSocket_Disconnected;
         _backendWebSocketPingTimer.Tick += BackendWebSocketPingTimer_Tick;
         _backendWebSocketReconnectTimer.Tick += BackendWebSocketReconnectTimer_Tick;
         _chatToastHideTimer.Tick += ChatToastHideTimer_Tick;
         _registerCodeCooldownTimer.Tick += RegisterCodeCooldownTimer_Tick;
+        _forgotPasswordCodeCooldownTimer.Tick += ForgotPasswordCodeCooldownTimer_Tick;
         _authRefreshTimer.Tick += AuthRefreshTimer_Tick;
         _aboutRuntimeTimer.Tick += AboutRuntimeTimer_Tick;
         _subscriptionGlobalRefreshTimer.Tick += SubscriptionGlobalRefreshTimer_Tick;
@@ -144,6 +152,9 @@ public partial class MainWindow : Window
             _backendWebSocket.ChatMessageReceived -= BackendWebSocket_ChatMessageReceived;
             _backendWebSocket.BroadcastReceived -= BackendWebSocket_BroadcastReceived;
             _backendWebSocket.VersionUpdateReceived -= BackendWebSocket_VersionUpdateReceived;
+            _backendWebSocket.UserProfileUpdated -= BackendWebSocket_UserProfileUpdated;
+            _backendWebSocket.ForceLogoutReceived -= BackendWebSocket_ForceLogoutReceived;
+            _backendWebSocket.Connected -= BackendWebSocket_Connected;
             _backendWebSocket.ConnectionStateChanged -= BackendWebSocket_ConnectionStateChanged;
             _backendWebSocket.Disconnected -= BackendWebSocket_Disconnected;
             _backendWebSocketPingTimer.Stop();
@@ -157,6 +168,8 @@ public partial class MainWindow : Window
             _backendWebSocket.Dispose();
             _registerCodeCooldownTimer.Stop();
             _registerCodeCooldownTimer.Tick -= RegisterCodeCooldownTimer_Tick;
+            _forgotPasswordCodeCooldownTimer.Stop();
+            _forgotPasswordCodeCooldownTimer.Tick -= ForgotPasswordCodeCooldownTimer_Tick;
             _authRefreshTimer.Stop();
             _authRefreshTimer.Tick -= AuthRefreshTimer_Tick;
             _aboutRuntimeTimer.Stop();
@@ -557,6 +570,7 @@ public partial class MainWindow : Window
         if (await _authService.TryRestoreSessionAsync())
         {
             StartAuthRefreshTimer();
+            await _authService.RefreshProfileFromServerAsync();
             await SyncBackendWebSocketAsync();
             await CheckAppUpdateOnStartupAsync();
             try
@@ -1467,16 +1481,162 @@ public partial class MainWindow : Window
         Dispatcher.Invoke(() => UpdateChatConnectionStatus(state));
     }
 
+    private void BackendWebSocket_Connected()
+    {
+        Dispatcher.Invoke(() => _ = RefreshUserProfileFromServerAsync());
+    }
+
+    private void BackendWebSocket_UserProfileUpdated()
+    {
+        Dispatcher.Invoke(() => _ = RefreshUserProfileFromServerAsync());
+    }
+
+    private void BackendWebSocket_ForceLogoutReceived(ForceLogoutPushMessage payload)
+    {
+        var message = payload;
+        Dispatcher.BeginInvoke(DispatcherPriority.Normal, new Action(() =>
+        {
+            _ = HandleForceLogoutAsync(message);
+        }));
+    }
+
+    private async Task HandleForceLogoutAsync(ForceLogoutPushMessage payload)
+    {
+        if (_isHandlingForceLogout)
+        {
+            return;
+        }
+
+        _isHandlingForceLogout = true;
+        try
+        {
+            _backendWebSocketPingTimer.Stop();
+            _backendWebSocketReconnectTimer.Stop();
+            StopAuthRefreshTimer();
+
+            _authService.ForceLogoutLocally();
+            ClearCloudProfilesOnLogout();
+            ClearAuthMessages();
+            UpdateChatConnectionStatus("disconnected");
+            ShowForceLogoutOverlay(payload);
+
+            try
+            {
+                await _backendWebSocket.DisconnectAsync();
+            }
+            catch (Exception ex)
+            {
+                DiagnosticLogService.Warning($"Force logout disconnect failed: {ex.Message}");
+            }
+        }
+        finally
+        {
+            _isHandlingForceLogout = false;
+        }
+    }
+
+    private void ShowForceLogoutOverlay(ForceLogoutPushMessage payload)
+    {
+        if (ForceLogoutOverlay is null)
+        {
+            ShowLoginPage();
+            return;
+        }
+
+        ForceLogoutSummaryText.Text = payload.GetDisplayMessage();
+        ForceLogoutReasonText.Text = ForceLogoutPushMessage.FormatReason(payload.Reason);
+        ForceLogoutMaxActiveDevicesText.Text = ForceLogoutPushMessage.FormatMaxActiveDevices(payload.MaxActiveDevices);
+        ForceLogoutKickedSessionText.Text = ForceLogoutPushMessage.FormatValue(payload.ResolvedKickedSessionId);
+
+        var device = payload.NewLoginDevice;
+        ForceLogoutDeviceSessionText.Text = ForceLogoutPushMessage.FormatValue(device?.SessionId);
+        ForceLogoutDeviceClientTypeText.Text = ForceLogoutPushMessage.FormatClientType(device?.ClientType);
+        ForceLogoutDeviceNameText.Text = ForceLogoutPushMessage.FormatValue(device?.DeviceName);
+        ForceLogoutDeviceIdText.Text = ForceLogoutPushMessage.FormatValue(device?.DeviceId);
+        ForceLogoutDeviceOsText.Text = BuildForceLogoutOsText(device);
+        ForceLogoutDeviceAppVersionText.Text = ForceLogoutPushMessage.FormatValue(device?.AppVersion);
+        ForceLogoutDeviceIpText.Text = ForceLogoutPushMessage.FormatValue(device?.IpAddress);
+        ForceLogoutDeviceLocationText.Text = BuildForceLogoutLocationText(device);
+        ForceLogoutDeviceIspText.Text = ForceLogoutPushMessage.FormatValue(device?.Isp);
+
+        ForceLogoutOverlay.Visibility = Visibility.Visible;
+    }
+
+    private static string BuildForceLogoutOsText(ForceLogoutDeviceInfo? device)
+    {
+        if (device is null)
+        {
+            return "未知";
+        }
+
+        var hasOsName = !string.IsNullOrWhiteSpace(device.OsName);
+        var hasOsVersion = !string.IsNullOrWhiteSpace(device.OsVersion);
+        if (!hasOsName && !hasOsVersion)
+        {
+            return "未知";
+        }
+
+        if (hasOsName && hasOsVersion)
+        {
+            return $"{device.OsName!.Trim()} {device.OsVersion!.Trim()}";
+        }
+
+        return hasOsName ? device.OsName!.Trim() : device.OsVersion!.Trim();
+    }
+
+    private static string BuildForceLogoutLocationText(ForceLogoutDeviceInfo? device)
+    {
+        if (device is null)
+        {
+            return "未知";
+        }
+
+        var parts = new[]
+        {
+            device.Country,
+            device.Region,
+            device.City
+        }.Where(part => !string.IsNullOrWhiteSpace(part)).Select(part => part!.Trim()).ToArray();
+
+        return parts.Length == 0 ? "未知" : string.Join(" / ", parts);
+    }
+
+    private void HideForceLogoutOverlay()
+    {
+        if (ForceLogoutOverlay is not null)
+        {
+            ForceLogoutOverlay.Visibility = Visibility.Collapsed;
+        }
+    }
+
+    private void ForceLogoutConfirmButton_Click(object sender, RoutedEventArgs e)
+    {
+        HideForceLogoutOverlay();
+        ShowLoginPage();
+    }
+
+    private async Task RefreshUserProfileFromServerAsync()
+    {
+        if (!_authService.IsAuthenticated)
+        {
+            return;
+        }
+
+        await _authService.RefreshProfileFromServerAsync();
+    }
+
     private void BackendWebSocket_Disconnected()
     {
-        Dispatcher.Invoke(() =>
+        Dispatcher.BeginInvoke(DispatcherPriority.Normal, new Action(() =>
         {
             UpdateChatConnectionStatus("disconnected");
-            if (_authService.IsAuthenticated && !_backendWebSocketReconnectTimer.IsEnabled)
+            if (_isHandlingForceLogout || !_authService.IsAuthenticated || _backendWebSocketReconnectTimer.IsEnabled)
             {
-                _backendWebSocketReconnectTimer.Start();
+                return;
             }
-        });
+
+            _backendWebSocketReconnectTimer.Start();
+        }));
     }
 
     private async void BackendWebSocketReconnectTimer_Tick(object? sender, EventArgs e)
@@ -1653,7 +1813,7 @@ public partial class MainWindow : Window
             var email = _authService.CurrentEmail ?? "";
             SideAuthNicknameText.Text = !string.IsNullOrWhiteSpace(nickname) ? nickname : "已登录";
             SideAuthEmailText.Text = email;
-            SetSideAuthAvatar(_authService.CurrentAvatarUrl);
+            SetSideAuthAvatar(AvatarUrlHelper.ResolveUserAvatarUrl(_authService.CurrentAvatarUrl));
 
             if (SyncCloudSubscriptionsButton is not null)
             {
@@ -1673,14 +1833,14 @@ public partial class MainWindow : Window
         }
     }
 
-    private void SetSideAuthAvatar(string? avatarUrl)
+    private void SetSideAuthAvatar(string avatarUrl)
     {
         if (SideAuthAvatarImage is null || SideAuthAvatarPlaceholder is null)
         {
             return;
         }
 
-        if (string.IsNullOrWhiteSpace(avatarUrl))
+        if (!TryLoadAvatarBitmap(avatarUrl, out var bitmap))
         {
             SideAuthAvatarImage.Visibility = Visibility.Collapsed;
             SideAuthAvatarPlaceholder.Visibility = Visibility.Visible;
@@ -1688,22 +1848,32 @@ public partial class MainWindow : Window
             return;
         }
 
+        SideAuthAvatarImage.Source = bitmap;
+        SideAuthAvatarImage.Visibility = Visibility.Visible;
+        SideAuthAvatarPlaceholder.Visibility = Visibility.Collapsed;
+    }
+
+    private static bool TryLoadAvatarBitmap(string avatarUrl, out BitmapImage? bitmap)
+    {
+        bitmap = null;
+        if (string.IsNullOrWhiteSpace(avatarUrl))
+        {
+            return false;
+        }
+
         try
         {
-            var bitmap = new System.Windows.Media.Imaging.BitmapImage();
+            bitmap = new BitmapImage();
             bitmap.BeginInit();
-            bitmap.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
+            bitmap.CacheOption = BitmapCacheOption.OnLoad;
             bitmap.UriSource = new Uri(avatarUrl, UriKind.Absolute);
             bitmap.EndInit();
-            SideAuthAvatarImage.Source = bitmap;
-            SideAuthAvatarImage.Visibility = Visibility.Visible;
-            SideAuthAvatarPlaceholder.Visibility = Visibility.Collapsed;
+            return true;
         }
         catch
         {
-            SideAuthAvatarImage.Visibility = Visibility.Collapsed;
-            SideAuthAvatarPlaceholder.Visibility = Visibility.Visible;
-            SideAuthAvatarImage.Source = null;
+            bitmap = null;
+            return false;
         }
     }
 
@@ -1722,6 +1892,7 @@ public partial class MainWindow : Window
         }
 
         var dialog = new Dialogs.ProfileEditDialog(
+            _authService,
             _authService.CurrentEmail ?? "",
             _authService.CurrentNickname,
             _authService.CurrentAvatarUrl)
@@ -1829,14 +2000,23 @@ public partial class MainWindow : Window
 
     private void GoToRegisterPageButton_Click(object sender, RoutedEventArgs e) => ShowRegisterPage();
 
+    private void GoToForgotPasswordPageButton_Click(object sender, RoutedEventArgs e) => ShowForgotPasswordPage();
+
     private void GoToLoginPageButton_Click(object sender, RoutedEventArgs e) => ShowLoginPage();
+
+    private void HideAllAuthPages()
+    {
+        LoginPageScroll.Visibility = Visibility.Collapsed;
+        RegisterPageScroll.Visibility = Visibility.Collapsed;
+        ForgotPasswordPageScroll.Visibility = Visibility.Collapsed;
+    }
 
     private void ShowLoginPage()
     {
         ClearAuthMessages();
         AuthDialogOverlay.Visibility = Visibility.Visible;
+        HideAllAuthPages();
         LoginPageScroll.Visibility = Visibility.Visible;
-        RegisterPageScroll.Visibility = Visibility.Collapsed;
         LoginEmailBox.Focus();
     }
 
@@ -1844,16 +2024,30 @@ public partial class MainWindow : Window
     {
         ClearAuthMessages();
         AuthDialogOverlay.Visibility = Visibility.Visible;
-        LoginPageScroll.Visibility = Visibility.Collapsed;
+        HideAllAuthPages();
         RegisterPageScroll.Visibility = Visibility.Visible;
         RegisterEmailBox.Focus();
+    }
+
+    private void ShowForgotPasswordPage()
+    {
+        ClearAuthMessages();
+        AuthDialogOverlay.Visibility = Visibility.Visible;
+        HideAllAuthPages();
+        ForgotPasswordPageScroll.Visibility = Visibility.Visible;
+        if (string.IsNullOrWhiteSpace(ForgotPasswordEmailBox.Text) &&
+            !string.IsNullOrWhiteSpace(LoginEmailBox.Text))
+        {
+            ForgotPasswordEmailBox.Text = LoginEmailBox.Text.Trim();
+        }
+
+        ForgotPasswordEmailBox.Focus();
     }
 
     private void CloseAuthDialog()
     {
         AuthDialogOverlay.Visibility = Visibility.Collapsed;
-        LoginPageScroll.Visibility = Visibility.Collapsed;
-        RegisterPageScroll.Visibility = Visibility.Collapsed;
+        HideAllAuthPages();
     }
 
     private void CloseAuthDialogButton_Click(object sender, RoutedEventArgs e) => CloseAuthDialog();
@@ -1866,6 +2060,8 @@ public partial class MainWindow : Window
         LoginMessageText.Visibility = Visibility.Collapsed;
         RegisterMessageText.Text = "";
         RegisterMessageText.Visibility = Visibility.Collapsed;
+        ForgotPasswordMessageText.Text = "";
+        ForgotPasswordMessageText.Visibility = Visibility.Collapsed;
     }
 
     private void ShowAuthMessage(TextBlock target, string message, bool isSuccess = false)
@@ -1891,7 +2087,11 @@ public partial class MainWindow : Window
             LoginPasswordBox.Clear();
             ShowAuthMessage(LoginMessageText, result.Message, isSuccess: true);
             CloseAuthDialog();
-            await ReloadCloudSubscriptionsAsync(showSuccessMessage: false);
+            if (await ReloadCloudSubscriptionsAsync(showSuccessMessage: false))
+            {
+                await TryAutoStartProxyAfterLoginAsync();
+            }
+
             await CheckAppUpdateOnStartupAsync();
             ShowNodePage();
         }
@@ -1955,6 +2155,95 @@ public partial class MainWindow : Window
         SendRegisterCodeButton.Content = "发送验证码";
     }
 
+    private async void SendForgotPasswordCodeButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_forgotPasswordCodeCooldownSeconds > 0)
+        {
+            return;
+        }
+
+        SendForgotPasswordCodeButton.IsEnabled = false;
+        SendForgotPasswordCodeButton.Content = "发送中…";
+        try
+        {
+            var result = await _authService.SendResetPasswordCodeAsync(ForgotPasswordEmailBox.Text);
+            if (!result.Success)
+            {
+                ShowAuthMessage(ForgotPasswordMessageText, result.Message);
+                return;
+            }
+
+            ShowAuthMessage(ForgotPasswordMessageText, result.Message, isSuccess: true);
+            StartForgotPasswordCodeCooldown();
+        }
+        finally
+        {
+            if (_forgotPasswordCodeCooldownSeconds <= 0)
+            {
+                SendForgotPasswordCodeButton.IsEnabled = true;
+                SendForgotPasswordCodeButton.Content = "发送验证码";
+            }
+        }
+    }
+
+    private void StartForgotPasswordCodeCooldown()
+    {
+        _forgotPasswordCodeCooldownSeconds = 60;
+        SendForgotPasswordCodeButton.IsEnabled = false;
+        SendForgotPasswordCodeButton.Content = $"{_forgotPasswordCodeCooldownSeconds}s";
+        _forgotPasswordCodeCooldownTimer.Start();
+    }
+
+    private void ForgotPasswordCodeCooldownTimer_Tick(object? sender, EventArgs e)
+    {
+        _forgotPasswordCodeCooldownSeconds--;
+        if (_forgotPasswordCodeCooldownSeconds > 0)
+        {
+            SendForgotPasswordCodeButton.Content = $"{_forgotPasswordCodeCooldownSeconds}s";
+            return;
+        }
+
+        _forgotPasswordCodeCooldownTimer.Stop();
+        SendForgotPasswordCodeButton.IsEnabled = true;
+        SendForgotPasswordCodeButton.Content = "发送验证码";
+    }
+
+    private async void ForgotPasswordSubmitButton_Click(object sender, RoutedEventArgs e)
+    {
+        ForgotPasswordSubmitButton.IsEnabled = false;
+        ForgotPasswordSubmitButton.Content = "提交中…";
+        try
+        {
+            var result = await _authService.ResetPasswordAsync(
+                ForgotPasswordEmailBox.Text,
+                ForgotPasswordCodeBox.Text,
+                ForgotPasswordNewPasswordBox.Password,
+                ForgotPasswordConfirmPasswordBox.Password);
+            if (!result.Success)
+            {
+                ShowAuthMessage(ForgotPasswordMessageText, result.Message);
+                return;
+            }
+
+            var email = ForgotPasswordEmailBox.Text.Trim();
+            ForgotPasswordCodeBox.Clear();
+            ForgotPasswordNewPasswordBox.Clear();
+            ForgotPasswordConfirmPasswordBox.Clear();
+            LoginEmailBox.Text = email;
+            LoginPasswordBox.Clear();
+            ShowLoginPage();
+            ShowAuthMessage(
+                LoginMessageText,
+                string.IsNullOrWhiteSpace(result.Message) ? "密码已重置成功，请使用新密码登录。" : result.Message,
+                isSuccess: true);
+        }
+        finally
+        {
+            ForgotPasswordSubmitButton.IsEnabled = true;
+            ForgotPasswordSubmitButton.Content = "确认重置";
+        }
+    }
+
     private async void RegisterSubmitButton_Click(object sender, RoutedEventArgs e)
     {
         RegisterSubmitButton.IsEnabled = false;
@@ -1978,7 +2267,11 @@ public partial class MainWindow : Window
             RegisterCodeBox.Clear();
             ShowAuthMessage(RegisterMessageText, result.Message, isSuccess: true);
             CloseAuthDialog();
-            await ReloadCloudSubscriptionsAsync(showSuccessMessage: false);
+            if (await ReloadCloudSubscriptionsAsync(showSuccessMessage: false))
+            {
+                await TryAutoStartProxyAfterLoginAsync();
+            }
+
             await CheckAppUpdateOnStartupAsync();
             ShowNodePage();
         }
@@ -1989,12 +2282,12 @@ public partial class MainWindow : Window
         }
     }
 
-    private async Task ReloadCloudSubscriptionsAsync(bool showSuccessMessage)
+    private async Task<bool> ReloadCloudSubscriptionsAsync(bool showSuccessMessage)
     {
         if (!await _authService.TryRestoreSessionAsync())
         {
             SetCloudSubscriptionStatus("登录已过期，请重新登录。", isError: true);
-            return;
+            return false;
         }
 
         var fetchResult = await _authService.SubscriptionSync.FetchLoginSubscriptionsAsync();
@@ -2007,7 +2300,7 @@ public partial class MainWindow : Window
                         ? "无法连接云端，已保留本地节点。"
                         : $"无法连接云端，已保留本地节点：{fetchResult.ErrorMessage}",
                     isError: true);
-                return;
+                return false;
             }
         }
 
@@ -2038,7 +2331,7 @@ public partial class MainWindow : Window
             _settingsStore.Save(_settings);
             RefreshSubscriptionFilterOptions();
             SetCloudSubscriptionStatus("当前账号暂无云端订阅。");
-            return;
+            return false;
         }
 
         var items = await _authService.SubscriptionSync.LoadLoginSubscriptionsAsync(subscriptions);
@@ -2150,6 +2443,24 @@ public partial class MainWindow : Window
 
         SetCloudSubscriptionStatus(
             $"云端更新完成：获取 {subscriptions.Count} 个订阅，解析成功 {items.Count - invalidSubscriptions} 个，失效 {invalidSubscriptions} 个，共加载并测速 {loadedProfiles.Count} 个节点。");
+        return loadedProfiles.Count > 0;
+    }
+
+    private async Task TryAutoStartProxyAfterLoginAsync()
+    {
+        if (_profiles.Count == 0 || _coreService.IsRunning)
+        {
+            return;
+        }
+
+        try
+        {
+            await StartProxyAsync();
+        }
+        catch (Exception ex)
+        {
+            DiagnosticLogService.Warning($"Auto-start proxy after login failed: {ex.Message}");
+        }
     }
 
     private void ClearCloudProfilesOnLogout()
@@ -3291,9 +3602,9 @@ public partial class MainWindow : Window
             AnnouncementGuestPanel.Visibility = isAuthenticated ? Visibility.Collapsed : Visibility.Visible;
         }
 
-        if (AnnouncementListView is not null)
+        if (AnnouncementAuthenticatedPanel is not null)
         {
-            AnnouncementListView.Visibility = isAuthenticated ? Visibility.Visible : Visibility.Collapsed;
+            AnnouncementAuthenticatedPanel.Visibility = isAuthenticated ? Visibility.Visible : Visibility.Collapsed;
         }
 
         if (AnnouncementDetailView is not null && !isAuthenticated)
@@ -3397,7 +3708,11 @@ public partial class MainWindow : Window
             RestoreDownloadedUpdateState(_cachedLatestRelease?.Id);
             RenderVersionUpdateUi();
 
-            if (triggerAutoDownload && _cachedLatestRelease is not null && IsAppUpdateAvailable(_cachedLatestRelease))
+            if (_cachedLatestRelease is not null && IsRequiredVersionUpdate(_cachedLatestRelease))
+            {
+                await EnsureRequiredVersionUpdateDialogAsync(_cachedLatestRelease);
+            }
+            else if (triggerAutoDownload && _cachedLatestRelease is not null && IsAppUpdateAvailable(_cachedLatestRelease))
             {
                 await TryAutoDownloadVersionUpdateAsync(_cachedLatestRelease, promptWhenReady: true);
             }
@@ -3445,7 +3760,6 @@ public partial class MainWindow : Window
         VersionUpdateAvailableScroll.Visibility = Visibility.Visible;
         VersionUpdateBadge.Visibility = Visibility.Visible;
         VersionUpdateBadgeText.Text = $"可更新至 v{_cachedLatestRelease.VersionName}";
-        VersionUpdateForceBadge.Visibility = _cachedLatestRelease.ForceUpdate ? Visibility.Visible : Visibility.Collapsed;
         VersionUpdateTitleText.Text = _cachedLatestRelease.Title;
         VersionUpdateVersionLineText.Text = $"v{currentVersion} → v{_cachedLatestRelease.VersionName}（Build {_cachedLatestRelease.VersionCode}）";
         VersionUpdateContentText.Text = string.IsNullOrWhiteSpace(_cachedLatestRelease.Content)
@@ -3470,6 +3784,65 @@ public partial class MainWindow : Window
 
     private static bool IsAppUpdateAvailable(AppUpdateRelease release) =>
         AppVersionHelper.IsUpdateAvailable(release.VersionCode, release.VersionName);
+
+    private static bool IsRequiredVersionUpdate(AppUpdateRelease release) =>
+        release.ForceUpdate &&
+        release.File is not null &&
+        IsAppUpdateAvailable(release);
+
+    private async Task EnsureRequiredVersionUpdateDialogAsync(AppUpdateRelease release)
+    {
+        if (_requiredVersionUpdateDialog is { IsVisible: true })
+        {
+            return;
+        }
+
+        _requiredVersionUpdateDialog = new RequiredVersionUpdateDialog(release, AppVersionHelper.GetCurrentVersionName())
+        {
+            Owner = this
+        };
+        _requiredVersionUpdateDialog.ActionRequested += () => OnRequiredVersionUpdateAction(release);
+        _requiredVersionUpdateDialog.Closed += (_, _) =>
+        {
+            if (!_isExiting)
+            {
+                IsEnabled = true;
+            }
+
+            _requiredVersionUpdateDialog = null;
+        };
+
+        IsEnabled = false;
+        _requiredVersionUpdateDialog.Show();
+
+        var installReady = _downloadedReleaseId == release.Id &&
+                           !string.IsNullOrWhiteSpace(_downloadedUpdatePath) &&
+                           File.Exists(_downloadedUpdatePath);
+        if (installReady)
+        {
+            _requiredVersionUpdateDialog.SetInstallReadyWithoutDownload();
+            return;
+        }
+
+        await DownloadVersionUpdateAsync(release, promptWhenReady: false, requiredDialog: _requiredVersionUpdateDialog);
+    }
+
+    private void OnRequiredVersionUpdateAction(AppUpdateRelease release)
+    {
+        var installReady = _downloadedReleaseId == release.Id &&
+                           !string.IsNullOrWhiteSpace(_downloadedUpdatePath) &&
+                           File.Exists(_downloadedUpdatePath);
+        if (installReady)
+        {
+            LaunchDownloadedVersionInstaller();
+            return;
+        }
+
+        if (_requiredVersionUpdateDialog is not null)
+        {
+            _ = DownloadVersionUpdateAsync(release, promptWhenReady: false, requiredDialog: _requiredVersionUpdateDialog);
+        }
+    }
 
     private void SetVersionUpdateStatus(string message, bool isError = false)
     {
@@ -3526,7 +3899,10 @@ public partial class MainWindow : Window
         await DownloadVersionUpdateAsync(_cachedLatestRelease, promptWhenReady: true);
     }
 
-    private async Task DownloadVersionUpdateAsync(AppUpdateRelease release, bool promptWhenReady)
+    private async Task DownloadVersionUpdateAsync(
+        AppUpdateRelease release,
+        bool promptWhenReady,
+        RequiredVersionUpdateDialog? requiredDialog = null)
     {
         if (_isDownloadingAppUpdate)
         {
@@ -3545,12 +3921,13 @@ public partial class MainWindow : Window
         VersionUpdateProgressBar.IsIndeterminate = false;
         VersionUpdateProgressBar.Value = 0;
         SetVersionUpdateStatus($"正在下载 v{release.VersionName}...");
+        requiredDialog?.SetDownloading();
 
         try
         {
             var path = await _appUpdateDownloadService.DownloadAsync(
                 release,
-                new Progress<Services.DownloadProgress>(UpdateVersionDownloadProgress),
+                new Progress<Services.DownloadProgress>(progress => UpdateVersionDownloadProgress(progress, requiredDialog)),
                 token);
             _downloadedUpdatePath = path;
             _downloadedReleaseId = release.Id;
@@ -3559,8 +3936,9 @@ public partial class MainWindow : Window
             VersionUpdateInstallButton.IsEnabled = true;
             VersionUpdateDownloadButton.Content = "重新下载";
             RenderVersionUpdateUi();
+            requiredDialog?.SetReadyToInstall();
 
-            if (promptWhenReady)
+            if (promptWhenReady && requiredDialog is null)
             {
                 MessageBox.Show(
                     $"新版本 v{release.VersionName} 已下载完成。\n\n请前往「通知 → 版本更新」点击「立即安装」，或稍后在此页面安装。",
@@ -3572,10 +3950,12 @@ public partial class MainWindow : Window
         catch (OperationCanceledException)
         {
             SetVersionUpdateStatus("下载已取消。");
+            requiredDialog?.SetDownloadFailed("下载已取消，请重试。");
         }
         catch (Exception ex)
         {
             SetVersionUpdateStatus($"下载失败：{ex.Message}", isError: true);
+            requiredDialog?.SetDownloadFailed($"下载失败：{ex.Message}");
             DiagnosticLogService.Error("App update download failed.", ex);
         }
         finally
@@ -3589,7 +3969,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private void UpdateVersionDownloadProgress(Services.DownloadProgress progress)
+    private void UpdateVersionDownloadProgress(Services.DownloadProgress progress, RequiredVersionUpdateDialog? requiredDialog = null)
     {
         if (progress.TotalBytes > 0)
         {
@@ -3597,14 +3977,20 @@ public partial class MainWindow : Window
             VersionUpdateProgressBar.IsIndeterminate = false;
             VersionUpdateProgressBar.Value = percentage;
             VersionUpdateProgressText.Text = $"正在下载：{FormatBytes(progress.DownloadedBytes)} / {FormatBytes(progress.TotalBytes)}";
+            requiredDialog?.UpdateProgress(
+                percentage,
+                $"正在下载：{FormatBytes(progress.DownloadedBytes)} / {FormatBytes(progress.TotalBytes)}");
             return;
         }
 
         VersionUpdateProgressBar.IsIndeterminate = true;
         VersionUpdateProgressText.Text = $"正在下载：{FormatBytes(progress.DownloadedBytes)} / 未知大小";
+        requiredDialog?.UpdateProgress(0, $"正在下载：{FormatBytes(progress.DownloadedBytes)} / 未知大小");
     }
 
-    private void VersionUpdateInstallButton_Click(object sender, RoutedEventArgs e)
+    private void VersionUpdateInstallButton_Click(object sender, RoutedEventArgs e) => LaunchDownloadedVersionInstaller();
+
+    private void LaunchDownloadedVersionInstaller()
     {
         if (string.IsNullOrWhiteSpace(_downloadedUpdatePath) || !File.Exists(_downloadedUpdatePath))
         {
@@ -4241,52 +4627,51 @@ public partial class MainWindow : Window
                 : new SolidColorBrush(Color.FromRgb(220, 252, 231)),
             BorderBrush = new SolidColorBrush(isAdmin ? Color.FromRgb(191, 219, 254) : Color.FromRgb(134, 239, 172)),
             BorderThickness = new Thickness(1),
-            VerticalAlignment = VerticalAlignment.Top
+            VerticalAlignment = VerticalAlignment.Top,
+            ClipToBounds = true
         };
 
-        if (isAdmin)
+        var avatarUrl = AvatarUrlHelper.ResolveChatAvatarUrl(isAdmin, _authService.CurrentAvatarUrl);
+        if (TryLoadAvatarBitmap(avatarUrl, out var bitmap))
         {
-            host.Child = new TextBlock
+            host.Child = new System.Windows.Controls.Image
             {
-                Text = "管",
-                FontSize = 16,
-                FontWeight = FontWeights.Bold,
-                Foreground = new SolidColorBrush(Color.FromRgb(29, 78, 216)),
-                HorizontalAlignment = System.Windows.HorizontalAlignment.Center,
-                VerticalAlignment = VerticalAlignment.Center
+                Source = bitmap,
+                Stretch = Stretch.UniformToFill,
+                Width = 40,
+                Height = 40
             };
+            return host;
         }
-        else
+
+        host.Child = new TextBlock
         {
-            host.Child = new TextBlock
-            {
-                Text = GetUserAvatarInitial(),
-                FontSize = 16,
-                FontWeight = FontWeights.Bold,
-                Foreground = new SolidColorBrush(Color.FromRgb(22, 101, 52)),
-                HorizontalAlignment = System.Windows.HorizontalAlignment.Center,
-                VerticalAlignment = VerticalAlignment.Center
-            };
-        }
+            Text = isAdmin ? "管" : GetUserAvatarFallbackInitial(),
+            FontSize = 16,
+            FontWeight = FontWeights.Bold,
+            Foreground = new SolidColorBrush(isAdmin ? Color.FromRgb(29, 78, 216) : Color.FromRgb(22, 101, 52)),
+            HorizontalAlignment = System.Windows.HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center
+        };
 
         return host;
     }
 
     private string GetUserDisplayName()
     {
-        var email = _authService.CurrentEmail;
-        return string.IsNullOrWhiteSpace(email) ? "我" : email;
+        var nickname = _authService.CurrentNickname;
+        return string.IsNullOrWhiteSpace(nickname) ? "我" : nickname.Trim();
     }
 
-    private string GetUserAvatarInitial()
+    private string GetUserAvatarFallbackInitial()
     {
-        var email = _authService.CurrentEmail;
-        if (string.IsNullOrWhiteSpace(email))
+        var nickname = _authService.CurrentNickname;
+        if (!string.IsNullOrWhiteSpace(nickname))
         {
-            return "我";
+            return nickname.Trim()[0].ToString();
         }
 
-        return email.Trim()[0].ToString().ToUpperInvariant();
+        return "我";
     }
 
     private void ChatMessagesScroll_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
@@ -4622,7 +5007,7 @@ public partial class MainWindow : Window
         AboutRuntimeText.Text = FormatRuntimeClock();
     }
 
-    private void ShowPage(ScrollViewer page, System.Windows.Controls.Button? activeButton)
+    private void ShowPage(FrameworkElement page, System.Windows.Controls.Button? activeButton)
     {
         NodePageScroll.Visibility = Visibility.Collapsed;
         NewNodePageScroll.Visibility = Visibility.Collapsed;

@@ -1,6 +1,7 @@
 using System.IO;
 using System.Windows;
 using System.Windows.Media.Imaging;
+using NaiwaProxy.Services;
 using MessageBox = System.Windows.MessageBox;
 
 namespace NaiwaProxy.Dialogs;
@@ -8,6 +9,8 @@ namespace NaiwaProxy.Dialogs;
 public partial class ProfileEditDialog : Window
 {
     private const long MaxAvatarBytes = 5 * 1024 * 1024;
+    private readonly AuthService _authService;
+    private readonly string _email;
     private readonly string? _originalNickname;
     private string? _selectedAvatarFilePath;
 
@@ -19,13 +22,24 @@ public partial class ProfileEditDialog : Window
 
     public bool HasAvatarChange => !string.IsNullOrWhiteSpace(_selectedAvatarFilePath);
 
-    public ProfileEditDialog(string email, string? nickname, string? avatarUrl)
+    public ProfileEditDialog(AuthService authService, string email, string? nickname, string? avatarUrl)
     {
         InitializeComponent();
+        _authService = authService;
+        _email = email;
         _originalNickname = nickname;
         EmailText.Text = email;
         NicknameBox.Text = nickname ?? "";
         LoadAvatarPreview(avatarUrl);
+    }
+
+    private void ResetPasswordButton_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new ResetPasswordDialog(_authService, _email)
+        {
+            Owner = this
+        };
+        dialog.ShowDialog();
     }
 
     private void ChooseAvatarButton_Click(object sender, RoutedEventArgs e)

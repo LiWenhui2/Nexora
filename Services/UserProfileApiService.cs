@@ -13,6 +13,9 @@ public sealed class UserProfileApiService
         _getBaseUrl = getBaseUrl;
     }
 
+    public Task<ApiResult<UserProfile>> GetProfileAsync(CancellationToken cancellationToken = default) =>
+        _apiClient.GetAsync<UserProfile>(_getBaseUrl(), "user/profile", cancellationToken: cancellationToken);
+
     public Task<ApiResult<UserProfile>> UpdateNicknameAsync(string nickname, CancellationToken cancellationToken = default) =>
         _apiClient.PatchAsync<UserProfile>(
             _getBaseUrl(),
