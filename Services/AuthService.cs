@@ -545,6 +545,8 @@ public sealed partial class AuthService
             {
                 if (ShouldClearSessionAfterRefreshFailure(result.Code))
                 {
+                    DiagnosticLogService.Warning(
+                        $"Token refresh rejected by server (code={result.Code}): {result.Message}");
                     ClearSession();
                 }
                 else

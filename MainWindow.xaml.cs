@@ -1577,17 +1577,9 @@ public partial class MainWindow : Window
         {
             _backendWebSocketPingTimer.Stop();
             _backendWebSocketReconnectTimer.Stop();
-            StopAuthRefreshTimer();
 
-            _authService.ForceLogoutLocally();
-            ClearCloudProfilesOnLogout();
-            UpdateAuthSidebar();
-            _chatMessages.Clear();
-            _chatMessageIds.Clear();
-            _chatFileLocalPaths.Clear();
-            UpdateChatConnectionStatus("disconnected");
-            ShowLoginPage();
-            ShowAuthMessage(LoginMessageText, payload.GetDisplayMessage());
+            DiagnosticLogService.Info(
+                $"TOKEN_EXPIRED received. message={payload.GetDisplayMessage()} — attempting token refresh before logout.");
 
             try
             {
@@ -1597,6 +1589,27 @@ public partial class MainWindow : Window
             {
                 DiagnosticLogService.Warning($"Token expired disconnect failed: {ex.Message}");
             }
+
+            if (await _authService.RefreshSessionAsync())
+            {
+                DiagnosticLogService.Info("TOKEN_EXPIRED recovered via refresh token.");
+                SyncAuthRefreshTimer();
+                UpdateAuthSidebar();
+                await SyncBackendWebSocketAsync();
+                return;
+            }
+
+            DiagnosticLogService.Warning("TOKEN_EXPIRED refresh failed; clearing local session.");
+            StopAuthRefreshTimer();
+            _authService.ForceLogoutLocally();
+            ClearCloudProfilesOnLogout();
+            UpdateAuthSidebar();
+            _chatMessages.Clear();
+            _chatMessageIds.Clear();
+            _chatFileLocalPaths.Clear();
+            UpdateChatConnectionStatus("disconnected");
+            ShowLoginPage();
+            ShowAuthMessage(LoginMessageText, payload.GetDisplayMessage());
         }
         finally
         {
@@ -4997,7 +5010,7 @@ public partial class MainWindow : Window
                 OpenChatAttachmentUrl(fileUrl);
             }
         };
-        AttachChatMessageContextMenu(imageHost, message, copyImage: true);
+        AttachChatMessageContextMenu(imageHost, message, copyImage: true, allowSaveAs: true);
         return imageHost;
     }
 
@@ -5105,7 +5118,7 @@ public partial class MainWindow : Window
 
         card.Child = layout;
         card.MouseLeftButtonUp += (_, _) => OpenChatFileLocally(message);
-        AttachChatMessageContextMenu(card, message, copyImage: false);
+        AttachChatMessageContextMenu(card, message, copyImage: false, allowSaveAs: true);
         return card;
     }
 
@@ -5179,7 +5192,7 @@ public partial class MainWindow : Window
         Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
     }
 
-    private void AttachChatMessageContextMenu(FrameworkElement target, ChatMessage message, bool copyImage)
+    private void AttachChatMessageContextMenu(FrameworkElement target, ChatMessage message, bool copyImage, bool allowSaveAs = false)
     {
         var menu = new System.Windows.Controls.ContextMenu
         {
@@ -5207,7 +5220,156 @@ public partial class MainWindow : Window
             Clipboard.SetText(text);
         };
         menu.Items.Add(copyItem);
+
+        if (allowSaveAs)
+        {
+            menu.Items.Add(new Separator());
+            var saveAsItem = new System.Windows.Controls.MenuItem
+            {
+                Header = "另存为",
+                Style = (Style)FindResource("ChatContextMenuItemStyle")
+            };
+            saveAsItem.Click += (_, _) => SaveChatAttachmentAs(message);
+            menu.Items.Add(saveAsItem);
+        }
+
         target.ContextMenu = menu;
+    }
+
+    private void SaveChatAttachmentAs(ChatMessage message)
+    {
+        var isImage = ChatMessageHelper.IsImageAttachment(message);
+        var dialog = new SaveFileDialog
+        {
+            Title = "另存为",
+            FileName = GetChatAttachmentSaveFileName(message),
+            Filter = isImage
+                ? "PNG 图片|*.png|JPEG 图片|*.jpg;*.jpeg|WebP 图片|*.webp|BMP 图片|*.bmp|所有文件|*.*"
+                : "所有文件|*.*"
+        };
+        if (dialog.ShowDialog() != true)
+        {
+            return;
+        }
+
+        _ = SaveChatAttachmentToPathAsync(message, dialog.FileName);
+    }
+
+    private static string GetChatAttachmentSaveFileName(ChatMessage message)
+    {
+        if (!string.IsNullOrWhiteSpace(message.FileName))
+        {
+            return Path.GetFileName(message.FileName.Trim());
+        }
+
+        return ChatMessageHelper.IsImageAttachment(message)
+            ? $"image-{message.Id}.png"
+            : $"file-{message.Id}";
+    }
+
+    private async Task SaveChatAttachmentToPathAsync(ChatMessage message, string targetPath)
+    {
+        try
+        {
+            if (ChatMessageHelper.IsImageAttachment(message))
+            {
+                await SaveChatImageToPathAsync(message, targetPath);
+            }
+            else
+            {
+                await SaveChatFileToPathAsync(message, targetPath);
+            }
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"保存失败：{ex.Message}", "Nexora", MessageBoxButton.OK, MessageBoxImage.Warning);
+            DiagnosticLogService.Warning($"Failed to save chat attachment: {ex.Message}");
+        }
+    }
+
+    private async Task SaveChatImageToPathAsync(ChatMessage message, string targetPath)
+    {
+        var useRawDownload = Path.GetExtension(targetPath).Equals(".webp", StringComparison.OrdinalIgnoreCase);
+        if (!useRawDownload &&
+            !string.IsNullOrWhiteSpace(message.FileUrl) &&
+            TryLoadAvatarBitmap(message.FileUrl, out var bitmap) &&
+            bitmap is not null)
+        {
+            SaveBitmapSourceToFile(bitmap, targetPath);
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(message.FileUrl))
+        {
+            throw new InvalidOperationException("无法获取图片地址。");
+        }
+
+        using var response = await DirectHttpClientFactory.Shared.GetAsync(message.FileUrl.Trim());
+        response.EnsureSuccessStatusCode();
+        await using var source = await response.Content.ReadAsStreamAsync();
+        await using var target = File.Create(targetPath);
+        await source.CopyToAsync(target);
+    }
+
+    private async Task SaveChatFileToPathAsync(ChatMessage message, string targetPath)
+    {
+        var sourcePath = await GetChatAttachmentLocalPathAsync(message);
+        if (string.IsNullOrWhiteSpace(sourcePath) || !File.Exists(sourcePath))
+        {
+            throw new InvalidOperationException("文件尚未下载完成，请稍后再试。");
+        }
+
+        var directory = Path.GetDirectoryName(targetPath);
+        if (!string.IsNullOrWhiteSpace(directory))
+        {
+            Directory.CreateDirectory(directory);
+        }
+
+        File.Copy(sourcePath, targetPath, overwrite: true);
+    }
+
+    private async Task<string?> GetChatAttachmentLocalPathAsync(ChatMessage message)
+    {
+        if (_chatFileLocalPaths.TryGetValue(message.Id, out var cachedPath) && File.Exists(cachedPath))
+        {
+            return cachedPath;
+        }
+
+        var expectedPath = _chatAttachmentDownloadService.GetLocalPath(message);
+        if (File.Exists(expectedPath))
+        {
+            _chatFileLocalPaths[message.Id] = expectedPath;
+            return expectedPath;
+        }
+
+        var downloadedPath = await _chatAttachmentDownloadService.EnsureDownloadedAsync(message);
+        if (!string.IsNullOrWhiteSpace(downloadedPath) && File.Exists(downloadedPath))
+        {
+            _chatFileLocalPaths[message.Id] = downloadedPath;
+        }
+
+        return downloadedPath;
+    }
+
+    private static void SaveBitmapSourceToFile(BitmapSource bitmap, string targetPath)
+    {
+        BitmapEncoder encoder = Path.GetExtension(targetPath).ToLowerInvariant() switch
+        {
+            ".jpg" or ".jpeg" => new JpegBitmapEncoder(),
+            ".bmp" => new BmpBitmapEncoder(),
+            ".gif" => new GifBitmapEncoder(),
+            ".webp" or ".png" or _ => new PngBitmapEncoder()
+        };
+
+        encoder.Frames.Add(BitmapFrame.Create(bitmap));
+        var directory = Path.GetDirectoryName(targetPath);
+        if (!string.IsNullOrWhiteSpace(directory))
+        {
+            Directory.CreateDirectory(directory);
+        }
+
+        using var stream = File.Create(targetPath);
+        encoder.Save(stream);
     }
 
     private void CopyChatImageToClipboard(ChatMessage message)
