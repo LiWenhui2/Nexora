@@ -1,0 +1,20 @@
+---
+description: After code changes, build and package the Windows installer automatically
+alwaysApply: true
+---
+
+# Auto Package After Code Changes
+
+When modifying application source code in this repository (C#, XAML, assets used by the app, installer script, etc.):
+
+1. After changes compile successfully, **always** build the installable exe without asking the user.
+2. Run publish + Inno Setup in sequence:
+
+```powershell
+dotnet publish "NaiwaProxy.csproj" -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o "publish\win-x64"
+& "C:\Program Files\InnoSetup6\ISCC.exe" "installer\NaiwaProxy.iss"
+```
+
+3. Tell the user the output path: `dist/Nexora-Setup-{version}.exe` (read version from `NaiwaProxy.csproj` or `installer/NaiwaProxy.iss`).
+
+Skip packaging only when the user explicitly says not to, or when changes are docs-only / non-buildable and cannot affect the exe.

@@ -1,5 +1,5 @@
 #define MyAppName "Nexora"
-#define MyAppVersion "1.1.6"
+#define MyAppVersion "1.1.7"
 #define MyAppPublisher "LiWenhui2"
 #define MyAppExeName "Nexora.exe"
 
@@ -19,6 +19,9 @@ SetupIconFile=..\assets\app-icon.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
+CloseApplications=yes
+AppMutex=Local\Nexora.Desktop.SingleInstance
+SetupMutex=Local\Nexora.Setup.InProgress
 
 [Files]
 Source: "..\publish\win-x64\*"; DestDir: "{app}"; Excludes: "*.log"; Flags: ignoreversion recursesubdirs createallsubdirs
@@ -32,3 +35,27 @@ Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription:
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "Launch {#MyAppName}"; Flags: nowait postinstall skipifsilent
+
+[Code]
+procedure ForceSetupVisible;
+begin
+  try
+    BringToFrontAndRestore;
+  except
+  end;
+end;
+
+procedure InitializeWizard;
+begin
+  ForceSetupVisible;
+end;
+
+procedure CurPageChanged(CurPageID: Integer);
+begin
+  ForceSetupVisible;
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  ForceSetupVisible;
+end;

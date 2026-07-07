@@ -114,7 +114,15 @@ public sealed class ChatMessage
     public int ConversationId { get; set; }
     public string SenderType { get; set; } = "";
     public int SenderId { get; set; }
-    public string Content { get; set; } = "";
+    public string? MessageType { get; set; }
+    public string? AttachmentType { get; set; }
+    public string? Content { get; set; }
+    public string? FileUrl { get; set; }
+    public string? FileObjectKey { get; set; }
+    public string? FileName { get; set; }
+    public long? FileSize { get; set; }
+    public string? FileContentType { get; set; }
+    public string? FileSha256 { get; set; }
     public string CreatedAt { get; set; } = "";
 
     public bool IsFromAdmin => string.Equals(SenderType, "ADMIN", StringComparison.OrdinalIgnoreCase);

@@ -1,0 +1,27 @@
+<Window x:Class="NaiwaProxy.Dialogs.ChatImagePreviewDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="查看图片"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        WindowState="Maximized"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize"
+        ShowInTaskbar="False"
+        KeyDown="Window_KeyDown">
+    <Grid Background="#B3000000" MouseLeftButtonDown="Backdrop_MouseDown">
+        <ScrollViewer HorizontalScrollBarVisibility="Auto"
+                      VerticalScrollBarVisibility="Auto"
+                      HorizontalAlignment="Center"
+                      VerticalAlignment="Center"
+                      Margin="48">
+            <Image x:Name="PreviewImage"
+                   Stretch="Uniform"
+                   MaxWidth="1200"
+                   MaxHeight="900"
+                   RenderOptions.BitmapScalingMode="HighQuality"
+                   MouseLeftButtonDown="Image_MouseLeftButtonDown"/>
+        </ScrollViewer>
+    </Grid>
+</Window>

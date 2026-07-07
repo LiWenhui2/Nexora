@@ -38,14 +38,19 @@ public partial class MainWindow : Window
     private const double AboutTwoColumnBreakpoint = 980;
     private static readonly DateTime AppStartTime = DateTime.Now;
     private const string ProjectUrl = "https://github.com/LiWenhui2/NaiwaProxy";
+    private const string DefaultChatBackgroundResource = "assets/chat/chat-bg-default.png";
     private readonly SettingsStore _settingsStore = new();
     private readonly CoreService _coreService = new();
     private readonly AuthService _authService = new();
     private readonly BackendWebSocketService _backendWebSocket;
     private readonly AppUpdateDownloadService _appUpdateDownloadService = new();
+    private readonly ChatAttachmentDownloadService _chatAttachmentDownloadService = new();
+    private readonly ChatMessageStore _chatMessageStore = new();
+    private readonly Dictionary<int, string> _chatFileLocalPaths = [];
     private readonly ObservableCollection<NotificationItem> _announcements = [];
     private readonly List<ChatMessage> _chatMessages = [];
     private readonly HashSet<int> _chatMessageIds = [];
+    private string? _pendingChatAttachmentPath;
     private readonly ObservableCollection<VmessProfile> _profiles = [];
     private readonly ObservableCollection<WebsiteTestItem> _websiteTests = [];
     private readonly DispatcherTimer _trafficTimer = new() { Interval = TimeSpan.FromSeconds(1) };
@@ -93,6 +98,7 @@ public partial class MainWindow : Window
     private readonly Dictionary<string, DispatcherTimer> _subscriptionRefreshTimers = new(StringComparer.OrdinalIgnoreCase);
     private bool _subscriptionGlobalRefreshInProgress;
     private bool _isHandlingForceLogout;
+    private bool _isHandlingTokenExpired;
     private bool _authRefreshInProgress;
     private int _registerCodeCooldownSeconds;
     private int _forgotPasswordCodeCooldownSeconds;
@@ -122,6 +128,8 @@ public partial class MainWindow : Window
         _backendWebSocket.VersionUpdateReceived += BackendWebSocket_VersionUpdateReceived;
         _backendWebSocket.UserProfileUpdated += BackendWebSocket_UserProfileUpdated;
         _backendWebSocket.ForceLogoutReceived += BackendWebSocket_ForceLogoutReceived;
+        _backendWebSocket.TokenExpiredReceived += BackendWebSocket_TokenExpiredReceived;
+        _backendWebSocket.HeartbeatTimeoutReceived += BackendWebSocket_HeartbeatTimeoutReceived;
         _backendWebSocket.Connected += BackendWebSocket_Connected;
         _backendWebSocket.ConnectionStateChanged += BackendWebSocket_ConnectionStateChanged;
         _backendWebSocket.Disconnected += BackendWebSocket_Disconnected;
@@ -154,6 +162,8 @@ public partial class MainWindow : Window
             _backendWebSocket.VersionUpdateReceived -= BackendWebSocket_VersionUpdateReceived;
             _backendWebSocket.UserProfileUpdated -= BackendWebSocket_UserProfileUpdated;
             _backendWebSocket.ForceLogoutReceived -= BackendWebSocket_ForceLogoutReceived;
+            _backendWebSocket.TokenExpiredReceived -= BackendWebSocket_TokenExpiredReceived;
+            _backendWebSocket.HeartbeatTimeoutReceived -= BackendWebSocket_HeartbeatTimeoutReceived;
             _backendWebSocket.Connected -= BackendWebSocket_Connected;
             _backendWebSocket.ConnectionStateChanged -= BackendWebSocket_ConnectionStateChanged;
             _backendWebSocket.Disconnected -= BackendWebSocket_Disconnected;
@@ -673,6 +683,7 @@ public partial class MainWindow : Window
         UpdateNodeStatusBar(selected);
         ConfigureAuthService();
         ApplyTheme();
+        ApplyChatBackground();
         UpdateAuthSidebar();
         UpdateNotificationPagesAuthState();
         UpdateSidebarStatus();
@@ -1467,6 +1478,7 @@ public partial class MainWindow : Window
             UpdateChatConnectionStatus("disconnected");
             _chatMessages.Clear();
             _chatMessageIds.Clear();
+            _chatFileLocalPaths.Clear();
             if (ChatMessagesPanel is not null)
             {
                 ChatMessagesPanel.Children.Clear();
@@ -1500,9 +1512,27 @@ public partial class MainWindow : Window
         }));
     }
 
+    private void BackendWebSocket_TokenExpiredReceived(TokenExpiredPushMessage payload)
+    {
+        var message = payload;
+        Dispatcher.BeginInvoke(DispatcherPriority.Normal, new Action(() =>
+        {
+            _ = HandleTokenExpiredAsync(message);
+        }));
+    }
+
+    private void BackendWebSocket_HeartbeatTimeoutReceived(HeartbeatTimeoutPushMessage payload)
+    {
+        var message = payload;
+        Dispatcher.BeginInvoke(DispatcherPriority.Normal, new Action(() =>
+        {
+            _ = HandleHeartbeatTimeoutAsync(message);
+        }));
+    }
+
     private async Task HandleForceLogoutAsync(ForceLogoutPushMessage payload)
     {
-        if (_isHandlingForceLogout)
+        if (_isHandlingForceLogout || _isHandlingTokenExpired)
         {
             return;
         }
@@ -1533,6 +1563,73 @@ public partial class MainWindow : Window
         {
             _isHandlingForceLogout = false;
         }
+    }
+
+    private async Task HandleTokenExpiredAsync(TokenExpiredPushMessage payload)
+    {
+        if (_isHandlingTokenExpired || _isHandlingForceLogout)
+        {
+            return;
+        }
+
+        _isHandlingTokenExpired = true;
+        try
+        {
+            _backendWebSocketPingTimer.Stop();
+            _backendWebSocketReconnectTimer.Stop();
+            StopAuthRefreshTimer();
+
+            _authService.ForceLogoutLocally();
+            ClearCloudProfilesOnLogout();
+            UpdateAuthSidebar();
+            _chatMessages.Clear();
+            _chatMessageIds.Clear();
+            _chatFileLocalPaths.Clear();
+            UpdateChatConnectionStatus("disconnected");
+            ShowLoginPage();
+            ShowAuthMessage(LoginMessageText, payload.GetDisplayMessage());
+
+            try
+            {
+                await _backendWebSocket.DisconnectAsync();
+            }
+            catch (Exception ex)
+            {
+                DiagnosticLogService.Warning($"Token expired disconnect failed: {ex.Message}");
+            }
+        }
+        finally
+        {
+            _isHandlingTokenExpired = false;
+        }
+    }
+
+    private async Task HandleHeartbeatTimeoutAsync(HeartbeatTimeoutPushMessage payload)
+    {
+        if (_isHandlingForceLogout || _isHandlingTokenExpired || !_authService.IsAuthenticated)
+        {
+            return;
+        }
+
+        _backendWebSocketPingTimer.Stop();
+        _backendWebSocketReconnectTimer.Stop();
+        UpdateChatConnectionStatus("connecting", payload.GetDisplayMessage());
+
+        try
+        {
+            await _backendWebSocket.DisconnectAsync();
+        }
+        catch (Exception ex)
+        {
+            DiagnosticLogService.Warning($"Heartbeat timeout disconnect failed: {ex.Message}");
+        }
+
+        if (!_authService.IsAuthenticated || _isHandlingForceLogout || _isHandlingTokenExpired)
+        {
+            return;
+        }
+
+        await SyncBackendWebSocketAsync();
     }
 
     private void ShowForceLogoutOverlay(ForceLogoutPushMessage payload)
@@ -1630,7 +1727,7 @@ public partial class MainWindow : Window
         Dispatcher.BeginInvoke(DispatcherPriority.Normal, new Action(() =>
         {
             UpdateChatConnectionStatus("disconnected");
-            if (_isHandlingForceLogout || !_authService.IsAuthenticated || _backendWebSocketReconnectTimer.IsEnabled)
+            if (_isHandlingForceLogout || _isHandlingTokenExpired || !_authService.IsAuthenticated || _backendWebSocketReconnectTimer.IsEnabled)
             {
                 return;
             }
@@ -1650,28 +1747,8 @@ public partial class MainWindow : Window
         await SyncBackendWebSocketAsync();
     }
 
-    private void UpdateChatConnectionStatus(string state)
+    private void UpdateChatConnectionStatus(string state, string? statusMessage = null)
     {
-        if (ChatConnectionStatusText is null || ChatConnectionDot is null)
-        {
-            return;
-        }
-
-        switch (state)
-        {
-            case "connected":
-                ChatConnectionStatusText.Text = "实时连接已建立";
-                ChatConnectionDot.Fill = new SolidColorBrush(Color.FromRgb(34, 197, 94));
-                break;
-            case "connecting":
-                ChatConnectionStatusText.Text = "正在连接...";
-                ChatConnectionDot.Fill = new SolidColorBrush(Color.FromRgb(245, 158, 11));
-                break;
-            default:
-                ChatConnectionStatusText.Text = "未连接";
-                ChatConnectionDot.Fill = new SolidColorBrush(Color.FromRgb(148, 163, 184));
-                break;
-        }
     }
 
     private async void BackendWebSocketPingTimer_Tick(object? sender, EventArgs e)
@@ -3582,6 +3659,7 @@ public partial class MainWindow : Window
         UpdateNotificationPagesAuthState();
         ShowPage(ContactAdminPageScroll, ContactAdminNavButton);
         HideChatMessageToast(animate: false);
+        ApplyChatBackground();
         if (_authService.IsAuthenticated)
         {
             _ = LoadChatMessagesAsync();
@@ -3998,13 +4076,44 @@ public partial class MainWindow : Window
             return;
         }
 
-        Process.Start(new ProcessStartInfo
+        LaunchInstallerAndExit(_downloadedUpdatePath);
+    }
+
+    private void LaunchInstallerAndExit(string installerPath)
+    {
+        try
         {
-            FileName = _downloadedUpdatePath,
-            UseShellExecute = true
-        });
+            foreach (Window window in Application.Current.Windows)
+            {
+                window.Hide();
+            }
+        }
+        catch
+        {
+        }
+
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = installerPath,
+                Arguments = "/CLOSEAPPLICATIONS",
+                UseShellExecute = true
+            });
+        }
+        catch (Exception ex)
+        {
+            SetVersionUpdateStatus($"无法启动安装程序：{ex.Message}", isError: true);
+            DiagnosticLogService.Warning($"Failed to launch installer: {ex.Message}");
+            return;
+        }
+
         _isExiting = true;
-        Application.Current.Shutdown();
+        Dispatcher.BeginInvoke(async () =>
+        {
+            await Task.Delay(1000);
+            Application.Current.Shutdown();
+        }, DispatcherPriority.Background);
     }
 
     private void VersionUpdateOpenFolderButton_Click(object sender, RoutedEventArgs e)
@@ -4469,6 +4578,90 @@ public partial class MainWindow : Window
         }
     }
 
+    private void ApplyChatBackground()
+    {
+        if (ChatBackgroundImage is null)
+        {
+            return;
+        }
+
+        BitmapImage? bitmap = null;
+        if (!string.IsNullOrWhiteSpace(_settings.ChatBackgroundImagePath) &&
+            File.Exists(_settings.ChatBackgroundImagePath))
+        {
+            bitmap = TryLoadBitmapFromFile(_settings.ChatBackgroundImagePath);
+        }
+
+        ChatBackgroundImage.Source = bitmap ?? TryLoadAppBitmap(DefaultChatBackgroundResource);
+    }
+
+    private static BitmapImage? TryLoadBitmapFromFile(string filePath)
+    {
+        if (!File.Exists(filePath))
+        {
+            return null;
+        }
+
+        try
+        {
+            var bitmap = new BitmapImage();
+            bitmap.BeginInit();
+            bitmap.CacheOption = BitmapCacheOption.OnLoad;
+            bitmap.UriSource = new Uri(Path.GetFullPath(filePath), UriKind.Absolute);
+            bitmap.EndInit();
+            bitmap.Freeze();
+            return bitmap;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private void ChatBackgroundButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (ChatBackgroundPopup is null)
+        {
+            return;
+        }
+
+        ChatBackgroundPopup.IsOpen = !ChatBackgroundPopup.IsOpen;
+    }
+
+    private void ChatBackgroundChooseMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        if (ChatBackgroundPopup is not null)
+        {
+            ChatBackgroundPopup.IsOpen = false;
+        }
+
+        var dialog = new OpenFileDialog
+        {
+            Title = "选择聊天背景图片",
+            Filter = "图片文件|*.jpg;*.jpeg;*.png;*.webp;*.bmp"
+        };
+        if (dialog.ShowDialog() != true)
+        {
+            return;
+        }
+
+        _settings.ChatBackgroundImagePath = dialog.FileName;
+        _settingsStore.Save(_settings);
+        ApplyChatBackground();
+    }
+
+    private void ChatBackgroundResetMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        if (ChatBackgroundPopup is not null)
+        {
+            ChatBackgroundPopup.IsOpen = false;
+        }
+
+        _settings.ChatBackgroundImagePath = null;
+        _settingsStore.Save(_settings);
+        ApplyChatBackground();
+    }
+
     private async Task LoadChatMessagesAsync()
     {
         if (!_authService.IsAuthenticated)
@@ -4484,36 +4677,106 @@ public partial class MainWindow : Window
             return;
         }
 
-        SetContactAdminStatus("正在加载消息...");
+        var userId = _authService.CurrentSession?.UserId ?? 0;
+        if (userId <= 0)
+        {
+            return;
+        }
+
+        var cachedMessages = _chatMessageStore.Load(userId);
+        var hadCache = cachedMessages.Count > 0;
+        if (hadCache)
+        {
+            RestoreChatMessages(cachedMessages);
+            ScrollChatToEnd(force: true);
+            SetContactAdminStatus("");
+        }
+        else
+        {
+            SetContactAdminStatus("正在加载消息...");
+        }
+
+        await SyncChatMessagesFromCloudAsync(userId, hadCache);
+    }
+
+    private void RestoreChatMessages(IReadOnlyList<ChatMessage> messages)
+    {
+        _chatMessages.Clear();
+        _chatMessageIds.Clear();
+        _chatFileLocalPaths.Clear();
+        ChatMessagesPanel.Children.Clear();
+        foreach (var message in messages.OrderBy(m => m.CreatedAt))
+        {
+            AppendChatMessage(message, scroll: false, persist: false);
+        }
+
+        UpdateChatEmptyState();
+    }
+
+    private async Task SyncChatMessagesFromCloudAsync(int userId, bool hadCache)
+    {
         try
         {
             var result = await _authService.ChatApi.ListMessagesAsync();
             if (!result.IsSuccess || result.Data is null)
             {
-                SetContactAdminStatus(result.Message, isError: true);
+                if (!hadCache)
+                {
+                    SetContactAdminStatus(result.Message, isError: true);
+                }
+
                 return;
             }
 
-            _chatMessages.Clear();
-            _chatMessageIds.Clear();
-            ChatMessagesPanel.Children.Clear();
-            foreach (var message in result.Data.OrderBy(m => m.CreatedAt))
+            var cloudMessages = result.Data.OrderBy(m => m.CreatedAt).ToList();
+            var hasNewMessages = false;
+            foreach (var message in cloudMessages)
             {
-                AppendChatMessage(message, scroll: false);
+                if (_chatMessageIds.Contains(message.Id))
+                {
+                    continue;
+                }
+
+                AppendChatMessage(message, scroll: false, persist: false);
+                hasNewMessages = true;
             }
 
+            _chatMessageStore.Save(userId, cloudMessages);
             UpdateChatEmptyState();
-            ScrollChatToEnd();
-            SetContactAdminStatus(result.Data.Count == 0 ? "暂无消息，可向管理员发送咨询。" : "");
+            ScrollChatToEnd(force: true);
+
+            if (!hadCache)
+            {
+                SetContactAdminStatus(cloudMessages.Count == 0 ? "暂无消息，可向管理员发送咨询。" : "");
+            }
+            else if (hasNewMessages)
+            {
+                SetContactAdminStatus("");
+            }
         }
         catch (Exception ex)
         {
-            SetContactAdminStatus($"加载消息失败：{ex.Message}", isError: true);
-            DiagnosticLogService.Error("Failed to load chat messages.", ex);
+            if (!hadCache)
+            {
+                SetContactAdminStatus($"加载消息失败：{ex.Message}", isError: true);
+            }
+
+            DiagnosticLogService.Error("Failed to sync chat messages.", ex);
         }
     }
 
-    private void AppendChatMessage(ChatMessage message, bool scroll = true)
+    private void SaveChatMessagesToLocalStore()
+    {
+        var userId = _authService.CurrentSession?.UserId ?? 0;
+        if (userId <= 0)
+        {
+            return;
+        }
+
+        _chatMessageStore.Save(userId, _chatMessages);
+    }
+
+    private void AppendChatMessage(ChatMessage message, bool scroll = true, bool persist = true)
     {
         if (!_chatMessageIds.Add(message.Id))
         {
@@ -4522,7 +4785,17 @@ public partial class MainWindow : Window
 
         _chatMessages.Add(message);
         ChatMessagesPanel.Children.Add(CreateChatMessageElement(message));
+        if (ChatMessageHelper.HasAttachment(message) && !ChatMessageHelper.IsImageAttachment(message))
+        {
+            _ = EnsureChatFileDownloadedAsync(message);
+        }
+
         UpdateChatEmptyState();
+        if (persist)
+        {
+            SaveChatMessagesToLocalStore();
+        }
+
         if (scroll)
         {
             ScrollChatToEnd();
@@ -4546,16 +4819,16 @@ public partial class MainWindow : Window
         var isAdmin = message.IsFromAdmin;
         var row = new Grid
         {
-            Margin = new Thickness(0, 0, 0, 16),
+            Margin = new Thickness(0, 0, 0, 18),
             HorizontalAlignment = isAdmin ? System.Windows.HorizontalAlignment.Left : System.Windows.HorizontalAlignment.Right,
-            MaxWidth = 720
+            MaxWidth = 760
         };
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
         var avatar = CreateChatAvatar(isAdmin);
-        var bubbleColumn = isAdmin ? 1 : 1;
+        var bubbleColumn = 1;
         var avatarColumn = isAdmin ? 0 : 2;
 
         Grid.SetColumn(avatar, avatarColumn);
@@ -4563,9 +4836,9 @@ public partial class MainWindow : Window
 
         var bubblePanel = new StackPanel
         {
-            MaxWidth = 520,
+            MaxWidth = 540,
             HorizontalAlignment = isAdmin ? System.Windows.HorizontalAlignment.Left : System.Windows.HorizontalAlignment.Right,
-            Margin = isAdmin ? new Thickness(10, 0, 0, 0) : new Thickness(0, 0, 10, 0)
+            Margin = isAdmin ? new Thickness(12, 0, 0, 0) : new Thickness(0, 0, 12, 0)
         };
 
         bubblePanel.Children.Add(new TextBlock
@@ -4573,46 +4846,415 @@ public partial class MainWindow : Window
             Text = isAdmin ? "管理员" : GetUserDisplayName(),
             FontSize = 12,
             FontWeight = FontWeights.SemiBold,
-            Foreground = new SolidColorBrush(isAdmin ? Color.FromRgb(29, 78, 216) : Color.FromRgb(71, 85, 105)),
-            Margin = new Thickness(isAdmin ? 2 : 0, 0, isAdmin ? 0 : 2, 4),
+            Foreground = isAdmin ? FindThemeBrush("AccentTextBrush") : FindThemeBrush("MutedBrush"),
+            Margin = new Thickness(isAdmin ? 4 : 0, 0, isAdmin ? 0 : 4, 6),
             HorizontalAlignment = isAdmin ? System.Windows.HorizontalAlignment.Left : System.Windows.HorizontalAlignment.Right
         });
 
+        var isAttachmentOnly = string.IsNullOrWhiteSpace(message.Content) && !string.IsNullOrWhiteSpace(message.FileUrl);
+        var isImageOnly = isAttachmentOnly && ChatMessageHelper.IsImageAttachment(message);
+        var isFileOnly = isAttachmentOnly && ChatMessageHelper.HasAttachment(message) && !ChatMessageHelper.IsImageAttachment(message);
+
         var bubble = new Border
         {
-            Background = isAdmin
-                ? new SolidColorBrush(Color.FromRgb(239, 246, 255))
-                : new SolidColorBrush(Color.FromRgb(37, 99, 235)),
-            BorderBrush = new SolidColorBrush(isAdmin ? Color.FromRgb(191, 219, 254) : Color.FromRgb(37, 99, 235)),
-            BorderThickness = new Thickness(1),
-            CornerRadius = isAdmin
-                ? new CornerRadius(4, 16, 16, 16)
-                : new CornerRadius(16, 4, 16, 16),
-            Padding = new Thickness(14, 10, 14, 10),
+            Background = isAttachmentOnly
+                ? System.Windows.Media.Brushes.Transparent
+                : isAdmin
+                    ? FindThemeBrush("AccentLightBrush")
+                    : FindThemeBrush("AccentStrongBrush"),
+            BorderBrush = isAttachmentOnly
+                ? System.Windows.Media.Brushes.Transparent
+                : isAdmin
+                    ? FindThemeBrush("AccentSoftBorderBrush")
+                    : FindThemeBrush("AccentPrimaryBorderBrush"),
+            BorderThickness = isAttachmentOnly ? new Thickness(0) : new Thickness(1),
+            CornerRadius = isAttachmentOnly
+                ? new CornerRadius(0)
+                : isAdmin
+                    ? new CornerRadius(6, 18, 18, 18)
+                    : new CornerRadius(18, 6, 18, 18),
+            Padding = isAttachmentOnly ? new Thickness(0) : new Thickness(12),
             HorizontalAlignment = isAdmin ? System.Windows.HorizontalAlignment.Left : System.Windows.HorizontalAlignment.Right
         };
-        bubble.Child = new TextBlock
+
+        if (!isAttachmentOnly)
         {
-            Text = message.Content,
-            TextWrapping = TextWrapping.Wrap,
-            FontSize = 15,
-            Foreground = isAdmin
-                ? new SolidColorBrush(Color.FromRgb(15, 23, 42))
-                : new SolidColorBrush(Colors.White)
-        };
+            bubble.Effect = new System.Windows.Media.Effects.DropShadowEffect
+            {
+                Color = Color.FromRgb(15, 23, 42),
+                BlurRadius = 12,
+                ShadowDepth = 2,
+                Opacity = 0.08
+            };
+        }
+
+        var bubbleContent = new StackPanel();
+        if (!string.IsNullOrWhiteSpace(message.Content))
+        {
+            bubbleContent.Children.Add(new TextBlock
+            {
+                Text = message.Content,
+                TextWrapping = TextWrapping.Wrap,
+                FontSize = 15,
+                LineHeight = 22,
+                Foreground = isAdmin
+                    ? FindThemeBrush("TextBrush")
+                    : System.Windows.Media.Brushes.White
+            });
+        }
+
+        if (ChatMessageHelper.IsImageAttachment(message) && !string.IsNullOrWhiteSpace(message.FileUrl))
+        {
+            if (bubbleContent.Children.Count > 0)
+            {
+                bubbleContent.Children.Add(new Border { Height = 8 });
+            }
+
+            bubbleContent.Children.Add(CreateChatImageAttachment(message));
+        }
+        else if (ChatMessageHelper.HasAttachment(message) && !ChatMessageHelper.IsImageAttachment(message))
+        {
+            if (bubbleContent.Children.Count > 0)
+            {
+                bubbleContent.Children.Add(new Border { Height = 8 });
+            }
+
+            bubbleContent.Children.Add(CreateChatFileAttachmentCard(message, standalone: isFileOnly));
+        }
+
+        if (bubbleContent.Children.Count == 0)
+        {
+            bubbleContent.Children.Add(new TextBlock
+            {
+                Text = "（空消息）",
+                FontSize = 14,
+                Foreground = isAdmin
+                    ? FindThemeBrush("MutedBrush")
+                    : new SolidColorBrush(Color.FromRgb(219, 234, 254))
+            });
+        }
+
+        bubble.Child = bubbleContent;
+        if (!isAttachmentOnly)
+        {
+            AttachChatMessageContextMenu(bubble, message, copyImage: false);
+        }
+
         bubblePanel.Children.Add(bubble);
         bubblePanel.Children.Add(new TextBlock
         {
             Text = FormatAnnouncementTime(message.CreatedAt),
             FontSize = 11,
             Foreground = new SolidColorBrush(Color.FromRgb(148, 163, 184)),
-            Margin = new Thickness(isAdmin ? 2 : 0, 6, isAdmin ? 0 : 2, 0),
+            Margin = new Thickness(isAdmin ? 4 : 0, 8, isAdmin ? 0 : 4, 0),
             HorizontalAlignment = isAdmin ? System.Windows.HorizontalAlignment.Left : System.Windows.HorizontalAlignment.Right
         });
 
         Grid.SetColumn(bubblePanel, bubbleColumn);
         row.Children.Add(bubblePanel);
+        row.Tag = message;
         return row;
+    }
+
+    private UIElement CreateChatImageAttachment(ChatMessage message)
+    {
+        var fileUrl = message.FileUrl ?? "";
+        var imageHost = new Border
+        {
+            CornerRadius = new CornerRadius(12),
+            ClipToBounds = true,
+            Background = System.Windows.Media.Brushes.Transparent,
+            BorderThickness = new Thickness(0),
+            Cursor = System.Windows.Input.Cursors.Hand,
+            MaxWidth = 320
+        };
+
+        if (TryLoadAvatarBitmap(fileUrl, out var bitmap))
+        {
+            imageHost.Child = new System.Windows.Controls.Image
+            {
+                Source = bitmap,
+                MaxHeight = 240,
+                Stretch = Stretch.Uniform
+            };
+        }
+        else
+        {
+            imageHost.Child = new TextBlock
+            {
+                Text = "图片加载失败",
+                Foreground = new SolidColorBrush(Color.FromRgb(100, 116, 139)),
+                FontSize = 13,
+                Margin = new Thickness(4),
+                TextWrapping = TextWrapping.Wrap
+            };
+        }
+
+        imageHost.MouseLeftButtonUp += (_, _) =>
+        {
+            if (!ShowChatImagePreview(message) && !string.IsNullOrWhiteSpace(fileUrl))
+            {
+                OpenChatAttachmentUrl(fileUrl);
+            }
+        };
+        AttachChatMessageContextMenu(imageHost, message, copyImage: true);
+        return imageHost;
+    }
+
+    private UIElement CreateChatFileAttachmentCard(ChatMessage message, bool standalone)
+    {
+        var fileName = string.IsNullOrWhiteSpace(message.FileName) ? "附件文件" : message.FileName.Trim();
+        var extensionLabel = ChatMessageHelper.GetFileExtensionLabel(fileName);
+        var typeColor = ChatMessageHelper.GetFileTypeColor(fileName);
+
+        var card = new Border
+        {
+            Background = new SolidColorBrush(Color.FromRgb(255, 255, 255)),
+            BorderBrush = new SolidColorBrush(Color.FromRgb(229, 231, 235)),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(8),
+            MinWidth = 248,
+            MaxWidth = 300,
+            Cursor = System.Windows.Input.Cursors.Hand
+        };
+
+        if (standalone)
+        {
+            card.Effect = new System.Windows.Media.Effects.DropShadowEffect
+            {
+                Color = Color.FromRgb(15, 23, 42),
+                BlurRadius = 10,
+                ShadowDepth = 1,
+                Opacity = 0.06
+            };
+        }
+
+        var layout = new StackPanel();
+
+        var body = new Grid { Margin = new Thickness(12, 10, 12, 8) };
+        body.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        body.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        var info = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 12, 0) };
+        info.Children.Add(new TextBlock
+        {
+            Text = fileName,
+            FontSize = 14,
+            FontWeight = FontWeights.SemiBold,
+            Foreground = new SolidColorBrush(Color.FromRgb(17, 24, 39)),
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            TextWrapping = TextWrapping.NoWrap,
+            MaxWidth = 180
+        });
+        info.Children.Add(new TextBlock
+        {
+            Text = ChatMessageHelper.FormatFileSizeCompact(message.FileSize),
+            FontSize = 12,
+            Foreground = new SolidColorBrush(Color.FromRgb(107, 114, 128)),
+            Margin = new Thickness(0, 6, 0, 0)
+        });
+        Grid.SetColumn(info, 0);
+        body.Children.Add(info);
+
+        var iconHost = new Border
+        {
+            Width = 44,
+            Height = 52,
+            CornerRadius = new CornerRadius(6),
+            Background = new SolidColorBrush(Color.FromRgb(typeColor.R, typeColor.G, typeColor.B)),
+            VerticalAlignment = VerticalAlignment.Center,
+            Child = new TextBlock
+            {
+                Text = extensionLabel,
+                FontSize = 11,
+                FontWeight = FontWeights.Bold,
+                Foreground = System.Windows.Media.Brushes.White,
+                HorizontalAlignment = System.Windows.HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center
+            }
+        };
+        Grid.SetColumn(iconHost, 1);
+        body.Children.Add(iconHost);
+        layout.Children.Add(body);
+
+        var footer = new Border
+        {
+            BorderBrush = new SolidColorBrush(Color.FromRgb(243, 244, 246)),
+            BorderThickness = new Thickness(0, 1, 0, 0),
+            Padding = new Thickness(12, 6, 12, 8)
+        };
+        var footerRow = new StackPanel { Orientation = System.Windows.Controls.Orientation.Horizontal };
+        footerRow.Children.Add(new Border
+        {
+            Width = 14,
+            Height = 14,
+            CornerRadius = new CornerRadius(3),
+            Background = FindThemeBrush("AccentStrongBrush"),
+            Margin = new Thickness(0, 0, 6, 0),
+            VerticalAlignment = VerticalAlignment.Center
+        });
+        footerRow.Children.Add(new TextBlock
+        {
+            Text = "Nexora",
+            FontSize = 11,
+            Foreground = new SolidColorBrush(Color.FromRgb(156, 163, 175)),
+            VerticalAlignment = VerticalAlignment.Center
+        });
+        footer.Child = footerRow;
+        layout.Children.Add(footer);
+
+        card.Child = layout;
+        card.MouseLeftButtonUp += (_, _) => OpenChatFileLocally(message);
+        AttachChatMessageContextMenu(card, message, copyImage: false);
+        return card;
+    }
+
+    private System.Windows.Media.Brush FindThemeBrush(string key) => (System.Windows.Media.Brush)FindResource(key);
+
+    private async Task EnsureChatFileDownloadedAsync(ChatMessage message)
+    {
+        if (string.IsNullOrWhiteSpace(message.FileUrl) || ChatMessageHelper.IsImageAttachment(message))
+        {
+            return;
+        }
+
+        try
+        {
+            var localPath = await _chatAttachmentDownloadService.EnsureDownloadedAsync(message);
+            if (!string.IsNullOrWhiteSpace(localPath) && File.Exists(localPath))
+            {
+                _chatFileLocalPaths[message.Id] = localPath;
+            }
+        }
+        catch (Exception ex)
+        {
+            DiagnosticLogService.Warning($"Failed to download chat attachment {message.Id}: {ex.Message}");
+        }
+    }
+
+    private void OpenChatFileLocally(ChatMessage message)
+    {
+        if (_chatFileLocalPaths.TryGetValue(message.Id, out var cachedPath) && File.Exists(cachedPath))
+        {
+            LaunchLocalFile(cachedPath);
+            return;
+        }
+
+        var expectedPath = _chatAttachmentDownloadService.GetLocalPath(message);
+        if (File.Exists(expectedPath))
+        {
+            _chatFileLocalPaths[message.Id] = expectedPath;
+            LaunchLocalFile(expectedPath);
+            return;
+        }
+
+        _ = OpenChatFileLocallyAsync(message);
+    }
+
+    private async Task OpenChatFileLocallyAsync(ChatMessage message)
+    {
+        try
+        {
+            SetContactAdminStatus("正在下载文件...");
+            var localPath = await _chatAttachmentDownloadService.EnsureDownloadedAsync(message);
+            if (string.IsNullOrWhiteSpace(localPath) || !File.Exists(localPath))
+            {
+                SetContactAdminStatus("文件下载失败，请稍后重试。", isError: true);
+                return;
+            }
+
+            _chatFileLocalPaths[message.Id] = localPath;
+            SetContactAdminStatus("");
+            LaunchLocalFile(localPath);
+        }
+        catch (Exception ex)
+        {
+            SetContactAdminStatus($"文件打开失败：{ex.Message}", isError: true);
+            DiagnosticLogService.Warning($"Failed to open chat file locally: {ex.Message}");
+        }
+    }
+
+    private static void LaunchLocalFile(string path)
+    {
+        Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
+    }
+
+    private void AttachChatMessageContextMenu(FrameworkElement target, ChatMessage message, bool copyImage)
+    {
+        var menu = new System.Windows.Controls.ContextMenu
+        {
+            Style = (Style)FindResource("ChatContextMenuStyle")
+        };
+        var copyItem = new System.Windows.Controls.MenuItem
+        {
+            Header = "复制",
+            Style = (Style)FindResource("ChatContextMenuItemStyle")
+        };
+        copyItem.Click += (_, _) =>
+        {
+            if (copyImage)
+            {
+                CopyChatImageToClipboard(message);
+                return;
+            }
+
+            var text = ChatMessageHelper.GetCopyableText(message);
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return;
+            }
+
+            Clipboard.SetText(text);
+        };
+        menu.Items.Add(copyItem);
+        target.ContextMenu = menu;
+    }
+
+    private void CopyChatImageToClipboard(ChatMessage message)
+    {
+        if (!string.IsNullOrWhiteSpace(message.FileUrl) && TryLoadAvatarBitmap(message.FileUrl, out var bitmap) && bitmap is not null)
+        {
+            Clipboard.SetImage(bitmap);
+            return;
+        }
+
+        var text = ChatMessageHelper.GetCopyableText(message);
+        if (!string.IsNullOrWhiteSpace(text))
+        {
+            Clipboard.SetText(text);
+        }
+    }
+
+    private bool ShowChatImagePreview(ChatMessage message)
+    {
+        if (string.IsNullOrWhiteSpace(message.FileUrl) || !TryLoadAvatarBitmap(message.FileUrl, out var bitmap) || bitmap is null)
+        {
+            return false;
+        }
+
+        var dialog = new ChatImagePreviewDialog(bitmap)
+        {
+            Owner = this
+        };
+        dialog.ShowDialog();
+        return true;
+    }
+
+    private static void OpenChatAttachmentUrl(string? url)
+    {
+        if (string.IsNullOrWhiteSpace(url))
+        {
+            return;
+        }
+
+        try
+        {
+            Process.Start(new ProcessStartInfo(url.Trim()) { UseShellExecute = true });
+        }
+        catch (Exception ex)
+        {
+            DiagnosticLogService.Warning($"Failed to open chat attachment: {ex.Message}");
+        }
     }
 
     private UIElement CreateChatAvatar(bool isAdmin)
@@ -4695,18 +5337,25 @@ public partial class MainWindow : Window
         scrollViewer.ScrollToVerticalOffset(nextOffset);
     }
 
-    private void ScrollChatToEnd()
+    private void ScrollChatToEnd(bool force = false)
     {
         if (ChatMessagesScroll is null)
         {
             return;
         }
 
-        ChatMessagesScroll.Dispatcher.BeginInvoke(() =>
+        void DoScroll()
         {
             ChatMessagesScroll.UpdateLayout();
             ChatMessagesScroll.ScrollToEnd();
-        }, DispatcherPriority.Loaded);
+        }
+
+        ChatMessagesScroll.Dispatcher.BeginInvoke(DoScroll, DispatcherPriority.Loaded);
+        if (force)
+        {
+            ChatMessagesScroll.Dispatcher.BeginInvoke(DoScroll, DispatcherPriority.ApplicationIdle);
+            ChatMessagesScroll.Dispatcher.BeginInvoke(DoScroll, DispatcherPriority.Render);
+        }
     }
 
     private void ShowChatMessageToast(ChatMessage message)
@@ -4717,7 +5366,7 @@ public partial class MainWindow : Window
         }
 
         ChatToastTitleText.Text = "管理员新消息";
-        ChatToastBodyText.Text = TruncateAnnouncementPreview(message.Content);
+        ChatToastBodyText.Text = TruncateAnnouncementPreview(ChatMessageHelper.GetPreviewText(message));
         ChatToastPanel.Visibility = Visibility.Visible;
 
         var animation = new DoubleAnimation
@@ -4799,6 +5448,246 @@ public partial class MainWindow : Window
         await SendChatMessageAsync();
     }
 
+    private void ChatAttachButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (ChatAttachPopup is null || ChatAttachButton is null)
+        {
+            return;
+        }
+
+        ChatAttachPopup.PlacementTarget = ChatAttachButton;
+        ChatAttachPopup.IsOpen = true;
+    }
+
+    private void ChatAttachImageMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        if (ChatAttachPopup is not null)
+        {
+            ChatAttachPopup.IsOpen = false;
+        }
+
+        var dialog = new OpenFileDialog
+        {
+            Title = "选择图片",
+            Filter = "图片文件|*.jpg;*.jpeg;*.png;*.webp;*.gif|所有文件|*.*"
+        };
+        if (dialog.ShowDialog() == true)
+        {
+            SetPendingChatAttachment(dialog.FileName);
+        }
+    }
+
+    private void ChatAttachFileMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        if (ChatAttachPopup is not null)
+        {
+            ChatAttachPopup.IsOpen = false;
+        }
+
+        var dialog = new OpenFileDialog
+        {
+            Title = "选择文件",
+            Filter = "所有文件|*.*"
+        };
+        if (dialog.ShowDialog() == true)
+        {
+            SetPendingChatAttachment(dialog.FileName);
+        }
+    }
+
+    private void ChatMessagesArea_DragOver(object sender, System.Windows.DragEventArgs e)
+    {
+        if (!_authService.IsAuthenticated)
+        {
+            e.Effects = System.Windows.DragDropEffects.None;
+            e.Handled = true;
+            return;
+        }
+
+        if (e.Data.GetDataPresent(System.Windows.DataFormats.FileDrop))
+        {
+            e.Effects = System.Windows.DragDropEffects.Copy;
+            e.Handled = true;
+            return;
+        }
+
+        e.Effects = System.Windows.DragDropEffects.None;
+        e.Handled = true;
+    }
+
+    private async void ChatMessagesArea_Drop(object sender, System.Windows.DragEventArgs e)
+    {
+        if (!_authService.IsAuthenticated || !e.Data.GetDataPresent(System.Windows.DataFormats.FileDrop))
+        {
+            return;
+        }
+
+        if (e.Data.GetData(System.Windows.DataFormats.FileDrop) is not string[] files || files.Length == 0)
+        {
+            return;
+        }
+
+        e.Handled = true;
+        await SendChatAttachmentDirectAsync(files[0]);
+    }
+
+    private void ChatInputBox_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (e.Key != System.Windows.Input.Key.V || Keyboard.Modifiers != ModifierKeys.Control || !Clipboard.ContainsImage())
+        {
+            return;
+        }
+
+        e.Handled = true;
+        HandleClipboardImagePaste();
+    }
+
+    private void HandleClipboardImagePaste()
+    {
+        var tempPath = SaveClipboardImageToTempFile();
+        if (string.IsNullOrWhiteSpace(tempPath))
+        {
+            SetContactAdminStatus("无法读取剪贴板图片。", isError: true);
+            return;
+        }
+
+        SetPendingChatAttachment(tempPath);
+    }
+
+    private static string? SaveClipboardImageToTempFile()
+    {
+        if (!Clipboard.ContainsImage())
+        {
+            return null;
+        }
+
+        var image = Clipboard.GetImage();
+        if (image is null)
+        {
+            return null;
+        }
+
+        var path = Path.Combine(Path.GetTempPath(), $"nexora-chat-{Guid.NewGuid():N}.png");
+        using var stream = File.Create(path);
+        var encoder = new PngBitmapEncoder();
+        encoder.Frames.Add(BitmapFrame.Create(image));
+        encoder.Save(stream);
+        return path;
+    }
+
+    private async Task SendChatAttachmentDirectAsync(string filePath)
+    {
+        var validationError = ValidateChatAttachmentPath(filePath);
+        if (validationError is not null)
+        {
+            SetContactAdminStatus(validationError, isError: true);
+            return;
+        }
+
+        _pendingChatAttachmentPath = filePath;
+        await SendChatMessageAsync(clearPendingAttachment: false);
+    }
+
+    private string? ValidateChatAttachmentPath(string filePath)
+    {
+        if (ChatMessageHelper.IsBlockedExtension(filePath))
+        {
+            return "不允许上传该类型文件。";
+        }
+
+        if (!File.Exists(filePath))
+        {
+            return "所选文件不存在。";
+        }
+
+        var fileInfo = new FileInfo(filePath);
+        if (fileInfo.Length > 500L * 1024 * 1024)
+        {
+            return "文件大小不能超过 500MB。";
+        }
+
+        return null;
+    }
+
+    private void ClearChatAttachmentButton_Click(object sender, RoutedEventArgs e)
+    {
+        ClearPendingChatAttachment();
+    }
+
+    private void SetPendingChatAttachment(string filePath)
+    {
+        var validationError = ValidateChatAttachmentPath(filePath);
+        if (validationError is not null)
+        {
+            SetContactAdminStatus(validationError, isError: true);
+            return;
+        }
+
+        _pendingChatAttachmentPath = filePath;
+        UpdatePendingChatAttachmentUi();
+        SetContactAdminStatus("");
+    }
+
+    private void ClearPendingChatAttachment()
+    {
+        _pendingChatAttachmentPath = null;
+        UpdatePendingChatAttachmentUi();
+    }
+
+    private void UpdatePendingChatAttachmentUi()
+    {
+        if (ChatPendingAttachmentPanel is null || ChatPendingAttachmentText is null)
+        {
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_pendingChatAttachmentPath))
+        {
+            ChatPendingAttachmentPanel.Visibility = Visibility.Collapsed;
+            ChatPendingAttachmentText.Text = "";
+            if (ChatPendingAttachmentImageHost is not null)
+            {
+                ChatPendingAttachmentImageHost.Visibility = Visibility.Collapsed;
+            }
+
+            if (ChatPendingAttachmentImage is not null)
+            {
+                ChatPendingAttachmentImage.Source = null;
+            }
+
+            return;
+        }
+
+        var fileInfo = new FileInfo(_pendingChatAttachmentPath);
+        var isImage = ChatMessageHelper.IsImageFilePath(_pendingChatAttachmentPath);
+        if (isImage && ChatPendingAttachmentImageHost is not null && ChatPendingAttachmentImage is not null)
+        {
+            if (TryLoadAvatarBitmap(_pendingChatAttachmentPath, out var previewBitmap))
+            {
+                ChatPendingAttachmentImage.Source = previewBitmap;
+                ChatPendingAttachmentImageHost.Visibility = Visibility.Visible;
+            }
+            else
+            {
+                ChatPendingAttachmentImage.Source = null;
+                ChatPendingAttachmentImageHost.Visibility = Visibility.Collapsed;
+            }
+        }
+        else if (ChatPendingAttachmentImageHost is not null)
+        {
+            ChatPendingAttachmentImageHost.Visibility = Visibility.Collapsed;
+            if (ChatPendingAttachmentImage is not null)
+            {
+                ChatPendingAttachmentImage.Source = null;
+            }
+        }
+
+        ChatPendingAttachmentText.Text = isImage
+            ? $"待发送图片：{fileInfo.Name}（{ChatMessageHelper.FormatFileSize(fileInfo.Length)}）"
+            : $"待发送文件：{fileInfo.Name}（{ChatMessageHelper.FormatFileSize(fileInfo.Length)}）";
+        ChatPendingAttachmentPanel.Visibility = Visibility.Visible;
+    }
+
     private async void ChatInputBox_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
     {
         if (e.Key == Key.Enter && Keyboard.Modifiers == ModifierKeys.None)
@@ -4808,7 +5697,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private async Task SendChatMessageAsync()
+    private async Task SendChatMessageAsync(bool clearPendingAttachment = true)
     {
         if (!_authService.IsAuthenticated)
         {
@@ -4817,16 +5706,32 @@ public partial class MainWindow : Window
         }
 
         var content = ChatInputBox.Text?.Trim() ?? "";
-        if (string.IsNullOrWhiteSpace(content))
+        var attachmentPath = _pendingChatAttachmentPath;
+        if (string.IsNullOrWhiteSpace(content) && string.IsNullOrWhiteSpace(attachmentPath))
         {
-            SetContactAdminStatus("消息内容不能为空。", isError: true);
+            SetContactAdminStatus("消息内容和文件不能同时为空。", isError: true);
             return;
         }
 
-        if (content.Length > 2000)
+        if (!string.IsNullOrWhiteSpace(content) && content.Length > 2000)
         {
             SetContactAdminStatus("消息内容最多 2000 个字符。", isError: true);
             return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(attachmentPath))
+        {
+            var validationError = ValidateChatAttachmentPath(attachmentPath);
+            if (validationError is not null)
+            {
+                SetContactAdminStatus(validationError, isError: true);
+                if (clearPendingAttachment)
+                {
+                    ClearPendingChatAttachment();
+                }
+
+                return;
+            }
         }
 
         if (!await _authService.TryRestoreSessionAsync())
@@ -4837,10 +5742,22 @@ public partial class MainWindow : Window
         }
 
         SendChatMessageButton.IsEnabled = false;
-        SetContactAdminStatus("正在发送...");
+        ChatAttachButton.IsEnabled = false;
+        SetContactAdminStatus(string.IsNullOrWhiteSpace(attachmentPath) ? "正在发送..." : "正在上传...");
         try
         {
-            var result = await _authService.ChatApi.SendMessageAsync(content);
+            ApiResult<ChatMessage> result;
+            if (!string.IsNullOrWhiteSpace(attachmentPath))
+            {
+                result = await _authService.ChatApi.SendMixedMessageAsync(
+                    string.IsNullOrWhiteSpace(content) ? null : content,
+                    attachmentPath);
+            }
+            else
+            {
+                result = await _authService.ChatApi.SendMessageAsync(content);
+            }
+
             if (!result.IsSuccess || result.Data is null)
             {
                 SetContactAdminStatus(result.Message, isError: true);
@@ -4848,6 +5765,16 @@ public partial class MainWindow : Window
             }
 
             ChatInputBox.Text = "";
+            if (clearPendingAttachment)
+            {
+                ClearPendingChatAttachment();
+            }
+            else
+            {
+                _pendingChatAttachmentPath = null;
+                UpdatePendingChatAttachmentUi();
+            }
+
             AppendChatMessage(result.Data);
             SetContactAdminStatus("");
         }
@@ -4859,6 +5786,7 @@ public partial class MainWindow : Window
         finally
         {
             SendChatMessageButton.IsEnabled = true;
+            ChatAttachButton.IsEnabled = true;
         }
     }
 

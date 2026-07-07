@@ -10,6 +10,7 @@ namespace NaiwaProxy.Services;
 public sealed class ApiClient
 {
     private const int RequestTimeoutSeconds = 60;
+    private const int LargeUploadTimeoutSeconds = 1800;
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNameCaseInsensitive = true,
@@ -56,6 +57,26 @@ public sealed class ApiClient
             if (await _refreshTokenAsync())
             {
                 return await SendMultipartCoreAsync<T>(baseUrl, path, fieldName, filePath, requireAuth, cancellationToken);
+            }
+        }
+
+        return result;
+    }
+
+    public async Task<ApiResult<T>> PostMultipartMixedAsync<T>(
+        string baseUrl,
+        string path,
+        string? content,
+        string? filePath,
+        bool requireAuth = true,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await SendMultipartMixedCoreAsync<T>(baseUrl, path, content, filePath, requireAuth, cancellationToken);
+        if (requireAuth && result.Code == 401)
+        {
+            if (await _refreshTokenAsync())
+            {
+                return await SendMultipartMixedCoreAsync<T>(baseUrl, path, content, filePath, requireAuth, cancellationToken);
             }
         }
 
@@ -146,9 +167,7 @@ public sealed class ApiClient
         CancellationToken cancellationToken)
     {
         using var form = new MultipartFormDataContent();
-        await using var stream = File.OpenRead(filePath);
-        var fileContent = new StreamContent(stream);
-        fileContent.Headers.ContentType = new MediaTypeHeaderValue(GetImageMimeType(filePath));
+        var fileContent = CreateFileByteArrayContent(filePath);
         form.Add(fileContent, fieldName, Path.GetFileName(filePath));
 
         using var request = new HttpRequestMessage(HttpMethod.Post, $"{baseUrl.TrimEnd('/')}/{path.TrimStart('/')}")
@@ -190,6 +209,78 @@ public sealed class ApiClient
                 Message = $"网络请求失败：{ex.Message}"
             };
         }
+    }
+
+    private async Task<ApiResult<T>> SendMultipartMixedCoreAsync<T>(
+        string baseUrl,
+        string path,
+        string? content,
+        string? filePath,
+        bool requireAuth,
+        CancellationToken cancellationToken)
+    {
+        using var form = new MultipartFormDataContent();
+        if (!string.IsNullOrWhiteSpace(content))
+        {
+            form.Add(new StringContent(content.Trim()), "content");
+        }
+
+        if (!string.IsNullOrWhiteSpace(filePath))
+        {
+            var fileContent = CreateFileByteArrayContent(filePath);
+            form.Add(fileContent, "file", Path.GetFileName(filePath));
+        }
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"{baseUrl.TrimEnd('/')}/{path.TrimStart('/')}")
+        {
+            Content = form
+        };
+
+        if (requireAuth)
+        {
+            var token = await _getAccessTokenAsync();
+            if (!string.IsNullOrWhiteSpace(token))
+            {
+                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            }
+        }
+
+        var timeoutSeconds = string.IsNullOrWhiteSpace(filePath)
+            ? RequestTimeoutSeconds
+            : LargeUploadTimeoutSeconds;
+        using var timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeoutSource.CancelAfter(TimeSpan.FromSeconds(timeoutSeconds));
+
+        try
+        {
+            using var response = await _http.SendAsync(request, timeoutSource.Token);
+            var text = await response.Content.ReadAsStringAsync(timeoutSource.Token);
+            return ParseResponse<T>(text);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            return new ApiResult<T>
+            {
+                Code = 408,
+                Message = $"请求超时：服务端 {timeoutSeconds} 秒内未响应，请稍后重试。"
+            };
+        }
+        catch (HttpRequestException ex)
+        {
+            return new ApiResult<T>
+            {
+                Code = 500,
+                Message = $"网络请求失败：{ex.Message}"
+            };
+        }
+    }
+
+    private static ByteArrayContent CreateFileByteArrayContent(string filePath)
+    {
+        var bytes = File.ReadAllBytes(filePath);
+        var fileContent = new ByteArrayContent(bytes);
+        fileContent.Headers.ContentType = new MediaTypeHeaderValue(ChatMessageHelper.GetMimeType(filePath));
+        return fileContent;
     }
 
     private static string GetImageMimeType(string filePath) =>

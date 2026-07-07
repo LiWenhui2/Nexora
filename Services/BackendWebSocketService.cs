@@ -35,6 +35,8 @@ public sealed class BackendWebSocketService : IDisposable
     public event Action<VersionUpdatePushMessage>? VersionUpdateReceived;
     public event Action? UserProfileUpdated;
     public event Action<ForceLogoutPushMessage>? ForceLogoutReceived;
+    public event Action<TokenExpiredPushMessage>? TokenExpiredReceived;
+    public event Action<HeartbeatTimeoutPushMessage>? HeartbeatTimeoutReceived;
     public event Action? Connected;
     public event Action? Disconnected;
     public event Action<string>? ConnectionStateChanged;
@@ -226,6 +228,24 @@ public sealed class BackendWebSocketService : IDisposable
                     }
                     ScheduleDisconnect();
                     break;
+                case "TOKEN_EXPIRED":
+                    var tokenExpired = JsonSerializer.Deserialize<TokenExpiredPushMessage>(json, JsonOptions);
+                    if (tokenExpired is not null)
+                    {
+                        DiagnosticLogService.Info($"TOKEN_EXPIRED received. message={tokenExpired.Message ?? "-"}");
+                        TokenExpiredReceived?.Invoke(tokenExpired);
+                    }
+                    ScheduleDisconnect();
+                    break;
+                case "HEARTBEAT_TIMEOUT":
+                    var heartbeatTimeout = JsonSerializer.Deserialize<HeartbeatTimeoutPushMessage>(json, JsonOptions);
+                    if (heartbeatTimeout is not null)
+                    {
+                        DiagnosticLogService.Info($"HEARTBEAT_TIMEOUT received. message={heartbeatTimeout.Message ?? "-"}");
+                        HeartbeatTimeoutReceived?.Invoke(heartbeatTimeout);
+                    }
+                    ScheduleDisconnect();
+                    break;
             }
         }
         catch (Exception ex)
@@ -386,6 +406,26 @@ public sealed class ForceLogoutPushMessage
     }
 }
 
+public sealed class TokenExpiredPushMessage
+{
+    public string Type { get; set; } = "";
+    public string? Message { get; set; }
+    public long Timestamp { get; set; }
+
+    public string GetDisplayMessage() =>
+        string.IsNullOrWhiteSpace(Message) ? "登录状态已过期，请重新登录。" : Message.Trim();
+}
+
+public sealed class HeartbeatTimeoutPushMessage
+{
+    public string Type { get; set; } = "";
+    public string? Message { get; set; }
+    public long Timestamp { get; set; }
+
+    public string GetDisplayMessage() =>
+        string.IsNullOrWhiteSpace(Message) ? "连接心跳超时，请重新连接" : Message.Trim();
+}
+
 public sealed class BroadcastPushMessage
 {
     public string Type { get; set; } = "";
@@ -403,7 +443,15 @@ public sealed class WebSocketChatMessage
     public int ConversationId { get; set; }
     public string SenderType { get; set; } = "";
     public int SenderId { get; set; }
-    public string Content { get; set; } = "";
+    public string? MessageType { get; set; }
+    public string? AttachmentType { get; set; }
+    public string? Content { get; set; }
+    public string? FileUrl { get; set; }
+    public string? FileObjectKey { get; set; }
+    public string? FileSha256 { get; set; }
+    public string? FileName { get; set; }
+    public long? FileSize { get; set; }
+    public string? FileContentType { get; set; }
     public string CreatedAt { get; set; } = "";
     public long Timestamp { get; set; }
 
@@ -413,7 +461,15 @@ public sealed class WebSocketChatMessage
         ConversationId = ConversationId,
         SenderType = SenderType,
         SenderId = SenderId,
+        MessageType = MessageType,
+        AttachmentType = AttachmentType,
         Content = Content,
+        FileUrl = FileUrl,
+        FileObjectKey = FileObjectKey,
+        FileSha256 = FileSha256,
+        FileName = FileName,
+        FileSize = FileSize,
+        FileContentType = FileContentType,
         CreatedAt = CreatedAt
     };
 }

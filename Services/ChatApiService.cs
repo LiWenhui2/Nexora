@@ -22,4 +22,15 @@ public sealed class ChatApiService
             "chats/messages",
             new SendChatMessageRequest { Content = content },
             cancellationToken: cancellationToken);
+
+    public Task<ApiResult<ChatMessage>> SendMixedMessageAsync(
+        string? content,
+        string? filePath,
+        CancellationToken cancellationToken = default) =>
+        _apiClient.PostMultipartMixedAsync<ChatMessage>(
+            _getBaseUrl(),
+            "chats/messages/mixed",
+            content,
+            filePath,
+            cancellationToken: cancellationToken);
 }
