@@ -10,6 +10,7 @@ public sealed class VmessProfile : INotifyPropertyChanged
     private bool _isTcpLatencyTesting;
     private bool _tcpLatencyTested;
     private int? _tcpLatencyMs;
+    private int? _displayLatencyMs;
 
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
     public string Protocol { get; set; } = "vmess";
@@ -31,6 +32,7 @@ public sealed class VmessProfile : INotifyPropertyChanged
     public string SubscriptionName { get; set; } = "";
     public bool IsCloudManaged { get; set; }
     public bool IsLocalManual { get; set; }
+    public bool IsLocalSubscription { get; set; }
     public DateTime? SubscriptionUpdatedAt { get; set; }
     public long SubscriptionUploadBytes { get; set; }
     public long SubscriptionDownloadBytes { get; set; }
@@ -45,18 +47,37 @@ public sealed class VmessProfile : INotifyPropertyChanged
     public bool IsTcpLatencyTesting
     {
         get => _isTcpLatencyTesting;
-        private set => SetLatencyTestingField(ref _isTcpLatencyTesting, value, nameof(TcpLatencyDisplay));
+        private set => SetLatencyTestingField(ref _isTcpLatencyTesting, value);
     }
 
     [JsonIgnore]
     public int? TcpLatencyMs
     {
         get => _tcpLatencyMs;
-        private set => SetLatencyValueField(ref _tcpLatencyMs, value, nameof(TcpLatencyDisplay));
+        private set => SetLatencyValueField(ref _tcpLatencyMs, value);
     }
 
     [JsonIgnore]
-    public string TcpLatencyDisplay => FormatLatencyDisplay(IsTcpLatencyTesting, _tcpLatencyTested, TcpLatencyMs, IsExpired);
+    public int? DisplayLatencyMs => _displayLatencyMs;
+
+    [JsonIgnore]
+    public string TcpLatencyDisplay
+    {
+        get
+        {
+            if (_displayLatencyMs is int ms)
+            {
+                return $"{ms} ms";
+            }
+
+            if (_tcpLatencyTested && _tcpLatencyMs is null)
+            {
+                return "Timeout";
+            }
+
+            return "";
+        }
+    }
 
     private bool _isActive;
 
@@ -110,7 +131,25 @@ public sealed class VmessProfile : INotifyPropertyChanged
     }
 
     [JsonIgnore]
-    public string SubscriptionDisplay => string.IsNullOrWhiteSpace(SubscriptionName) ? "手动" : SubscriptionName;
+    public string SubscriptionDisplay
+    {
+        get
+        {
+            if (IsLocalManual || (string.IsNullOrWhiteSpace(SubscriptionName) && !IsCloudManaged))
+            {
+                return LocalSubscriptionHelper.LocalLabel;
+            }
+
+            if (IsLocalSubscription && !string.IsNullOrWhiteSpace(SubscriptionName))
+            {
+                return LocalSubscriptionHelper.FormatLocalSubscriptionDisplay(SubscriptionName);
+            }
+
+            return string.IsNullOrWhiteSpace(SubscriptionName)
+                ? LocalSubscriptionHelper.LocalLabel
+                : SubscriptionName;
+        }
+    }
 
     [JsonIgnore]
     public string SubscriptionRemainingDisplay
@@ -235,27 +274,116 @@ public sealed class VmessProfile : INotifyPropertyChanged
         IsTcpLatencyTesting = true;
     }
 
-    public void CompleteTcpLatencyTest(int? latencyMs)
+    public void SetLatencyResult(int? latencyMs)
     {
-        IsTcpLatencyTesting = false;
+        _isTcpLatencyTesting = false;
         _tcpLatencyTested = true;
-        TcpLatencyMs = latencyMs;
+        _tcpLatencyMs = latencyMs;
+        _displayLatencyMs = latencyMs;
+    }
+
+    public bool TryApplyLatencyResult(int? latencyMs)
+    {
+        var previousDisplay = TcpLatencyDisplay;
+        var previousStatus = StatusDisplay;
+        var latencyChanged = _tcpLatencyMs != latencyMs;
+
+        SetLatencyResult(latencyMs);
+
+        if (!latencyChanged &&
+            string.Equals(TcpLatencyDisplay, previousDisplay, StringComparison.Ordinal) &&
+            string.Equals(StatusDisplay, previousStatus, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        if (latencyChanged)
+        {
+            OnPropertyChanged(nameof(TcpLatencyMs));
+            OnPropertyChanged(nameof(DisplayLatencyMs));
+        }
+
+        if (!string.Equals(TcpLatencyDisplay, previousDisplay, StringComparison.Ordinal))
+        {
+            OnPropertyChanged(nameof(TcpLatencyDisplay));
+        }
+
+        if (!string.Equals(StatusDisplay, previousStatus, StringComparison.Ordinal))
+        {
+            OnPropertyChanged(nameof(StatusDisplay));
+        }
+
+        return true;
+    }
+
+    public void NotifyLatencyDisplayChanged()
+    {
+        OnPropertyChanged(nameof(IsTcpLatencyTesting));
+        OnPropertyChanged(nameof(TcpLatencyMs));
+        OnPropertyChanged(nameof(DisplayLatencyMs));
         OnPropertyChanged(nameof(TcpLatencyDisplay));
         OnPropertyChanged(nameof(StatusDisplay));
+    }
+
+    public void CompleteTcpLatencyTest(int? latencyMs)
+    {
+        var previousDisplay = TcpLatencyDisplay;
+        var previousStatus = StatusDisplay;
+        var wasTesting = _isTcpLatencyTesting;
+        var latencyChanged = _tcpLatencyMs != latencyMs;
+
+        SetLatencyResult(latencyMs);
+
+        if (wasTesting)
+        {
+            OnPropertyChanged(nameof(IsTcpLatencyTesting));
+        }
+
+        if (latencyChanged)
+        {
+            OnPropertyChanged(nameof(TcpLatencyMs));
+            OnPropertyChanged(nameof(DisplayLatencyMs));
+        }
+
+        if (!string.Equals(TcpLatencyDisplay, previousDisplay, StringComparison.Ordinal))
+        {
+            OnPropertyChanged(nameof(TcpLatencyDisplay));
+        }
+
+        if (!string.Equals(StatusDisplay, previousStatus, StringComparison.Ordinal))
+        {
+            OnPropertyChanged(nameof(StatusDisplay));
+        }
     }
 
     public void ResetLatency()
     {
         _tcpLatencyTested = false;
         _tcpLatencyMs = null;
+        _displayLatencyMs = null;
         _isTcpLatencyTesting = false;
         OnPropertyChanged(nameof(IsTcpLatencyTesting));
         OnPropertyChanged(nameof(TcpLatencyMs));
+        OnPropertyChanged(nameof(DisplayLatencyMs));
         OnPropertyChanged(nameof(TcpLatencyDisplay));
         OnPropertyChanged(nameof(StatusDisplay));
     }
 
-    private void SetLatencyTestingField(ref bool field, bool value, string displayPropertyName)
+    public void NotifyListDisplayChanged()
+    {
+        OnPropertyChanged(nameof(DisplayName));
+        OnPropertyChanged(nameof(ListDisplayName));
+        OnPropertyChanged(nameof(ProtocolDisplay));
+        OnPropertyChanged(nameof(Address));
+        OnPropertyChanged(nameof(Port));
+        OnPropertyChanged(nameof(ExpiryDisplay));
+        OnPropertyChanged(nameof(TotalTrafficDisplay));
+        OnPropertyChanged(nameof(RemainingTrafficDisplay));
+        OnPropertyChanged(nameof(UpdatedDisplay));
+        OnPropertyChanged(nameof(StatusDisplay));
+    }
+
+    private void SetLatencyTestingField(ref bool field, bool value)
     {
         if (field == value)
         {
@@ -263,10 +391,10 @@ public sealed class VmessProfile : INotifyPropertyChanged
         }
 
         field = value;
-        OnPropertyChanged(displayPropertyName);
+        OnPropertyChanged(nameof(IsTcpLatencyTesting));
     }
 
-    private void SetLatencyValueField(ref int? field, int? value, string displayPropertyName)
+    private void SetLatencyValueField(ref int? field, int? value)
     {
         if (field == value)
         {
@@ -274,22 +402,7 @@ public sealed class VmessProfile : INotifyPropertyChanged
         }
 
         field = value;
-        OnPropertyChanged(displayPropertyName);
-    }
-
-    private static string FormatLatencyDisplay(bool isTesting, bool tested, int? latencyMs, bool isExpired)
-    {
-        if (isTesting)
-        {
-            return "...";
-        }
-
-        if (!tested)
-        {
-            return isExpired ? "Timeout" : "-";
-        }
-
-        return latencyMs is null ? "Timeout" : $"{latencyMs} ms";
+        OnPropertyChanged(nameof(TcpLatencyMs));
     }
 
     private static string FormatExpiryDisplay(DateTime? expiryUtc)

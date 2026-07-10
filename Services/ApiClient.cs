@@ -138,7 +138,7 @@ public sealed class ApiClient
         {
             using var response = await _http.SendAsync(request, timeoutSource.Token);
             var text = await response.Content.ReadAsStringAsync(timeoutSource.Token);
-            return ParseResponse<T>(text);
+            return MergeHttpStatus(ParseResponse<T>(text), response.StatusCode);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
@@ -191,7 +191,7 @@ public sealed class ApiClient
         {
             using var response = await _http.SendAsync(request, timeoutSource.Token);
             var text = await response.Content.ReadAsStringAsync(timeoutSource.Token);
-            return ParseResponse<T>(text);
+            return MergeHttpStatus(ParseResponse<T>(text), response.StatusCode);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
@@ -255,7 +255,7 @@ public sealed class ApiClient
         {
             using var response = await _http.SendAsync(request, timeoutSource.Token);
             var text = await response.Content.ReadAsStringAsync(timeoutSource.Token);
-            return ParseResponse<T>(text);
+            return MergeHttpStatus(ParseResponse<T>(text), response.StatusCode);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
@@ -310,6 +310,31 @@ public sealed class ApiClient
         }
     }
 
+    internal static ApiResult<T> MergeHttpStatus<T>(ApiResult<T> result, System.Net.HttpStatusCode statusCode)
+    {
+        if (result.IsSuccess || !string.IsNullOrWhiteSpace(result.Message))
+        {
+            return result;
+        }
+
+        var code = result.Code != 0 ? result.Code : (int)statusCode;
+        var message = statusCode switch
+        {
+            System.Net.HttpStatusCode.NotFound => "请求的资源不存在（404）。",
+            System.Net.HttpStatusCode.Unauthorized => "未登录或登录状态已过期。",
+            System.Net.HttpStatusCode.Forbidden => "没有访问权限。",
+            System.Net.HttpStatusCode.InternalServerError => "服务端内部错误。",
+            _ => $"请求失败（HTTP {(int)statusCode}）。"
+        };
+
+        return new ApiResult<T>
+        {
+            Code = code,
+            Message = message,
+            Data = result.Data
+        };
+    }
+
     internal async Task<ApiResult<T>> PostPublicAsync<T>(string baseUrl, string path, object body, CancellationToken cancellationToken = default)
     {
         using var request = new HttpRequestMessage(HttpMethod.Post, $"{baseUrl.TrimEnd('/')}/{path.TrimStart('/')}")
@@ -324,7 +349,7 @@ public sealed class ApiClient
         {
             using var response = await _http.SendAsync(request, timeoutSource.Token);
             var text = await response.Content.ReadAsStringAsync(timeoutSource.Token);
-            return ParseResponse<T>(text);
+            return MergeHttpStatus(ParseResponse<T>(text), response.StatusCode);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {

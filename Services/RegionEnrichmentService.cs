@@ -4,9 +4,11 @@ namespace NaiwaProxy.Services;
 
 public static class RegionEnrichmentService
 {
-    public static async Task<int> EnrichRegionsAsync(IEnumerable<VmessProfile> profiles, CancellationToken cancellationToken = default)
+    public static async Task<List<(VmessProfile Profile, string Region)>> CollectRegionUpdatesAsync(
+        IEnumerable<VmessProfile> profiles,
+        CancellationToken cancellationToken = default)
     {
-        var updated = 0;
+        var updates = new List<(VmessProfile Profile, string Region)>();
 
         foreach (var profile in profiles)
         {
@@ -20,8 +22,7 @@ public static class RegionEnrichmentService
             var keywordRegion = NodeRegionHelper.Resolve(profile);
             if (keywordRegion != "-")
             {
-                profile.SetRegion(keywordRegion);
-                updated++;
+                updates.Add((profile, keywordRegion));
                 continue;
             }
 
@@ -33,11 +34,21 @@ public static class RegionEnrichmentService
             var ipRegion = await IpRegionService.LookupAsync(profile.Address, cancellationToken);
             if (!string.IsNullOrWhiteSpace(ipRegion))
             {
-                profile.SetRegion(ipRegion);
-                updated++;
+                updates.Add((profile, ipRegion));
             }
         }
 
-        return updated;
+        return updates;
+    }
+
+    public static async Task<int> EnrichRegionsAsync(IEnumerable<VmessProfile> profiles, CancellationToken cancellationToken = default)
+    {
+        var updates = await CollectRegionUpdatesAsync(profiles, cancellationToken);
+        foreach (var (profile, region) in updates)
+        {
+            profile.SetRegion(region);
+        }
+
+        return updates.Count;
     }
 }

@@ -8,4 +8,5 @@ public sealed class SubscriptionSource
     public string? DisplayName { get; set; }
     public DateTime? CreatedAtUtc { get; set; }
     public bool TrafficExhausted { get; set; }
+    public bool IsLocalOnly { get; set; }
 }

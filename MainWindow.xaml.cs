@@ -5,6 +5,7 @@ using System.IO;
 using System.Net;
 using System.Net.Http;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Windows;
@@ -14,6 +15,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Media.Imaging;
+using System.Windows.Interop;
 using System.Windows.Threading;
 using Microsoft.Win32;
 using NaiwaProxy.Dialogs;
@@ -97,13 +99,19 @@ public partial class MainWindow : Window
     private readonly DispatcherTimer _subscriptionGlobalRefreshTimer = new() { Interval = TimeSpan.FromSeconds(30) };
     private readonly Dictionary<string, DispatcherTimer> _subscriptionRefreshTimers = new(StringComparer.OrdinalIgnoreCase);
     private bool _subscriptionGlobalRefreshInProgress;
+    private int _sideAvatarLoadVersion;
     private bool _isHandlingForceLogout;
     private bool _isHandlingTokenExpired;
     private bool _authRefreshInProgress;
     private int _registerCodeCooldownSeconds;
     private int _forgotPasswordCodeCooldownSeconds;
-    private string? _subscriptionContextMenuName;
+    private SubscriptionGroupIdentity? _subscriptionContextMenuScope;
     private const string InvalidSubscriptionSuffix = "（已失效）";
+    private int _unreadAdminChatCount;
+    private Drawing.Icon? _trayIconNormal;
+    private Drawing.Icon? _trayIconBlank;
+    private bool _trayIconBlinkVisible = true;
+    private readonly DispatcherTimer _trayBlinkTimer = new() { Interval = TimeSpan.FromMilliseconds(500) };
 
     public MainWindow(bool startSilent = false)
     {
@@ -136,6 +144,7 @@ public partial class MainWindow : Window
         _backendWebSocketPingTimer.Tick += BackendWebSocketPingTimer_Tick;
         _backendWebSocketReconnectTimer.Tick += BackendWebSocketReconnectTimer_Tick;
         _chatToastHideTimer.Tick += ChatToastHideTimer_Tick;
+        _trayBlinkTimer.Tick += TrayBlinkTimer_Tick;
         _registerCodeCooldownTimer.Tick += RegisterCodeCooldownTimer_Tick;
         _forgotPasswordCodeCooldownTimer.Tick += ForgotPasswordCodeCooldownTimer_Tick;
         _authRefreshTimer.Tick += AuthRefreshTimer_Tick;
@@ -173,6 +182,9 @@ public partial class MainWindow : Window
             _backendWebSocketReconnectTimer.Tick -= BackendWebSocketReconnectTimer_Tick;
             _chatToastHideTimer.Stop();
             _chatToastHideTimer.Tick -= ChatToastHideTimer_Tick;
+            _trayBlinkTimer.Stop();
+            _trayBlinkTimer.Tick -= TrayBlinkTimer_Tick;
+            _trayIconBlank?.Dispose();
             _appUpdateDownloadCts?.Cancel();
             _appUpdateDownloadCts?.Dispose();
             _backendWebSocket.Dispose();
@@ -388,6 +400,8 @@ public partial class MainWindow : Window
         _trayMenu.Opening += (_, _) => RebuildTrayMenu();
 
         var icon = TryLoadTrayIcon() ?? Drawing.SystemIcons.Application;
+        _trayIconNormal = icon;
+        _trayIconBlank = CreateBlankTrayIcon(icon);
 
         _trayIcon = new Forms.NotifyIcon
         {
@@ -581,15 +595,18 @@ public partial class MainWindow : Window
         {
             StartAuthRefreshTimer();
             await _authService.RefreshProfileFromServerAsync();
+            UpdateAuthSidebar();
             await SyncBackendWebSocketAsync();
             await CheckAppUpdateOnStartupAsync();
             try
             {
-                await ReloadCloudSubscriptionsAsync(showSuccessMessage: false);
+                await ReloadCloudSubscriptionsAsync(manualRefresh: false);
+                RefreshProfilesView();
             }
             catch (Exception ex)
             {
                 DiagnosticLogService.Warning($"Startup cloud subscription sync failed: {ex.Message}");
+                ShowCloudSubscriptionFailureMessage($"云端自动更新失败：{ex.Message}");
             }
         }
 
@@ -597,7 +614,9 @@ public partial class MainWindow : Window
 
         if (_profiles.Count > 0)
         {
-            _ = RunStartupLatencyTestsAsync();
+            await RunStartupLatencyTestsAsync();
+            ApplyActiveProfileSelection(autoSelectIfMissing: true, save: true);
+            RefreshProfilesView();
         }
 
         if (_startSilent)
@@ -650,7 +669,22 @@ public partial class MainWindow : Window
             {
                 metadataChanged = true;
             }
+
+            if (MigrateLocalProfileFlags(profile, _settings))
+            {
+                metadataChanged = true;
+            }
         }
+
+        foreach (var source in _settings.SubscriptionSources.Values)
+        {
+            if (MigrateLocalSubscriptionSource(source))
+            {
+                metadataChanged = true;
+            }
+        }
+
+        MigrateLocalSubscriptionSourceKeys(ref metadataChanged);
 
         if (metadataChanged)
         {
@@ -675,15 +709,10 @@ public partial class MainWindow : Window
             _settingsStore.Save(_settings);
         }
 
-        ProfilesGrid.SelectedItem = selected;
-        SyncNodePickerDisplay(selected);
-        SyncTunToggleFromSettings();
-        SyncProxyToggleFromCoreState();
-        UpdateActiveProfileMarkers(_settings.SelectedProfileId);
-        UpdateNodeStatusBar(selected);
+        ApplyActiveProfileSelection(autoSelectIfMissing: true, save: true);
         ConfigureAuthService();
         ApplyTheme();
-        ApplyChatBackground();
+        ApplyThemeBackground();
         UpdateAuthSidebar();
         UpdateNotificationPagesAuthState();
         UpdateSidebarStatus();
@@ -738,7 +767,7 @@ public partial class MainWindow : Window
         var subscriptionNames = _settings.SubscriptionSources
             .Where(entry =>
                 !string.IsNullOrWhiteSpace(entry.Value.Url) &&
-                !string.Equals(entry.Key, "手动", StringComparison.OrdinalIgnoreCase))
+                !string.Equals(entry.Key, LocalSubscriptionHelper.LocalLabel, StringComparison.OrdinalIgnoreCase))
             .Select(entry => entry.Key)
             .ToList();
 
@@ -754,7 +783,6 @@ public partial class MainWindow : Window
             {
                 if (silent && IsSubscriptionTrafficExhausted(subscriptionName))
                 {
-                    ApplyTimeoutLatencyToSubscription(subscriptionName);
                     continue;
                 }
 
@@ -1072,21 +1100,25 @@ public partial class MainWindow : Window
         SubscriptionFilterCombo.Items.Add(new ComboBoxItem { Content = "来源：全部订阅" });
 
         var subscriptions = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var subscription in _profiles.Select(p => p.SubscriptionDisplay).Where(s => !string.IsNullOrWhiteSpace(s)))
+        foreach (var profile in _profiles)
         {
-            subscriptions.TryAdd(subscription, subscription);
-        }
-
-        foreach (var (subscriptionName, source) in _settings.SubscriptionSources)
-        {
-            if (string.IsNullOrWhiteSpace(subscriptionName))
+            var display = profile.SubscriptionDisplay;
+            if (string.IsNullOrWhiteSpace(display))
             {
                 continue;
             }
 
-            subscriptions[subscriptionName] = string.IsNullOrWhiteSpace(source.DisplayName)
-                ? subscriptionName
-                : source.DisplayName!;
+            subscriptions[LocalSubscriptionHelper.BuildFilterKey(profile)] = display;
+        }
+
+        foreach (var (sourceKey, source) in _settings.SubscriptionSources)
+        {
+            if (string.IsNullOrWhiteSpace(sourceKey))
+            {
+                continue;
+            }
+
+            subscriptions[sourceKey] = GetSubscriptionFilterDisplayName(sourceKey, source);
         }
 
         foreach (var subscription in subscriptions.OrderBy(pair => pair.Value, StringComparer.OrdinalIgnoreCase))
@@ -1143,20 +1175,30 @@ public partial class MainWindow : Window
         {
             try
             {
-                var updated = await RegionEnrichmentService.EnrichRegionsAsync(targets, token);
-                if (updated == 0 || token.IsCancellationRequested)
+                var updates = await RegionEnrichmentService.CollectRegionUpdatesAsync(targets, token);
+                if (updates.Count == 0 || token.IsCancellationRequested)
                 {
                     return;
                 }
 
                 await Dispatcher.InvokeAsync(() =>
                 {
-                    RefreshRegionFilterOptions();
-                    RefreshSubscriptionFilterOptions();
-                    ProfilesGrid.Items.Refresh();
+                    foreach (var (profile, region) in updates)
+                    {
+                        profile.SetRegion(region);
+                    }
+
                     _settings.Profiles = _profiles.ToList();
                     _settingsStore.Save(_settings);
-                });
+
+                    if (_latencyTestBatchActive > 0 || _subscriptionUpdateBatchActive > 0)
+                    {
+                        return;
+                    }
+
+                    RefreshRegionFilterOptions();
+                    RefreshSubscriptionFilterOptions();
+                }, DispatcherPriority.Background);
             }
             catch (OperationCanceledException)
             {
@@ -1209,7 +1251,7 @@ public partial class MainWindow : Window
         var subscription = GetSelectedSubscriptionFilterValue();
         if (!string.IsNullOrWhiteSpace(subscription) &&
             subscription != "全部订阅" &&
-            !string.Equals(profile.SubscriptionDisplay, subscription, StringComparison.OrdinalIgnoreCase))
+            !ProfileMatchesSubscriptionFilter(profile, subscription))
         {
             return false;
         }
@@ -1234,7 +1276,7 @@ public partial class MainWindow : Window
 
     private void RefreshProfilesView()
     {
-        if (!_isUiReady || _profilesView is null)
+        if (!_isUiReady || _profilesView is null || _latencyTestBatchActive > 0 || _subscriptionUpdateBatchActive > 0)
         {
             return;
         }
@@ -1256,8 +1298,19 @@ public partial class MainWindow : Window
         {
             _profilesView.SortDescriptions.Add(new SortDescription(nameof(VmessProfile.TcpLatencyMs), ListSortDirection.Ascending));
             _profilesView.SortDescriptions.Add(new SortDescription(nameof(VmessProfile.DisplayName), ListSortDirection.Ascending));
+            if (_profilesView is ListCollectionView listView)
+            {
+                listView.IsLiveSorting = false;
+            }
+        }
+        else if (_profilesView is ListCollectionView listView)
+        {
+            listView.IsLiveSorting = true;
         }
     }
+
+    private static bool SortsByLatency(IEnumerable<SortDescription> sorts) =>
+        sorts.Any(sort => string.Equals(sort.PropertyName, nameof(VmessProfile.TcpLatencyMs), StringComparison.Ordinal));
 
     private void ProfilesGrid_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
@@ -1280,60 +1333,105 @@ public partial class MainWindow : Window
         }
     }
 
+    private int _latencyTestBatchActive;
+    private int _subscriptionUpdateBatchActive;
+    private int _profilesViewFreezeDepth;
+    private bool _profilesViewLiveSorting = true;
+    private bool _profilesViewLiveFiltering = true;
+    private List<SortDescription> _frozenProfilesSort = [];
+    private string? _topBarLatencyProfileId;
+    private int? _topBarLastLatencyMs;
+    private bool _topBarShowingTimeout;
+    private const string TopBarLatencyPlaceholder = "\u00a0";
+
     private void UpdateNodeStatusBar(VmessProfile? profile)
     {
         if (profile is null)
         {
             NodeAddressText.Text = "[VMess] -";
-            CurrentTcpLatencyText.Text = "-";
-            NodeAvailabilityText.Text = "无节点";
+            _topBarLatencyProfileId = null;
+            _topBarLastLatencyMs = null;
+            _topBarShowingTimeout = false;
+            CurrentTcpLatencyText.Text = TopBarLatencyPlaceholder;
             return;
         }
 
         NodeAddressText.Text = $"[{profile.ProtocolDisplay}] {profile.DisplayName} · {profile.Endpoint}";
-        CurrentTcpLatencyText.Text = profile.TcpLatencyDisplay;
-        if (profile.IsExpired)
+        UpdateTopBarLatencyDisplay(profile);
+    }
+
+    private void UpdateTopBarLatencyDisplay(VmessProfile profile, bool force = false)
+    {
+        if (!force && _latencyTestBatchActive > 0)
         {
-            NodeAvailabilityText.Text = "过期";
-        }
-        else
-        {
-            NodeAvailabilityText.Text = profile.TcpLatencyDisplay switch
-            {
-                "Timeout" => "超时",
-                "-" or "..." => "待测速",
-                _ when profile.TcpLatencyMs is not null => profile.StatusDisplay,
-                _ => "待测速"
-            };
+            return;
         }
 
-        var tagBackground = NodeAvailabilityText.Text switch
+        if (profile.DisplayLatencyMs is int latencyMs)
         {
-            "可用" => "#DCFCE7",
-            "当前" => "#DBEAFE",
-            "超时" => "#FEE2E2",
-            "过期" => "#FEE2E2",
-            _ => "#FEF3C7"
-        };
-        var tagBorder = NodeAvailabilityText.Text switch
+            ApplyTopBarLatencyText(profile.Id, latencyMs, isTimeout: false);
+            return;
+        }
+
+        if (profile.TcpLatencyDisplay == "Timeout")
         {
-            "可用" => "#86EFAC",
-            "当前" => "#93C5FD",
-            "超时" => "#FCA5A5",
-            "过期" => "#FCA5A5",
-            _ => "#FDE68A"
-        };
-        var tagForeground = NodeAvailabilityText.Text switch
+            ApplyTopBarLatencyText(profile.Id, null, isTimeout: true);
+            return;
+        }
+
+        if (_topBarLatencyProfileId == profile.Id)
         {
-            "可用" => "#166534",
-            "当前" => "#1D4ED8",
-            "超时" => "#991B1B",
-            "过期" => "#991B1B",
-            _ => "#92400E"
-        };
-        NodeAvailabilityTag.Background = (SolidColorBrush)new BrushConverter().ConvertFromString(tagBackground)!;
-        NodeAvailabilityTag.BorderBrush = (SolidColorBrush)new BrushConverter().ConvertFromString(tagBorder)!;
-        NodeAvailabilityText.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString(tagForeground)!;
+            return;
+        }
+
+        _topBarLatencyProfileId = profile.Id;
+        _topBarLastLatencyMs = null;
+        _topBarShowingTimeout = false;
+        if (CurrentTcpLatencyText.Text != TopBarLatencyPlaceholder)
+        {
+            CurrentTcpLatencyText.Text = TopBarLatencyPlaceholder;
+        }
+    }
+
+    private void ApplyTopBarLatencyText(string profileId, int? latencyMs, bool isTimeout)
+    {
+        if (latencyMs is int ms)
+        {
+            var text = $"{ms} ms";
+            if (_topBarLatencyProfileId != profileId || _topBarLastLatencyMs != ms || _topBarShowingTimeout)
+            {
+                if (!string.Equals(CurrentTcpLatencyText.Text, text, StringComparison.Ordinal))
+                {
+                    CurrentTcpLatencyText.Text = text;
+                }
+
+                _topBarLatencyProfileId = profileId;
+                _topBarLastLatencyMs = ms;
+                _topBarShowingTimeout = false;
+            }
+
+            CurrentTcpLatencyText.Foreground = (System.Windows.Media.Brush)FindResource("GreenBrush");
+            return;
+        }
+
+        if (!isTimeout)
+        {
+            return;
+        }
+
+        if (_topBarLatencyProfileId != profileId || !_topBarShowingTimeout)
+        {
+            if (!string.Equals(CurrentTcpLatencyText.Text, "Timeout", StringComparison.Ordinal))
+            {
+                CurrentTcpLatencyText.Text = "Timeout";
+            }
+
+            _topBarLatencyProfileId = profileId;
+            _topBarLastLatencyMs = null;
+            _topBarShowingTimeout = true;
+        }
+
+        CurrentTcpLatencyText.Foreground = (System.Windows.Media.Brush)FindResource("RedBrush");
     }
 
     private void UpdateActiveProfileMarkers(string? activeId)
@@ -1342,8 +1440,6 @@ public partial class MainWindow : Window
         {
             profile.SetActive(!string.IsNullOrWhiteSpace(activeId) && profile.Id == activeId);
         }
-
-        ProfilesGrid.Items.Refresh();
 
         var active = string.IsNullOrWhiteSpace(activeId)
             ? null
@@ -1354,8 +1450,19 @@ public partial class MainWindow : Window
             : $"节点：{active.DisplayName} · {active.ProtocolDisplay}";
 
         SyncNodePickerDisplay(active);
-        UpdateNodeStatusBar(active);
+        UpdateNodeAddressInStatusBar(active);
         UpdateTrayStatus();
+    }
+
+    private void UpdateNodeAddressInStatusBar(VmessProfile? profile)
+    {
+        if (profile is null)
+        {
+            NodeAddressText.Text = "[VMess] -";
+            return;
+        }
+
+        NodeAddressText.Text = $"[{profile.ProtocolDisplay}] {profile.DisplayName} · {profile.Endpoint}";
     }
 
     private void SyncNodePickerDisplay(VmessProfile? active = null)
@@ -1426,6 +1533,168 @@ public partial class MainWindow : Window
         _settings.ThemeAccentColor = ThemeService.DefaultAccentHex;
         ApplyTheme();
         _settingsStore.Save(_settings);
+    }
+
+    private void ApplyThemeBackground()
+    {
+        var isCustom = IsCustomThemeBackgroundSource(_settings.ThemeBackgroundSource);
+        BitmapImage? bitmap = null;
+
+        if (isCustom)
+        {
+            var imagePath = ThemeBackgroundService.ResolveAbsolutePath(_settings.ThemeBackgroundImagePath);
+            if (!string.IsNullOrWhiteSpace(imagePath))
+            {
+                bitmap = TryLoadBitmapFromFile(imagePath);
+            }
+
+            if (bitmap is null)
+            {
+                isCustom = false;
+                _settings.ThemeBackgroundSource = "default";
+                _settings.ThemeBackgroundImagePath = null;
+                _settingsStore.Save(_settings);
+            }
+        }
+
+        bitmap ??= TryLoadAppBitmap(DefaultChatBackgroundResource);
+
+        if (AppThemeBackgroundImage is not null)
+        {
+            AppThemeBackgroundImage.Source = bitmap;
+            AppThemeBackgroundImage.Visibility = Visibility.Visible;
+        }
+
+        if (AppContentRoot is not null)
+        {
+            AppContentRoot.Background = System.Windows.Media.Brushes.Transparent;
+        }
+
+        ApplyGlassPanelResources();
+        ApplyGlassChrome();
+        SyncThemeBackgroundSettingsUi(bitmap, isCustom);
+    }
+
+    private void SyncThemeBackgroundSettingsUi(BitmapImage? activeBitmap, bool isCustom)
+    {
+        if (!_isUiReady ||
+            ThemeBackgroundStatusText is null ||
+            ThemeBackgroundPreviewImage is null ||
+            ThemeBackgroundResetButton is null)
+        {
+            return;
+        }
+
+        ThemeBackgroundPreviewImage.Source = activeBitmap;
+        ThemeBackgroundPreviewImage.Visibility = Visibility.Visible;
+        ThemeBackgroundResetButton.IsEnabled = isCustom;
+        ThemeBackgroundStatusText.Text = isCustom ? "本地图片" : "默认";
+    }
+
+    private void ApplyGlassChrome()
+    {
+        var light = SystemThemeService.IsLightMode();
+        if (SidebarBorder is not null)
+        {
+            SidebarBorder.Background = CreateSemiTransparentSidebarBrush(light);
+        }
+
+        if (MainHeaderBorder is not null)
+        {
+            MainHeaderBorder.Background = CreateFrozenBrush(
+                light ? Color.FromArgb(0xD9, 0xFF, 0xFF, 0xFF) : Color.FromArgb(0xD9, 0x25, 0x25, 0x26));
+        }
+    }
+
+    private static bool IsCustomThemeBackgroundSource(string? source) =>
+        string.Equals(source, "local", StringComparison.OrdinalIgnoreCase);
+
+    private void ApplyGlassPanelResources()
+    {
+        var light = SystemThemeService.IsLightMode();
+        Resources["PanelGlassBrush"] = CreateFrozenBrush(
+            light ? Color.FromArgb(0xA6, 0xFF, 0xFF, 0xFF) : Color.FromArgb(0xA6, 0x25, 0x25, 0x26));
+        Resources["Panel2GlassBrush"] = CreateFrozenBrush(
+            light ? Color.FromArgb(0x99, 0xF8, 0xFA, 0xFC) : Color.FromArgb(0x99, 0x2D, 0x2D, 0x30));
+        Resources["Panel3GlassBrush"] = CreateFrozenBrush(
+            light ? Color.FromArgb(0xB3, 0xFF, 0xFF, 0xFF) : Color.FromArgb(0xB3, 0x30, 0x30, 0x32));
+        Resources["RowAltGlassBrush"] = CreateFrozenBrush(
+            light ? Color.FromArgb(0x66, 0xFF, 0xFF, 0xFF) : Color.FromArgb(0x66, 0x25, 0x25, 0x26));
+        Resources["RowHoverGlassBrush"] = CreateFrozenBrush(
+            light ? Color.FromArgb(0x80, 0xF8, 0xFA, 0xFC) : Color.FromArgb(0x80, 0x3A, 0x3A, 0x3C));
+        Resources["ChatPanelGlassBrush"] = CreateFrozenBrush(
+            light ? Color.FromArgb(0x73, 0xFF, 0xFF, 0xFF) : Color.FromArgb(0x73, 0x25, 0x25, 0x28));
+        Resources["ChatBubbleAdminBrush"] = CreateFrozenBrush(
+            light ? Color.FromArgb(0x99, 0xEF, 0xF6, 0xFF) : Color.FromArgb(0x99, 0x1E, 0x3A, 0x5F));
+        Resources["ChatBubbleUserBrush"] = CreateFrozenBrush(
+            light ? Color.FromArgb(0xB3, 0x60, 0xA5, 0xFA) : Color.FromArgb(0xB3, 0x3B, 0x82, 0xF6));
+    }
+
+    private static LinearGradientBrush CreateSemiTransparentSidebarBrush(bool light)
+    {
+        var brush = new LinearGradientBrush
+        {
+            StartPoint = new(0, 0),
+            EndPoint = new(0, 1)
+        };
+        if (light)
+        {
+            brush.GradientStops.Add(new GradientStop(Color.FromArgb(0xD9, 0xFF, 0xFF, 0xFF), 0));
+            brush.GradientStops.Add(new GradientStop(Color.FromArgb(0xD9, 0xF8, 0xFA, 0xFC), 1));
+        }
+        else
+        {
+            brush.GradientStops.Add(new GradientStop(Color.FromArgb(0xD9, 0x25, 0x25, 0x26), 0));
+            brush.GradientStops.Add(new GradientStop(Color.FromArgb(0xD9, 0x2D, 0x2D, 0x30), 1));
+        }
+
+        brush.Freeze();
+        return brush;
+    }
+
+    private static SolidColorBrush CreateFrozenBrush(Color color)
+    {
+        var brush = new SolidColorBrush(color);
+        brush.Freeze();
+        return brush;
+    }
+
+    private void ThemeBackgroundUploadButton_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new OpenFileDialog
+        {
+            Title = "选择主题背景图片",
+            Filter = "图片文件|*.jpg;*.jpeg;*.png;*.webp;*.bmp"
+        };
+        if (dialog.ShowDialog() != true)
+        {
+            return;
+        }
+
+        try
+        {
+            var storedPath = ThemeBackgroundService.ImportFromFile(dialog.FileName);
+            _settings.ThemeBackgroundSource = "local";
+            _settings.ThemeBackgroundImagePath = storedPath;
+            _settingsStore.Save(_settings);
+            ApplyThemeBackground();
+        }
+        catch (Exception ex)
+        {
+            ThemedMessageDialog.Show(
+                this,
+                "上传主题背景失败",
+                [ex.Message],
+                ThemedMessageKind.Error);
+        }
+    }
+
+    private void ThemeBackgroundResetButton_Click(object sender, RoutedEventArgs e)
+    {
+        _settings.ThemeBackgroundSource = "default";
+        _settings.ThemeBackgroundImagePath = null;
+        _settingsStore.Save(_settings);
+        ApplyThemeBackground();
     }
 
     private void ConfigureAuthService()
@@ -1548,7 +1817,11 @@ public partial class MainWindow : Window
             ClearCloudProfilesOnLogout();
             ClearAuthMessages();
             UpdateChatConnectionStatus("disconnected");
-            ShowForceLogoutOverlay(payload);
+            ForceLogoutDialog.Show(this, payload);
+            if (!payload.PreventsRelogin)
+            {
+                ShowLoginPage();
+            }
 
             try
             {
@@ -1645,86 +1918,6 @@ public partial class MainWindow : Window
         await SyncBackendWebSocketAsync();
     }
 
-    private void ShowForceLogoutOverlay(ForceLogoutPushMessage payload)
-    {
-        if (ForceLogoutOverlay is null)
-        {
-            ShowLoginPage();
-            return;
-        }
-
-        ForceLogoutSummaryText.Text = payload.GetDisplayMessage();
-        ForceLogoutReasonText.Text = ForceLogoutPushMessage.FormatReason(payload.Reason);
-        ForceLogoutMaxActiveDevicesText.Text = ForceLogoutPushMessage.FormatMaxActiveDevices(payload.MaxActiveDevices);
-        ForceLogoutKickedSessionText.Text = ForceLogoutPushMessage.FormatValue(payload.ResolvedKickedSessionId);
-
-        var device = payload.NewLoginDevice;
-        ForceLogoutDeviceSessionText.Text = ForceLogoutPushMessage.FormatValue(device?.SessionId);
-        ForceLogoutDeviceClientTypeText.Text = ForceLogoutPushMessage.FormatClientType(device?.ClientType);
-        ForceLogoutDeviceNameText.Text = ForceLogoutPushMessage.FormatValue(device?.DeviceName);
-        ForceLogoutDeviceIdText.Text = ForceLogoutPushMessage.FormatValue(device?.DeviceId);
-        ForceLogoutDeviceOsText.Text = BuildForceLogoutOsText(device);
-        ForceLogoutDeviceAppVersionText.Text = ForceLogoutPushMessage.FormatValue(device?.AppVersion);
-        ForceLogoutDeviceIpText.Text = ForceLogoutPushMessage.FormatValue(device?.IpAddress);
-        ForceLogoutDeviceLocationText.Text = BuildForceLogoutLocationText(device);
-        ForceLogoutDeviceIspText.Text = ForceLogoutPushMessage.FormatValue(device?.Isp);
-
-        ForceLogoutOverlay.Visibility = Visibility.Visible;
-    }
-
-    private static string BuildForceLogoutOsText(ForceLogoutDeviceInfo? device)
-    {
-        if (device is null)
-        {
-            return "未知";
-        }
-
-        var hasOsName = !string.IsNullOrWhiteSpace(device.OsName);
-        var hasOsVersion = !string.IsNullOrWhiteSpace(device.OsVersion);
-        if (!hasOsName && !hasOsVersion)
-        {
-            return "未知";
-        }
-
-        if (hasOsName && hasOsVersion)
-        {
-            return $"{device.OsName!.Trim()} {device.OsVersion!.Trim()}";
-        }
-
-        return hasOsName ? device.OsName!.Trim() : device.OsVersion!.Trim();
-    }
-
-    private static string BuildForceLogoutLocationText(ForceLogoutDeviceInfo? device)
-    {
-        if (device is null)
-        {
-            return "未知";
-        }
-
-        var parts = new[]
-        {
-            device.Country,
-            device.Region,
-            device.City
-        }.Where(part => !string.IsNullOrWhiteSpace(part)).Select(part => part!.Trim()).ToArray();
-
-        return parts.Length == 0 ? "未知" : string.Join(" / ", parts);
-    }
-
-    private void HideForceLogoutOverlay()
-    {
-        if (ForceLogoutOverlay is not null)
-        {
-            ForceLogoutOverlay.Visibility = Visibility.Collapsed;
-        }
-    }
-
-    private void ForceLogoutConfirmButton_Click(object sender, RoutedEventArgs e)
-    {
-        HideForceLogoutOverlay();
-        ShowLoginPage();
-    }
-
     private async Task RefreshUserProfileFromServerAsync()
     {
         if (!_authService.IsAuthenticated)
@@ -1733,6 +1926,7 @@ public partial class MainWindow : Window
         }
 
         await _authService.RefreshProfileFromServerAsync();
+        Dispatcher.Invoke(UpdateAuthSidebar);
     }
 
     private void BackendWebSocket_Disconnected()
@@ -1786,6 +1980,11 @@ public partial class MainWindow : Window
 
             if (message.IsFromAdmin)
             {
+                if (ContactAdminPageScroll.Visibility != Visibility.Visible)
+                {
+                    IncrementUnreadAdminChatCount();
+                }
+
                 ShowChatMessageToast(message);
             }
 
@@ -1918,54 +2117,97 @@ public partial class MainWindow : Window
             {
                 SyncCloudSubscriptionsButton.Visibility = Visibility.Collapsed;
             }
-
-            SetCloudSubscriptionStatus("");
         }
     }
 
     private void SetSideAuthAvatar(string avatarUrl)
+    {
+        _ = LoadSideAuthAvatarAsync(avatarUrl);
+    }
+
+    private async Task LoadSideAuthAvatarAsync(string avatarUrl)
     {
         if (SideAuthAvatarImage is null || SideAuthAvatarPlaceholder is null)
         {
             return;
         }
 
-        if (!TryLoadAvatarBitmap(avatarUrl, out var bitmap))
+        var loadVersion = Interlocked.Increment(ref _sideAvatarLoadVersion);
+        BitmapImage? bitmap = null;
+
+        for (var attempt = 0; attempt < 3 && bitmap is null; attempt++)
         {
+            if (attempt > 0)
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(400 * attempt));
+            }
+
+            if (loadVersion != _sideAvatarLoadVersion)
+            {
+                return;
+            }
+
+            bitmap = await AvatarImageLoader.LoadWithFallbackAsync(
+                avatarUrl,
+                AvatarUrlHelper.DefaultUserAvatarUrl);
+        }
+
+        if (loadVersion != _sideAvatarLoadVersion)
+        {
+            return;
+        }
+
+        if (bitmap is null)
+        {
+            ApplySideAuthAvatarState(null);
+            DiagnosticLogService.Warning($"Side auth avatar failed to load: {avatarUrl}");
+            return;
+        }
+
+        ApplySideAuthAvatarState(bitmap);
+    }
+
+    private void ApplySideAuthAvatarState(BitmapImage? bitmap)
+    {
+        if (SideAuthAvatarImage is null || SideAuthAvatarPlaceholder is null)
+        {
+            return;
+        }
+
+        SideAuthAvatarImage.ImageFailed -= SideAuthAvatarImage_ImageFailed;
+
+        if (bitmap is null)
+        {
+            SideAuthAvatarImage.Source = null;
             SideAuthAvatarImage.Visibility = Visibility.Collapsed;
             SideAuthAvatarPlaceholder.Visibility = Visibility.Visible;
-            SideAuthAvatarImage.Source = null;
             return;
         }
 
         SideAuthAvatarImage.Source = bitmap;
         SideAuthAvatarImage.Visibility = Visibility.Visible;
         SideAuthAvatarPlaceholder.Visibility = Visibility.Collapsed;
+        SideAuthAvatarImage.ImageFailed += SideAuthAvatarImage_ImageFailed;
     }
 
-    private static bool TryLoadAvatarBitmap(string avatarUrl, out BitmapImage? bitmap)
+    private void SideAuthAvatarImage_ImageFailed(object? sender, ExceptionRoutedEventArgs e)
     {
-        bitmap = null;
-        if (string.IsNullOrWhiteSpace(avatarUrl))
+        DiagnosticLogService.Warning($"Side auth avatar render failed: {e.ErrorException.Message}");
+        Dispatcher.BeginInvoke(() =>
         {
-            return false;
-        }
-
-        try
-        {
-            bitmap = new BitmapImage();
-            bitmap.BeginInit();
-            bitmap.CacheOption = BitmapCacheOption.OnLoad;
-            bitmap.UriSource = new Uri(avatarUrl, UriKind.Absolute);
-            bitmap.EndInit();
-            return true;
-        }
-        catch
-        {
-            bitmap = null;
-            return false;
-        }
+            if (_authService.HasPersistedSession)
+            {
+                SetSideAuthAvatar(AvatarUrlHelper.ResolveUserAvatarUrl(_authService.CurrentAvatarUrl));
+            }
+            else
+            {
+                ApplySideAuthAvatarState(null);
+            }
+        }, DispatcherPriority.Background);
     }
+
+    private static bool TryLoadAvatarBitmap(string avatarUrl, out BitmapImage? bitmap) =>
+        AvatarImageLoader.TryLoadLocal(avatarUrl, out bitmap);
 
     private async void SideEditProfileButton_Click(object sender, RoutedEventArgs e)
     {
@@ -2045,25 +2287,27 @@ public partial class MainWindow : Window
     {
         if (!_authService.HasPersistedSession)
         {
-            MessageBox.Show("请先登录后再从云端更新节点。", "Nexora", MessageBoxButton.OK, MessageBoxImage.Information);
+            ThemedMessageDialog.Show(this, "请先登录后再从云端更新节点。");
             return;
         }
 
         if (!await _authService.TryRestoreSessionAsync())
         {
-            MessageBox.Show("登录已过期，请重新登录后再更新订阅。", "Nexora", MessageBoxButton.OK, MessageBoxImage.Information);
+            ThemedMessageDialog.Show(this, "登录已过期，请重新登录后再更新订阅。", kind: ThemedMessageKind.Warning);
             return;
         }
 
         SyncCloudSubscriptionsButton.IsEnabled = false;
         try
         {
-            SetCloudSubscriptionStatus("正在从云端获取订阅列表...");
-            await ReloadCloudSubscriptionsAsync(showSuccessMessage: true);
+            await ReloadCloudSubscriptionsAsync(manualRefresh: true);
         }
         catch (Exception ex)
         {
-            SetCloudSubscriptionStatus($"云端更新失败：{ex.Message}", isError: true);
+            ThemedMessageDialog.Show(
+                this,
+                $"云端更新失败：{ex.Message}",
+                kind: ThemedMessageKind.Warning);
             DiagnosticLogService.Error("Cloud subscription refresh failed.", ex);
         }
         finally
@@ -2072,20 +2316,38 @@ public partial class MainWindow : Window
         }
     }
 
-    private void SetCloudSubscriptionStatus(string message, bool isError = false)
+    private void ShowCloudSubscriptionReloadSummary(
+        int subscriptionCount,
+        int parsedSuccessCount,
+        int invalidCount,
+        int loadedNodeCount,
+        bool isManual)
     {
-        if (!_isUiReady || CloudSubscriptionStatusText is null)
+        var headline = isManual ? "云端更新完成。" : "云端自动更新失败。";
+        var details = new[]
         {
+            $"获取订阅：{subscriptionCount}",
+            $"解析成功：{parsedSuccessCount}",
+            $"失效：{invalidCount}",
+            $"加载并测速节点：{loadedNodeCount}"
+        };
+
+        if (isManual)
+        {
+            ThemedMessageDialog.Show(this, headline, details);
             return;
         }
 
-        CloudSubscriptionStatusText.Text = message;
-        CloudSubscriptionStatusText.Foreground = isError
-            ? new SolidColorBrush(Color.FromRgb(0xDC, 0x26, 0x26))
-            : new SolidColorBrush(Color.FromRgb(0x64, 0x74, 0x8B));
-        CloudSubscriptionStatusText.Visibility = string.IsNullOrWhiteSpace(message)
-            ? Visibility.Collapsed
-            : Visibility.Visible;
+        MessageBox.Show(
+            string.Join(Environment.NewLine, new[] { headline, string.Empty }.Concat(details)),
+            "Nexora",
+            MessageBoxButton.OK,
+            MessageBoxImage.Warning);
+    }
+
+    private static void ShowCloudSubscriptionFailureMessage(string message)
+    {
+        MessageBox.Show(message, "Nexora", MessageBoxButton.OK, MessageBoxImage.Warning);
     }
 
     private void GoToRegisterPageButton_Click(object sender, RoutedEventArgs e) => ShowRegisterPage();
@@ -2177,7 +2439,7 @@ public partial class MainWindow : Window
             LoginPasswordBox.Clear();
             ShowAuthMessage(LoginMessageText, result.Message, isSuccess: true);
             CloseAuthDialog();
-            if (await ReloadCloudSubscriptionsAsync(showSuccessMessage: false))
+            if (await ReloadCloudSubscriptionsAsync(manualRefresh: false))
             {
                 await TryAutoStartProxyAfterLoginAsync();
             }
@@ -2357,7 +2619,7 @@ public partial class MainWindow : Window
             RegisterCodeBox.Clear();
             ShowAuthMessage(RegisterMessageText, result.Message, isSuccess: true);
             CloseAuthDialog();
-            if (await ReloadCloudSubscriptionsAsync(showSuccessMessage: false))
+            if (await ReloadCloudSubscriptionsAsync(manualRefresh: false))
             {
                 await TryAutoStartProxyAfterLoginAsync();
             }
@@ -2372,11 +2634,19 @@ public partial class MainWindow : Window
         }
     }
 
-    private async Task<bool> ReloadCloudSubscriptionsAsync(bool showSuccessMessage)
+    private async Task<bool> ReloadCloudSubscriptionsAsync(bool manualRefresh)
     {
         if (!await _authService.TryRestoreSessionAsync())
         {
-            SetCloudSubscriptionStatus("登录已过期，请重新登录。", isError: true);
+            if (manualRefresh)
+            {
+                ThemedMessageDialog.Show(this, "登录已过期，请重新登录。", kind: ThemedMessageKind.Warning);
+            }
+            else
+            {
+                ShowCloudSubscriptionFailureMessage("登录已过期，请重新登录。");
+            }
+
             return false;
         }
 
@@ -2385,11 +2655,18 @@ public partial class MainWindow : Window
         {
             if (fetchResult.IsTransientFailure || fetchResult.Subscriptions.Count == 0)
             {
-                SetCloudSubscriptionStatus(
-                    string.IsNullOrWhiteSpace(fetchResult.ErrorMessage)
-                        ? "无法连接云端，已保留本地节点。"
-                        : $"无法连接云端，已保留本地节点：{fetchResult.ErrorMessage}",
-                    isError: true);
+                var message = string.IsNullOrWhiteSpace(fetchResult.ErrorMessage)
+                    ? "无法连接云端，已保留本地节点。"
+                    : $"无法连接云端，已保留本地节点：{fetchResult.ErrorMessage}";
+                if (manualRefresh)
+                {
+                    ThemedMessageDialog.Show(this, message, kind: ThemedMessageKind.Warning);
+                }
+                else
+                {
+                    ShowCloudSubscriptionFailureMessage(message);
+                }
+
                 return false;
             }
         }
@@ -2408,7 +2685,6 @@ public partial class MainWindow : Window
         _settingsStore.Save(_settings);
         RefreshSubscriptionFilterOptions();
         RestoreSubscriptionAutoRefreshTimers();
-        SetCloudSubscriptionStatus($"已获取 {subscriptions.Count} 个云端订阅，正在同时解析节点...");
 
         if (subscriptions.Count == 0)
         {
@@ -2420,7 +2696,11 @@ public partial class MainWindow : Window
             ProfilesGrid.Items.Refresh();
             _settingsStore.Save(_settings);
             RefreshSubscriptionFilterOptions();
-            SetCloudSubscriptionStatus("当前账号暂无云端订阅。");
+            if (manualRefresh)
+            {
+                ThemedMessageDialog.Show(this, "当前账号暂无云端订阅。");
+            }
+
             return false;
         }
 
@@ -2433,7 +2713,9 @@ public partial class MainWindow : Window
         {
             if (!item.Success || item.ImportResult is null)
             {
-                if (ShouldTreatRefreshFailureAsTrafficExhausted(item.Subscription.Name, item.ErrorMessage))
+                if (ShouldTreatRefreshFailureAsTrafficExhausted(
+                        new SubscriptionGroupIdentity(item.Subscription.Name, IsLocal: false, IsManual: false),
+                        item.ErrorMessage))
                 {
                     SetSubscriptionTrafficExhausted(item.Subscription.Name);
                     DiagnosticLogService.Warning(
@@ -2447,7 +2729,10 @@ public partial class MainWindow : Window
                 else
                 {
                     MarkServerSubscriptionInvalid(item.Subscription);
-                    RemoveProfilesForSubscription(item.Subscription.Name);
+                    RemoveProfilesForSubscription(new SubscriptionGroupIdentity(
+                        item.Subscription.Name,
+                        IsLocal: false,
+                        IsManual: false));
                     profileCollectionChanged = true;
                     DiagnosticLogService.Warning(
                         $"Cloud subscription \"{item.Subscription.Name}\" marked invalid: {item.ErrorMessage ?? "no profiles parsed"}");
@@ -2470,7 +2755,7 @@ public partial class MainWindow : Window
                 continue;
             }
 
-            RemoveProfilesForSubscription(subscriptionName);
+            RemoveProfilesForSubscription(new SubscriptionGroupIdentity(subscriptionName, IsLocal: false, IsManual: false));
             profileCollectionChanged = true;
 
             SubscriptionMetadataHelper.ApplyToProfiles(importResult, subscriptionName);
@@ -2501,38 +2786,52 @@ public partial class MainWindow : Window
 
         _settingsStore.Save(_settings);
         var invalidSubscriptions = items.Count(item => !item.Success || item.ImportResult is null);
+        var parsedSuccessCount = items.Count - invalidSubscriptions;
         if (loadedProfiles.Count > 0)
         {
-            SaveProfiles(loadedProfiles.Last().Id);
+            SaveProfiles(PreserveActiveProfileId());
             RefreshNodePicker();
-            ProfilesGrid.Items.Refresh();
+            RefreshProfilesView();
             RefreshRegionFilterOptions();
             RefreshSubscriptionFilterOptions();
             RestoreSubscriptionAutoRefreshTimers();
             ScheduleRegionEnrichment(loadedProfiles);
-            SetCloudSubscriptionStatus($"已加载 {loadedProfiles.Count} 个节点，正在重新测速...");
             await RunTcpLatencyTestsAsync(loadedProfiles, parallel: true);
+            ApplyActiveProfileSelection(autoSelectIfMissing: true, save: true);
         }
         else
         {
             if (profileCollectionChanged)
             {
-                var nextActiveId = _profiles.FirstOrDefault(profile => profile.Id == _settings.SelectedProfileId)?.Id
-                    ?? _profiles.FirstOrDefault()?.Id;
-                SaveProfiles(nextActiveId);
-                ProfilesGrid.SelectedItem = _profiles.FirstOrDefault(profile => profile.Id == nextActiveId);
-                SyncNodePickerDisplay();
+                ApplyActiveProfileSelection(autoSelectIfMissing: true, save: true);
             }
 
             RefreshNodePicker();
-            ProfilesGrid.Items.Refresh();
+            RefreshProfilesView();
             RefreshRegionFilterOptions();
             RefreshSubscriptionFilterOptions();
             RestoreSubscriptionAutoRefreshTimers();
         }
 
-        SetCloudSubscriptionStatus(
-            $"云端更新完成：获取 {subscriptions.Count} 个订阅，解析成功 {items.Count - invalidSubscriptions} 个，失效 {invalidSubscriptions} 个，共加载并测速 {loadedProfiles.Count} 个节点。");
+        if (manualRefresh)
+        {
+            ShowCloudSubscriptionReloadSummary(
+                subscriptions.Count,
+                parsedSuccessCount,
+                invalidSubscriptions,
+                loadedProfiles.Count,
+                isManual: true);
+        }
+        else if (subscriptions.Count > 0 && loadedProfiles.Count == 0)
+        {
+            ShowCloudSubscriptionReloadSummary(
+                subscriptions.Count,
+                parsedSuccessCount,
+                invalidSubscriptions,
+                loadedProfiles.Count,
+                isManual: false);
+        }
+
         return loadedProfiles.Count > 0;
     }
 
@@ -2562,7 +2861,7 @@ public partial class MainWindow : Window
         }
 
         var cloudSourceKeys = _settings.SubscriptionSources
-            .Where(pair => pair.Value.ServerSubscriptionId is > 0)
+            .Where(pair => pair.Value.ServerSubscriptionId is > 0 && !pair.Value.IsLocalOnly)
             .Select(pair => pair.Key)
             .ToList();
 
@@ -2590,12 +2889,14 @@ public partial class MainWindow : Window
     {
         profile.IsCloudManaged = true;
         profile.IsLocalManual = false;
+        profile.IsLocalSubscription = false;
     }
 
     private static void MarkProfileAsLocalManual(VmessProfile profile)
     {
         profile.IsCloudManaged = false;
         profile.IsLocalManual = true;
+        profile.IsLocalSubscription = false;
         profile.SubscriptionName = "";
     }
 
@@ -2603,19 +2904,169 @@ public partial class MainWindow : Window
     {
         profile.IsCloudManaged = false;
         profile.IsLocalManual = false;
+        profile.IsLocalSubscription = true;
     }
 
-    private void RemoveProfilesForSubscription(string subscriptionName)
+    private static bool MigrateLocalProfileFlags(VmessProfile profile, AppSettings settings)
+    {
+        if (profile.IsLocalManual)
+        {
+            if (profile.IsCloudManaged || profile.IsLocalSubscription || !string.IsNullOrWhiteSpace(profile.SubscriptionName))
+            {
+                profile.IsCloudManaged = false;
+                profile.IsLocalSubscription = false;
+                profile.SubscriptionName = "";
+                return true;
+            }
+
+            return false;
+        }
+
+        if (profile.IsLocalSubscription)
+        {
+            if (profile.IsCloudManaged || profile.IsLocalManual)
+            {
+                profile.IsCloudManaged = false;
+                profile.IsLocalManual = false;
+                return true;
+            }
+
+            return false;
+        }
+
+        if (profile.IsCloudManaged)
+        {
+            if (profile.IsLocalManual || profile.IsLocalSubscription)
+            {
+                profile.IsLocalManual = false;
+                profile.IsLocalSubscription = false;
+                return true;
+            }
+
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(profile.SubscriptionName))
+        {
+            profile.IsLocalManual = true;
+            profile.IsLocalSubscription = false;
+            profile.IsCloudManaged = false;
+            return true;
+        }
+
+        var localSourceKey = LocalSubscriptionHelper.GetLocalSourceKey(profile.SubscriptionName);
+        if (settings.SubscriptionSources.ContainsKey(localSourceKey))
+        {
+            profile.IsLocalSubscription = true;
+            profile.IsLocalManual = false;
+            profile.IsCloudManaged = false;
+            return true;
+        }
+
+        if (settings.SubscriptionSources.TryGetValue(profile.SubscriptionName, out var cloudSource) &&
+            !cloudSource.IsLocalOnly &&
+            cloudSource.ServerSubscriptionId is > 0)
+        {
+            profile.IsCloudManaged = true;
+            profile.IsLocalManual = false;
+            profile.IsLocalSubscription = false;
+            return true;
+        }
+
+        profile.IsLocalSubscription = true;
+        profile.IsLocalManual = false;
+        profile.IsCloudManaged = false;
+        return true;
+    }
+
+    private static bool MigrateLocalSubscriptionSource(SubscriptionSource source)
+    {
+        if (source.IsLocalOnly || source.ServerSubscriptionId is > 0)
+        {
+            return false;
+        }
+
+        source.IsLocalOnly = true;
+        return true;
+    }
+
+    private static string GetSubscriptionFilterDisplayName(string sourceKey, SubscriptionSource? source)
+    {
+        if (LocalSubscriptionHelper.IsLocalManualGroupKey(sourceKey))
+        {
+            return LocalSubscriptionHelper.LocalLabel;
+        }
+
+        var subscriptionName = LocalSubscriptionHelper.GetSourceKeySubscriptionName(sourceKey);
+        if (LocalSubscriptionHelper.IsLocalSourceKey(sourceKey) || source?.IsLocalOnly == true)
+        {
+            var name = string.IsNullOrWhiteSpace(source?.DisplayName) ? subscriptionName : source.DisplayName!;
+            return LocalSubscriptionHelper.FormatLocalSubscriptionDisplay(name);
+        }
+
+        var cloudName = string.IsNullOrWhiteSpace(source?.DisplayName) ? subscriptionName : source.DisplayName!;
+        return cloudName;
+    }
+
+    private static bool ProfileMatchesSubscriptionFilter(VmessProfile profile, string filterKey)
+    {
+        if (string.Equals(filterKey, LocalSubscriptionHelper.LocalLabel, StringComparison.OrdinalIgnoreCase))
+        {
+            return profile.IsLocalManual;
+        }
+
+        if (LocalSubscriptionHelper.IsLocalSourceKey(filterKey))
+        {
+            var subscriptionName = LocalSubscriptionHelper.GetSourceKeySubscriptionName(filterKey);
+            return profile.IsLocalSubscription &&
+                   string.Equals(profile.SubscriptionName, subscriptionName, StringComparison.OrdinalIgnoreCase);
+        }
+
+        return profile.IsCloudManaged &&
+               string.Equals(profile.SubscriptionName, filterKey, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void RemoveProfilesForSubscription(SubscriptionGroupIdentity scope)
     {
         var removed = _profiles
-            .Where(profile =>
-                !profile.IsLocalManual &&
-                string.Equals(profile.SubscriptionName, subscriptionName, StringComparison.OrdinalIgnoreCase))
+            .Where(profile => LocalSubscriptionHelper.ProfileMatchesScope(profile, scope))
             .ToList();
 
         foreach (var profile in removed)
         {
             _profiles.Remove(profile);
+        }
+    }
+
+    private static SubscriptionGroupIdentity IdentityFromSourceKey(string sourceKey)
+    {
+        if (LocalSubscriptionHelper.IsLocalSourceKey(sourceKey))
+        {
+            return new SubscriptionGroupIdentity(
+                LocalSubscriptionHelper.GetSourceKeySubscriptionName(sourceKey),
+                IsLocal: true,
+                IsManual: false);
+        }
+
+        return new SubscriptionGroupIdentity(sourceKey, IsLocal: false, IsManual: false);
+    }
+
+    private void MigrateLocalSubscriptionSourceKeys(ref bool metadataChanged)
+    {
+        var toMigrate = _settings.SubscriptionSources
+            .Where(pair => pair.Value.IsLocalOnly && !LocalSubscriptionHelper.IsLocalSourceKey(pair.Key))
+            .ToList();
+
+        foreach (var (key, source) in toMigrate)
+        {
+            var newKey = LocalSubscriptionHelper.GetLocalSourceKey(key);
+            if (!_settings.SubscriptionSources.ContainsKey(newKey))
+            {
+                _settings.SubscriptionSources[newKey] = source;
+            }
+
+            _settings.SubscriptionSources.Remove(key);
+            metadataChanged = true;
         }
     }
 
@@ -2637,7 +3088,12 @@ public partial class MainWindow : Window
         var keysToRemove = new List<string>();
         foreach (var (subscriptionName, source) in _settings.SubscriptionSources)
         {
-            if (string.Equals(subscriptionName, "手动", StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(subscriptionName, LocalSubscriptionHelper.LocalLabel, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            if (source.IsLocalOnly)
             {
                 continue;
             }
@@ -2673,32 +3129,33 @@ public partial class MainWindow : Window
         {
             StopSubscriptionAutoRefresh(subscriptionName, save: false);
             _settings.SubscriptionSources.Remove(subscriptionName);
-            RemoveProfilesForSubscription(subscriptionName);
+            RemoveProfilesForSubscription(new SubscriptionGroupIdentity(subscriptionName, IsLocal: false, IsManual: false));
             DiagnosticLogService.Info($"Removed stale cloud subscription \"{subscriptionName}\" from local storage.");
         }
     }
 
-    private List<VmessProfile> GetProfilesForSubscription(string subscriptionName) =>
+    private List<VmessProfile> GetProfilesForSubscription(SubscriptionGroupIdentity scope) =>
         _profiles
-            .Where(profile => string.Equals(profile.SubscriptionName, subscriptionName, StringComparison.OrdinalIgnoreCase))
+            .Where(profile => LocalSubscriptionHelper.ProfileMatchesScope(profile, scope))
             .ToList();
 
-    private bool IsSubscriptionTrafficExhausted(string subscriptionName)
+    private bool IsSubscriptionTrafficExhausted(string sourceKey)
     {
-        if (_settings.SubscriptionSources.TryGetValue(subscriptionName, out var source) && source.TrafficExhausted)
+        if (_settings.SubscriptionSources.TryGetValue(sourceKey, out var source) && source.TrafficExhausted)
         {
             return true;
         }
 
-        return SubscriptionTrafficHelper.AreProfilesTrafficExhausted(GetProfilesForSubscription(subscriptionName));
+        return SubscriptionTrafficHelper.AreProfilesTrafficExhausted(
+            GetProfilesForSubscription(IdentityFromSourceKey(sourceKey)));
     }
 
     private bool ShouldTreatRefreshFailureAsTrafficExhausted(
-        string subscriptionName,
+        SubscriptionGroupIdentity scope,
         string? errorMessage,
         Exception? exception = null)
     {
-        if (IsSubscriptionTrafficExhausted(subscriptionName))
+        if (IsSubscriptionTrafficExhausted(scope.SourceKey))
         {
             return true;
         }
@@ -2715,20 +3172,20 @@ public partial class MainWindow : Window
         }
 
         return exception is TimeoutException &&
-               SubscriptionTrafficHelper.AreProfilesTrafficExhausted(GetProfilesForSubscription(subscriptionName));
+               SubscriptionTrafficHelper.AreProfilesTrafficExhausted(GetProfilesForSubscription(scope));
     }
 
-    private void SetSubscriptionTrafficExhausted(string subscriptionName, bool save = true)
+    private void SetSubscriptionTrafficExhausted(string sourceKey, bool save = true)
     {
-        if (!_settings.SubscriptionSources.TryGetValue(subscriptionName, out var source))
+        if (!_settings.SubscriptionSources.TryGetValue(sourceKey, out var source))
         {
             source = new SubscriptionSource();
-            _settings.SubscriptionSources[subscriptionName] = source;
+            _settings.SubscriptionSources[sourceKey] = source;
         }
 
+        var subscriptionName = LocalSubscriptionHelper.GetSourceKeySubscriptionName(sourceKey);
         source.TrafficExhausted = true;
         source.DisplayName = RemoveInvalidSubscriptionSuffix(source.DisplayName ?? subscriptionName);
-        ApplyTimeoutLatencyToSubscription(subscriptionName);
 
         if (save)
         {
@@ -2742,22 +3199,14 @@ public partial class MainWindow : Window
         }
 
         DiagnosticLogService.Warning(
-            $"Subscription \"{subscriptionName}\" traffic exhausted; auto refresh paused and latency set to Timeout.");
+            $"Subscription \"{LocalSubscriptionHelper.GetSourceKeySubscriptionName(sourceKey)}\" traffic exhausted; auto refresh paused.");
     }
 
-    private void ClearSubscriptionTrafficExhausted(string subscriptionName)
+    private void ClearSubscriptionTrafficExhausted(string sourceKey)
     {
-        if (_settings.SubscriptionSources.TryGetValue(subscriptionName, out var source))
+        if (_settings.SubscriptionSources.TryGetValue(sourceKey, out var source))
         {
             source.TrafficExhausted = false;
-        }
-    }
-
-    private void ApplyTimeoutLatencyToSubscription(string subscriptionName)
-    {
-        foreach (var profile in GetProfilesForSubscription(subscriptionName))
-        {
-            profile.CompleteTcpLatencyTest(null);
         }
     }
 
@@ -2774,9 +3223,15 @@ public partial class MainWindow : Window
             {
                 source.TrafficExhausted = true;
             }
-
-            ApplyTimeoutLatencyToSubscription(subscriptionName);
         }
+    }
+
+    private void ShowSubscriptionTrafficExhaustedDialog(string subscriptionName)
+    {
+        ThemedMessageDialog.Show(
+            this,
+            $"订阅「{subscriptionName}」流量已用尽。",
+            kind: ThemedMessageKind.Warning);
     }
 
     private SubscriptionSource RegisterServerSubscriptionSource(ServerSubscription subscription, bool isInvalid = false)
@@ -3669,10 +4124,10 @@ public partial class MainWindow : Window
 
     private void ShowContactAdminPage()
     {
+        ClearUnreadAdminChatCount();
         UpdateNotificationPagesAuthState();
         ShowPage(ContactAdminPageScroll, ContactAdminNavButton);
         HideChatMessageToast(animate: false);
-        ApplyChatBackground();
         if (_authService.IsAuthenticated)
         {
             _ = LoadChatMessagesAsync();
@@ -4532,6 +4987,151 @@ public partial class MainWindow : Window
         AnnouncementUnreadBadgeText.Text = $"{unreadCount} 条未读";
     }
 
+    private void IncrementUnreadAdminChatCount()
+    {
+        _unreadAdminChatCount++;
+        UpdateContactAdminUnreadBadge(_unreadAdminChatCount);
+        StartTaskbarAttention();
+    }
+
+    private void ClearUnreadAdminChatCount()
+    {
+        if (_unreadAdminChatCount <= 0)
+        {
+            return;
+        }
+
+        _unreadAdminChatCount = 0;
+        UpdateContactAdminUnreadBadge(0);
+        StopTaskbarAttention();
+    }
+
+    private void UpdateContactAdminUnreadBadge(int unreadCount)
+    {
+        if (ContactAdminUnreadBadge is null || ContactAdminUnreadBadgeText is null)
+        {
+            return;
+        }
+
+        if (unreadCount <= 0)
+        {
+            ContactAdminUnreadBadge.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        ContactAdminUnreadBadge.Visibility = Visibility.Visible;
+        ContactAdminUnreadBadgeText.Text = unreadCount > 99 ? "99+" : unreadCount.ToString();
+    }
+
+    private void StartTaskbarAttention()
+    {
+        if (_unreadAdminChatCount <= 0)
+        {
+            return;
+        }
+
+        if (!IsActive)
+        {
+            FlashTaskbar();
+        }
+
+        if (_trayBlinkTimer.IsEnabled)
+        {
+            return;
+        }
+
+        _trayIconBlinkVisible = true;
+        if (_trayIcon is not null && _trayIconNormal is not null)
+        {
+            _trayIcon.Icon = _trayIconNormal;
+        }
+
+        _trayBlinkTimer.Start();
+    }
+
+    private void StopTaskbarAttention()
+    {
+        _trayBlinkTimer.Stop();
+        if (_trayIcon is not null && _trayIconNormal is not null)
+        {
+            _trayIcon.Icon = _trayIconNormal;
+        }
+    }
+
+    private void TrayBlinkTimer_Tick(object? sender, EventArgs e)
+    {
+        if (_trayIcon is null || _trayIconNormal is null || _trayIconBlank is null)
+        {
+            return;
+        }
+
+        if (_unreadAdminChatCount <= 0)
+        {
+            StopTaskbarAttention();
+            return;
+        }
+
+        _trayIconBlinkVisible = !_trayIconBlinkVisible;
+        _trayIcon.Icon = _trayIconBlinkVisible ? _trayIconNormal : _trayIconBlank;
+    }
+
+    private void FlashTaskbar()
+    {
+        if (!IsLoaded || IsActive)
+        {
+            return;
+        }
+
+        var hwnd = new WindowInteropHelper(this).Handle;
+        if (hwnd == IntPtr.Zero)
+        {
+            return;
+        }
+
+        var info = new FlashWindowInfo
+        {
+            CbSize = (uint)Marshal.SizeOf<FlashWindowInfo>(),
+            Hwnd = hwnd,
+            DwFlags = FlashwTray | FlashwTimerNoFg,
+            UCount = 8,
+            DwTimeout = 0
+        };
+        FlashWindowEx(ref info);
+    }
+
+    private static Drawing.Icon? CreateBlankTrayIcon(Drawing.Icon source)
+    {
+        try
+        {
+            using var bitmap = new Drawing.Bitmap(source.Width, source.Height);
+            using var graphics = Drawing.Graphics.FromImage(bitmap);
+            graphics.Clear(Drawing.Color.Transparent);
+            var handle = bitmap.GetHicon();
+            return Drawing.Icon.FromHandle(handle);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool FlashWindowEx(ref FlashWindowInfo pwfi);
+
+    private const uint FlashwTray = 0x00000002;
+    private const uint FlashwTimerNoFg = 0x0000000C;
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct FlashWindowInfo
+    {
+        public uint CbSize;
+        public IntPtr Hwnd;
+        public uint DwFlags;
+        public uint UCount;
+        public uint DwTimeout;
+    }
+
     private static string TruncateAnnouncementPreview(string text)
     {
         if (string.IsNullOrWhiteSpace(text))
@@ -4591,23 +5191,6 @@ public partial class MainWindow : Window
         }
     }
 
-    private void ApplyChatBackground()
-    {
-        if (ChatBackgroundImage is null)
-        {
-            return;
-        }
-
-        BitmapImage? bitmap = null;
-        if (!string.IsNullOrWhiteSpace(_settings.ChatBackgroundImagePath) &&
-            File.Exists(_settings.ChatBackgroundImagePath))
-        {
-            bitmap = TryLoadBitmapFromFile(_settings.ChatBackgroundImagePath);
-        }
-
-        ChatBackgroundImage.Source = bitmap ?? TryLoadAppBitmap(DefaultChatBackgroundResource);
-    }
-
     private static BitmapImage? TryLoadBitmapFromFile(string filePath)
     {
         if (!File.Exists(filePath))
@@ -4631,55 +5214,11 @@ public partial class MainWindow : Window
         }
     }
 
-    private void ChatBackgroundButton_Click(object sender, RoutedEventArgs e)
-    {
-        if (ChatBackgroundPopup is null)
-        {
-            return;
-        }
-
-        ChatBackgroundPopup.IsOpen = !ChatBackgroundPopup.IsOpen;
-    }
-
-    private void ChatBackgroundChooseMenuItem_Click(object sender, RoutedEventArgs e)
-    {
-        if (ChatBackgroundPopup is not null)
-        {
-            ChatBackgroundPopup.IsOpen = false;
-        }
-
-        var dialog = new OpenFileDialog
-        {
-            Title = "选择聊天背景图片",
-            Filter = "图片文件|*.jpg;*.jpeg;*.png;*.webp;*.bmp"
-        };
-        if (dialog.ShowDialog() != true)
-        {
-            return;
-        }
-
-        _settings.ChatBackgroundImagePath = dialog.FileName;
-        _settingsStore.Save(_settings);
-        ApplyChatBackground();
-    }
-
-    private void ChatBackgroundResetMenuItem_Click(object sender, RoutedEventArgs e)
-    {
-        if (ChatBackgroundPopup is not null)
-        {
-            ChatBackgroundPopup.IsOpen = false;
-        }
-
-        _settings.ChatBackgroundImagePath = null;
-        _settingsStore.Save(_settings);
-        ApplyChatBackground();
-    }
-
     private async Task LoadChatMessagesAsync()
     {
         if (!_authService.IsAuthenticated)
         {
-            SetContactAdminStatus("请先登录后联系管理员。");
+            SetContactAdminStatus("请先登录后查看管理员消息。");
             return;
         }
 
@@ -4873,8 +5412,8 @@ public partial class MainWindow : Window
             Background = isAttachmentOnly
                 ? System.Windows.Media.Brushes.Transparent
                 : isAdmin
-                    ? FindThemeBrush("AccentLightBrush")
-                    : FindThemeBrush("AccentStrongBrush"),
+                    ? FindThemeBrush("ChatBubbleAdminBrush")
+                    : FindThemeBrush("ChatBubbleUserBrush"),
             BorderBrush = isAttachmentOnly
                 ? System.Windows.Media.Brushes.Transparent
                 : isAdmin
@@ -4979,29 +5518,22 @@ public partial class MainWindow : Window
             Background = System.Windows.Media.Brushes.Transparent,
             BorderThickness = new Thickness(0),
             Cursor = System.Windows.Input.Cursors.Hand,
-            MaxWidth = 320
+            MaxWidth = 320,
+            MinHeight = 120,
+            MinWidth = 160
         };
 
-        if (TryLoadAvatarBitmap(fileUrl, out var bitmap))
+        imageHost.Child = new TextBlock
         {
-            imageHost.Child = new System.Windows.Controls.Image
-            {
-                Source = bitmap,
-                MaxHeight = 240,
-                Stretch = Stretch.Uniform
-            };
-        }
-        else
-        {
-            imageHost.Child = new TextBlock
-            {
-                Text = "图片加载失败",
-                Foreground = new SolidColorBrush(Color.FromRgb(100, 116, 139)),
-                FontSize = 13,
-                Margin = new Thickness(4),
-                TextWrapping = TextWrapping.Wrap
-            };
-        }
+            Text = "图片加载中...",
+            Foreground = new SolidColorBrush(Color.FromRgb(100, 116, 139)),
+            FontSize = 13,
+            Margin = new Thickness(12),
+            TextWrapping = TextWrapping.Wrap,
+            HorizontalAlignment = System.Windows.HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        _ = LoadChatImageAttachmentAsync(imageHost, message, fileUrl);
 
         imageHost.MouseLeftButtonUp += (_, _) =>
         {
@@ -5014,6 +5546,53 @@ public partial class MainWindow : Window
         return imageHost;
     }
 
+    private async Task LoadChatImageAttachmentAsync(Border imageHost, ChatMessage message, string fileUrl)
+    {
+        BitmapImage? bitmap = null;
+        if (!string.IsNullOrWhiteSpace(fileUrl))
+        {
+            if (AvatarImageLoader.TryLoadLocal(fileUrl, out var localBitmap))
+            {
+                bitmap = localBitmap;
+            }
+            else
+            {
+                bitmap = await AvatarImageLoader.LoadBitmapAsync(fileUrl);
+            }
+        }
+
+        if (!imageHost.CheckAccess())
+        {
+            await imageHost.Dispatcher.InvokeAsync(() => ApplyChatImageAttachment(imageHost, bitmap));
+            return;
+        }
+
+        ApplyChatImageAttachment(imageHost, bitmap);
+    }
+
+    private static void ApplyChatImageAttachment(Border imageHost, BitmapImage? bitmap)
+    {
+        if (bitmap is not null)
+        {
+            imageHost.Child = new System.Windows.Controls.Image
+            {
+                Source = bitmap,
+                MaxHeight = 240,
+                Stretch = Stretch.Uniform
+            };
+            return;
+        }
+
+        imageHost.Child = new TextBlock
+        {
+            Text = "图片加载失败",
+            Foreground = new SolidColorBrush(Color.FromRgb(100, 116, 139)),
+            FontSize = 13,
+            Margin = new Thickness(4),
+            TextWrapping = TextWrapping.Wrap
+        };
+    }
+
     private UIElement CreateChatFileAttachmentCard(ChatMessage message, bool standalone)
     {
         var fileName = string.IsNullOrWhiteSpace(message.FileName) ? "附件文件" : message.FileName.Trim();
@@ -5022,8 +5601,8 @@ public partial class MainWindow : Window
 
         var card = new Border
         {
-            Background = new SolidColorBrush(Color.FromRgb(255, 255, 255)),
-            BorderBrush = new SolidColorBrush(Color.FromRgb(229, 231, 235)),
+            Background = FindThemeBrush("ChatPanelGlassBrush"),
+            BorderBrush = new SolidColorBrush(Color.FromArgb(0x99, 0xE2, 0xE8, 0xF0)),
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(8),
             MinWidth = 248,
@@ -5290,13 +5869,20 @@ public partial class MainWindow : Window
     private async Task SaveChatImageToPathAsync(ChatMessage message, string targetPath)
     {
         var useRawDownload = Path.GetExtension(targetPath).Equals(".webp", StringComparison.OrdinalIgnoreCase);
-        if (!useRawDownload &&
-            !string.IsNullOrWhiteSpace(message.FileUrl) &&
-            TryLoadAvatarBitmap(message.FileUrl, out var bitmap) &&
-            bitmap is not null)
+        if (!useRawDownload && !string.IsNullOrWhiteSpace(message.FileUrl))
         {
-            SaveBitmapSourceToFile(bitmap, targetPath);
-            return;
+            if (AvatarImageLoader.TryLoadLocal(message.FileUrl, out var localBitmap) && localBitmap is not null)
+            {
+                SaveBitmapSourceToFile(localBitmap, targetPath);
+                return;
+            }
+
+            var bitmap = await AvatarImageLoader.LoadBitmapAsync(message.FileUrl);
+            if (bitmap is not null)
+            {
+                SaveBitmapSourceToFile(bitmap, targetPath);
+                return;
+            }
         }
 
         if (string.IsNullOrWhiteSpace(message.FileUrl))
@@ -5374,32 +5960,74 @@ public partial class MainWindow : Window
 
     private void CopyChatImageToClipboard(ChatMessage message)
     {
-        if (!string.IsNullOrWhiteSpace(message.FileUrl) && TryLoadAvatarBitmap(message.FileUrl, out var bitmap) && bitmap is not null)
+        _ = CopyChatImageToClipboardAsync(message);
+    }
+
+    private async Task CopyChatImageToClipboardAsync(ChatMessage message)
+    {
+        BitmapImage? bitmap = null;
+        if (!string.IsNullOrWhiteSpace(message.FileUrl))
         {
-            Clipboard.SetImage(bitmap);
+            if (AvatarImageLoader.TryLoadLocal(message.FileUrl, out var localBitmap))
+            {
+                bitmap = localBitmap;
+            }
+            else
+            {
+                bitmap = await AvatarImageLoader.LoadBitmapAsync(message.FileUrl);
+            }
+        }
+
+        if (bitmap is not null)
+        {
+            await Dispatcher.InvokeAsync(() => Clipboard.SetImage(bitmap));
             return;
         }
 
         var text = ChatMessageHelper.GetCopyableText(message);
         if (!string.IsNullOrWhiteSpace(text))
         {
-            Clipboard.SetText(text);
+            await Dispatcher.InvokeAsync(() => Clipboard.SetText(text));
         }
     }
 
     private bool ShowChatImagePreview(ChatMessage message)
     {
-        if (string.IsNullOrWhiteSpace(message.FileUrl) || !TryLoadAvatarBitmap(message.FileUrl, out var bitmap) || bitmap is null)
+        if (string.IsNullOrWhiteSpace(message.FileUrl))
         {
             return false;
         }
 
-        var dialog = new ChatImagePreviewDialog(bitmap)
-        {
-            Owner = this
-        };
-        dialog.ShowDialog();
+        _ = ShowChatImagePreviewAsync(message);
         return true;
+    }
+
+    private async Task ShowChatImagePreviewAsync(ChatMessage message)
+    {
+        BitmapImage? bitmap = null;
+        var fileUrl = message.FileUrl ?? "";
+        if (AvatarImageLoader.TryLoadLocal(fileUrl, out var localBitmap))
+        {
+            bitmap = localBitmap;
+        }
+        else
+        {
+            bitmap = await AvatarImageLoader.LoadBitmapAsync(fileUrl);
+        }
+
+        if (bitmap is null)
+        {
+            return;
+        }
+
+        await Dispatcher.InvokeAsync(() =>
+        {
+            var dialog = new ChatImagePreviewDialog(bitmap)
+            {
+                Owner = this
+            };
+            dialog.ShowDialog();
+        });
     }
 
     private static void OpenChatAttachmentUrl(string? url)
@@ -5435,19 +6063,6 @@ public partial class MainWindow : Window
             ClipToBounds = true
         };
 
-        var avatarUrl = AvatarUrlHelper.ResolveChatAvatarUrl(isAdmin, _authService.CurrentAvatarUrl);
-        if (TryLoadAvatarBitmap(avatarUrl, out var bitmap))
-        {
-            host.Child = new System.Windows.Controls.Image
-            {
-                Source = bitmap,
-                Stretch = Stretch.UniformToFill,
-                Width = 40,
-                Height = 40
-            };
-            return host;
-        }
-
         host.Child = new TextBlock
         {
             Text = isAdmin ? "管" : GetUserAvatarFallbackInitial(),
@@ -5458,7 +6073,50 @@ public partial class MainWindow : Window
             VerticalAlignment = VerticalAlignment.Center
         };
 
+        var avatarUrl = AvatarUrlHelper.ResolveChatAvatarUrl(isAdmin, _authService.CurrentAvatarUrl);
+        if (!string.IsNullOrWhiteSpace(avatarUrl))
+        {
+            _ = LoadChatAvatarAsync(host, avatarUrl);
+        }
+
         return host;
+    }
+
+    private async Task LoadChatAvatarAsync(Border host, string avatarUrl)
+    {
+        BitmapImage? bitmap = null;
+        if (AvatarImageLoader.TryLoadLocal(avatarUrl, out var localBitmap))
+        {
+            bitmap = localBitmap;
+        }
+        else
+        {
+            bitmap = await AvatarImageLoader.LoadBitmapAsync(avatarUrl);
+        }
+
+        if (bitmap is null)
+        {
+            return;
+        }
+
+        if (!host.CheckAccess())
+        {
+            await host.Dispatcher.InvokeAsync(() => ApplyChatAvatarImage(host, bitmap));
+            return;
+        }
+
+        ApplyChatAvatarImage(host, bitmap);
+    }
+
+    private static void ApplyChatAvatarImage(Border host, BitmapImage bitmap)
+    {
+        host.Child = new System.Windows.Controls.Image
+        {
+            Source = bitmap,
+            Stretch = Stretch.UniformToFill,
+            Width = 40,
+            Height = 40
+        };
     }
 
     private string GetUserDisplayName()
@@ -5677,7 +6335,7 @@ public partial class MainWindow : Window
         e.Handled = true;
     }
 
-    private async void ChatMessagesArea_Drop(object sender, System.Windows.DragEventArgs e)
+    private void ChatMessagesArea_Drop(object sender, System.Windows.DragEventArgs e)
     {
         if (!_authService.IsAuthenticated || !e.Data.GetDataPresent(System.Windows.DataFormats.FileDrop))
         {
@@ -5690,7 +6348,7 @@ public partial class MainWindow : Window
         }
 
         e.Handled = true;
-        await SendChatAttachmentDirectAsync(files[0]);
+        SetPendingChatAttachment(files[0]);
     }
 
     private void ChatInputBox_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
@@ -5735,19 +6393,6 @@ public partial class MainWindow : Window
         encoder.Frames.Add(BitmapFrame.Create(image));
         encoder.Save(stream);
         return path;
-    }
-
-    private async Task SendChatAttachmentDirectAsync(string filePath)
-    {
-        var validationError = ValidateChatAttachmentPath(filePath);
-        if (validationError is not null)
-        {
-            SetContactAdminStatus(validationError, isError: true);
-            return;
-        }
-
-        _pendingChatAttachmentPath = filePath;
-        await SendChatMessageAsync(clearPendingAttachment: false);
     }
 
     private string? ValidateChatAttachmentPath(string filePath)
@@ -6174,14 +6819,13 @@ public partial class MainWindow : Window
 
     private void UpdateAboutResponsiveLayout(double availableWidth)
     {
-        if (!_isUiReady || AboutSummaryGrid is null || AboutFooterGrid is null)
+        if (!_isUiReady || AboutSummaryGrid is null)
         {
             return;
         }
 
         var stacked = availableWidth < AboutTwoColumnBreakpoint;
         ApplyAboutTwoColumnLayout(AboutSummaryGrid, AboutSummaryLeftPanel, AboutSummaryRightPanel, stacked, leftColumnWeight: 1);
-        ApplyAboutTwoColumnLayout(AboutFooterGrid, AboutDirectoryPanel, AboutLicensePanel, stacked, leftColumnWeight: 1);
     }
 
     private static void ApplyAboutTwoColumnLayout(
@@ -6441,7 +7085,7 @@ public partial class MainWindow : Window
 
         ApplySubscriptionTrafficInfo(result.TrafficInfo);
         var last = result.Profiles.LastOrDefault();
-        SaveProfiles(last?.Id ?? _settings.SelectedProfileId);
+        SaveProfiles(PreserveActiveProfileId());
         RefreshNodePicker();
         ProfilesGrid.Items.Refresh();
         if (last is not null)
@@ -6453,6 +7097,7 @@ public partial class MainWindow : Window
         ScheduleRegionEnrichment(result.Profiles);
         RefreshRegionFilterOptions();
         RefreshSubscriptionFilterOptions();
+        RefreshProfilesView();
 
         if (result.Profiles.Count > 0)
         {
@@ -6467,17 +7112,18 @@ public partial class MainWindow : Window
             return null;
         }
 
-        _settings.SubscriptionSources.TryGetValue(result.SubscriptionName, out var existing);
+        var sourceKey = LocalSubscriptionHelper.GetLocalSourceKey(result.SubscriptionName);
+        _settings.SubscriptionSources.TryGetValue(sourceKey, out var existing);
         var source = new SubscriptionSource
         {
             Url = result.SourceUrl,
             AutoRefreshMinutes = existing?.AutoRefreshMinutes,
-            ServerSubscriptionId = existing?.ServerSubscriptionId,
+            ServerSubscriptionId = null,
             DisplayName = existing?.DisplayName ?? result.SubscriptionName,
-            CreatedAtUtc = existing?.CreatedAtUtc ?? DateTime.UtcNow
+            CreatedAtUtc = existing?.CreatedAtUtc ?? DateTime.UtcNow,
+            IsLocalOnly = true
         };
-        _authService.SubscriptionSync.ResolveAndAssignServerSubscriptionId(source, result.SubscriptionName);
-        _settings.SubscriptionSources[result.SubscriptionName] = source;
+        _settings.SubscriptionSources[sourceKey] = source;
         return source;
     }
 
@@ -6545,9 +7191,13 @@ public partial class MainWindow : Window
 
     private async void SubscriptionGroupRefreshButton_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is FrameworkElement { Tag: string subscriptionName })
+        if (sender is FrameworkElement { Tag: string groupDisplay })
         {
-            await RefreshSubscriptionAsync(subscriptionName);
+            var scope = LocalSubscriptionHelper.ParseGroupDisplay(groupDisplay);
+            if (!scope.IsManual)
+            {
+                await RefreshSubscriptionAsync(scope);
+            }
         }
     }
 
@@ -6563,38 +7213,38 @@ public partial class MainWindow : Window
             return;
         }
 
-        var subscriptionName = FindSubscriptionGroupName(target);
-        if (string.IsNullOrWhiteSpace(subscriptionName) ||
-            string.Equals(subscriptionName, "手动", StringComparison.OrdinalIgnoreCase))
+        var groupDisplay = FindSubscriptionGroupName(target);
+        var scope = LocalSubscriptionHelper.ParseGroupDisplay(groupDisplay);
+        if (scope.IsManual || string.IsNullOrWhiteSpace(scope.Name) && !scope.IsLocal)
         {
             menu.IsOpen = false;
             return;
         }
 
-        _subscriptionContextMenuName = subscriptionName;
+        _subscriptionContextMenuScope = scope;
     }
 
     private async void SubscriptionDeleteMenu_Click(object sender, RoutedEventArgs e)
     {
-        if (!string.IsNullOrWhiteSpace(_subscriptionContextMenuName))
+        if (_subscriptionContextMenuScope is { } scope)
         {
-            await DeleteSubscriptionAsync(_subscriptionContextMenuName);
+            await DeleteSubscriptionAsync(scope);
         }
     }
 
     private async void SubscriptionRefreshMenu_Click(object sender, RoutedEventArgs e)
     {
-        if (!string.IsNullOrWhiteSpace(_subscriptionContextMenuName))
+        if (_subscriptionContextMenuScope is { } scope)
         {
-            await RefreshSubscriptionAsync(_subscriptionContextMenuName);
+            await RefreshSubscriptionAsync(scope);
         }
     }
 
     private void SubscriptionAutoRefreshOff_Click(object sender, RoutedEventArgs e)
     {
-        if (!string.IsNullOrWhiteSpace(_subscriptionContextMenuName))
+        if (_subscriptionContextMenuScope is { } scope)
         {
-            StopSubscriptionAutoRefresh(_subscriptionContextMenuName);
+            StopSubscriptionAutoRefresh(scope.SourceKey);
         }
     }
 
@@ -6602,30 +7252,30 @@ public partial class MainWindow : Window
     {
         if (sender is not System.Windows.Controls.MenuItem { Tag: string tag } ||
             !int.TryParse(tag, out var minutes) ||
-            string.IsNullOrWhiteSpace(_subscriptionContextMenuName))
+            _subscriptionContextMenuScope is not { } scope)
         {
             return;
         }
 
-        StartSubscriptionAutoRefresh(_subscriptionContextMenuName, minutes);
+        StartSubscriptionAutoRefresh(scope.SourceKey, minutes);
     }
 
     private void SubscriptionAutoRefreshCustom_Click(object sender, RoutedEventArgs e)
     {
-        if (string.IsNullOrWhiteSpace(_subscriptionContextMenuName))
+        if (_subscriptionContextMenuScope is not { } scope)
         {
             return;
         }
 
-        _settings.SubscriptionSources.TryGetValue(_subscriptionContextMenuName, out var source);
-        var dialog = new DurationPromptDialog(_subscriptionContextMenuName, source?.AutoRefreshMinutes)
+        _settings.SubscriptionSources.TryGetValue(scope.SourceKey, out var source);
+        var dialog = new DurationPromptDialog(scope.Name, source?.AutoRefreshMinutes)
         {
             Owner = this
         };
 
         if (dialog.ShowDialog() == true)
         {
-            StartSubscriptionAutoRefresh(_subscriptionContextMenuName, dialog.Minutes);
+            StartSubscriptionAutoRefresh(scope.SourceKey, dialog.Minutes);
         }
     }
 
@@ -6645,19 +7295,18 @@ public partial class MainWindow : Window
         return null;
     }
 
-    private bool TryGetCloudSubscriptionId(string subscriptionName, out int subscriptionId)
+    private bool TryGetCloudSubscriptionId(SubscriptionGroupIdentity scope, out int subscriptionId)
     {
         subscriptionId = 0;
-        if (!_authService.IsAuthenticated ||
-            string.Equals(subscriptionName, "手动", StringComparison.OrdinalIgnoreCase))
+        if (!_authService.IsAuthenticated || scope.IsManual || scope.IsLocal)
         {
             return false;
         }
 
-        if (!_settings.SubscriptionSources.TryGetValue(subscriptionName, out var source))
+        if (!_settings.SubscriptionSources.TryGetValue(scope.SourceKey, out var source))
         {
             var fromSession = _authService.CurrentSession?.Subscriptions.FirstOrDefault(subscription =>
-                string.Equals(subscription.Name, subscriptionName, StringComparison.OrdinalIgnoreCase));
+                string.Equals(subscription.Name, scope.Name, StringComparison.OrdinalIgnoreCase));
             if (fromSession is not null)
             {
                 subscriptionId = fromSession.Id;
@@ -6667,7 +7316,12 @@ public partial class MainWindow : Window
             return false;
         }
 
-        _authService.SubscriptionSync.ResolveAndAssignServerSubscriptionId(source, subscriptionName);
+        if (source.IsLocalOnly)
+        {
+            return false;
+        }
+
+        _authService.SubscriptionSync.ResolveAndAssignServerSubscriptionId(source, scope.Name);
         if (source.ServerSubscriptionId is int resolvedId && resolvedId > 0)
         {
             subscriptionId = resolvedId;
@@ -6677,22 +7331,25 @@ public partial class MainWindow : Window
         return false;
     }
 
-    private async Task DeleteSubscriptionAsync(string subscriptionName)
+    private async Task DeleteSubscriptionAsync(SubscriptionGroupIdentity scope)
     {
-        if (string.Equals(subscriptionName, "手动", StringComparison.OrdinalIgnoreCase))
+        if (scope.IsManual)
         {
             return;
         }
 
-        var isCloudSubscription = TryGetCloudSubscriptionId(subscriptionName, out var subscriptionId);
-        var nodeCount = _profiles.Count(profile =>
-            string.Equals(profile.SubscriptionName, subscriptionName, StringComparison.OrdinalIgnoreCase));
+        var sourceKey = scope.SourceKey;
+        var isCloudSubscription = TryGetCloudSubscriptionId(scope, out var subscriptionId);
+        var nodeCount = GetProfilesForSubscription(scope).Count;
+        var displayName = scope.IsLocal
+            ? LocalSubscriptionHelper.FormatLocalSubscriptionDisplay(scope.Name)
+            : scope.Name;
 
         var message = isCloudSubscription
-            ? $"确定删除订阅「{subscriptionName}」吗？{Environment.NewLine}{Environment.NewLine}" +
+            ? $"确定删除订阅「{displayName}」吗？{Environment.NewLine}{Environment.NewLine}" +
               $"将同时删除云端订阅链接及本地 {nodeCount} 个节点。{Environment.NewLine}" +
               "此操作不可恢复，是否继续？"
-            : $"确定删除订阅「{subscriptionName}」及本地 {nodeCount} 个节点吗？";
+            : $"确定删除本地订阅「{displayName}」及 {nodeCount} 个节点吗？";
 
         if (MessageBox.Show(
                 message,
@@ -6729,9 +7386,9 @@ public partial class MainWindow : Window
             _authService.RemoveSubscriptionFromSession(subscriptionId);
         }
 
-        StopSubscriptionAutoRefresh(subscriptionName, save: false);
-        RemoveProfilesForSubscription(subscriptionName);
-        _settings.SubscriptionSources.Remove(subscriptionName);
+        StopSubscriptionAutoRefresh(sourceKey, save: false);
+        RemoveProfilesForSubscription(scope);
+        _settings.SubscriptionSources.Remove(sourceKey);
 
         var nextActiveId = _profiles.FirstOrDefault(profile => profile.Id == _settings.SelectedProfileId)?.Id
             ?? _profiles.FirstOrDefault()?.Id;
@@ -6746,27 +7403,32 @@ public partial class MainWindow : Window
 
         MessageBox.Show(
             isCloudSubscription
-                ? $"订阅「{subscriptionName}」已从云端和本地删除。"
-                : $"订阅「{subscriptionName}」及本地节点已删除。",
+                ? $"订阅「{displayName}」已从云端和本地删除。"
+                : $"订阅「{displayName}」及本地节点已删除。",
             "Nexora",
             MessageBoxButton.OK,
             MessageBoxImage.Information);
     }
 
-    private async Task RefreshSubscriptionAsync(string subscriptionName, bool silent = false)
+    private Task RefreshSubscriptionAsync(string sourceKey, bool silent = false) =>
+        RefreshSubscriptionAsync(IdentityFromSourceKey(sourceKey), silent);
+
+    private async Task RefreshSubscriptionAsync(SubscriptionGroupIdentity scope, bool silent = false)
     {
-        if (string.Equals(subscriptionName, "手动", StringComparison.OrdinalIgnoreCase))
+        if (scope.IsManual)
         {
             return;
         }
 
-        if (silent && IsSubscriptionTrafficExhausted(subscriptionName))
+        var sourceKey = scope.SourceKey;
+        var subscriptionName = scope.Name;
+
+        if (silent && IsSubscriptionTrafficExhausted(sourceKey))
         {
-            ApplyTimeoutLatencyToSubscription(subscriptionName);
             return;
         }
 
-        if (!_settings.SubscriptionSources.TryGetValue(subscriptionName, out var source) ||
+        if (!_settings.SubscriptionSources.TryGetValue(sourceKey, out var source) ||
             string.IsNullOrWhiteSpace(source.Url))
         {
             if (!silent)
@@ -6777,10 +7439,11 @@ public partial class MainWindow : Window
             return;
         }
 
-        var requiresAuth = source.ServerSubscriptionId is > 0 ||
+        var requiresAuth = !scope.IsLocal &&
+                           (source.ServerSubscriptionId is > 0 ||
                            _profiles.Any(profile =>
                                profile.IsCloudManaged &&
-                               string.Equals(profile.SubscriptionName, subscriptionName, StringComparison.OrdinalIgnoreCase));
+                               string.Equals(profile.SubscriptionName, subscriptionName, StringComparison.OrdinalIgnoreCase)));
         if (requiresAuth)
         {
             if (!await _authService.TryRestoreSessionAsync())
@@ -6794,6 +7457,7 @@ public partial class MainWindow : Window
             }
         }
 
+        List<VmessProfile>? profilesToTest = null;
         try
         {
             if (requiresAuth)
@@ -6808,52 +7472,26 @@ public partial class MainWindow : Window
                 SubscriptionTrafficHelper.AreProfilesTrafficExhausted(result.Profiles))
             {
                 ApplySubscriptionTrafficInfo(result.TrafficInfo);
-                SetSubscriptionTrafficExhausted(subscriptionName);
+                SetSubscriptionTrafficExhausted(sourceKey);
                 if (!silent)
                 {
-                    MessageBox.Show(
-                        $"订阅「{subscriptionName}」流量已用尽，已保留现有节点并显示超时。充值后可手动刷新。",
-                        "Nexora",
-                        MessageBoxButton.OK,
-                        MessageBoxImage.Information);
+                    ShowSubscriptionTrafficExhaustedDialog(subscriptionName);
                 }
 
                 return;
             }
 
-            ClearSubscriptionTrafficExhausted(subscriptionName);
+            ClearSubscriptionTrafficExhausted(sourceKey);
             var previousActive = GetSelectedProfileOrNull();
-            var removed = _profiles
-                .Where(profile => string.Equals(profile.SubscriptionName, subscriptionName, StringComparison.OrdinalIgnoreCase))
-                .ToList();
+            bool? cloudSyncSuccess = null;
+            string? cloudSyncMessage = null;
+            SubscriptionMergeResult mergeResult;
 
-            foreach (var profile in removed)
+            _subscriptionUpdateBatchActive++;
+            EnterProfilesViewFrozenState();
+            try
             {
-                _profiles.Remove(profile);
-            }
-
-            foreach (var profile in result.Profiles)
-            {
-                profile.SubscriptionUpdatedAt = DateTime.Now;
-                profile.UpdatedAt = DateTime.Now;
-                _profiles.Add(profile);
-            }
-
-            SubscriptionMetadataHelper.ApplyToProfiles(
-                new SubscriptionImportResult
-                {
-                    Profiles = result.Profiles,
-                    TrafficInfo = result.TrafficInfo,
-                    SourceUrl = source.Url,
-                    SubscriptionName = subscriptionName
-                },
-                subscriptionName);
-
-            ApplySubscriptionTrafficInfo(result.TrafficInfo);
-
-            if (requiresAuth)
-            {
-                var syncResult = await _authService.SubscriptionSync.SyncRefreshAsync(
+                SubscriptionMetadataHelper.ApplyToProfiles(
                     new SubscriptionImportResult
                     {
                         Profiles = result.Profiles,
@@ -6861,97 +7499,87 @@ public partial class MainWindow : Window
                         SourceUrl = source.Url,
                         SubscriptionName = subscriptionName
                     },
-                    source,
                     subscriptionName);
 
-                foreach (var profile in result.Profiles)
-                {
-                    MarkProfileAsCloudManaged(profile);
-                }
+                mergeResult = MergeSubscriptionProfiles(scope, result.Profiles);
+                ApplySubscriptionTrafficInfo(result.TrafficInfo);
 
-                if (!syncResult.Success)
+                if (requiresAuth)
                 {
-                    DiagnosticLogService.Warning($"Subscription refresh sync failed: {syncResult.Message}");
-                    if (!silent)
+                    var subscriptionProfiles = GetProfilesForSubscription(scope);
+                    var syncResult = await _authService.SubscriptionSync.SyncRefreshAsync(
+                        new SubscriptionImportResult
+                        {
+                            Profiles = subscriptionProfiles,
+                            TrafficInfo = result.TrafficInfo,
+                            SourceUrl = source.Url,
+                            SubscriptionName = subscriptionName
+                        },
+                        source,
+                        subscriptionName);
+
+                    foreach (var profile in subscriptionProfiles)
                     {
-                        MessageBox.Show(
-                            $"订阅已本地刷新，但同步到云端失败：{syncResult.Message}",
-                            "Nexora",
-                            MessageBoxButton.OK,
-                            MessageBoxImage.Warning);
+                        MarkProfileAsCloudManaged(profile);
+                    }
+
+                    cloudSyncSuccess = syncResult.Success;
+                    cloudSyncMessage = syncResult.Message;
+                    if (!syncResult.Success)
+                    {
+                        DiagnosticLogService.Warning($"Subscription refresh sync failed: {syncResult.Message}");
+                    }
+                    else
+                    {
+                        DiagnosticLogService.Info(
+                            $"Subscription refreshed and synced to server. id={syncResult.ServerSubscriptionId}, message={syncResult.Message}");
                     }
                 }
                 else
                 {
-                    DiagnosticLogService.Info(
-                        $"Subscription refreshed and synced to server. id={syncResult.ServerSubscriptionId}, message={syncResult.Message}");
+                    foreach (var profile in GetProfilesForSubscription(scope))
+                    {
+                        MarkProfileAsLocalSubscription(profile);
+                    }
                 }
-            }
-            else
-            {
-                foreach (var profile in result.Profiles)
-                {
-                    MarkProfileAsLocalSubscription(profile);
-                }
+
+                _settingsStore.Save(_settings);
+
+                SaveProfiles(PreserveActiveProfileId(previousActive));
+                RefreshNodePicker();
+                SyncNodePickerDisplay();
+                RefreshRegionFilterOptions();
+                RefreshSubscriptionFilterOptions();
+                RefreshProfilesView();
+
+                profilesToTest = GetProfilesForSubscription(scope);
 
                 if (!silent)
                 {
-                    MessageBox.Show(
-                        "订阅已本地刷新完成。",
-                        "Nexora",
-                        MessageBoxButton.OK,
-                        MessageBoxImage.Information);
+                    ShowSubscriptionRefreshSummary(
+                        subscriptionName,
+                        mergeResult,
+                        profilesToTest.Count,
+                        cloudSyncSuccess,
+                        cloudSyncMessage);
                 }
             }
-
-            _settingsStore.Save(_settings);
-
-            string? nextActiveId = previousActive?.Id;
-            if (previousActive is not null &&
-                string.Equals(previousActive.SubscriptionName, subscriptionName, StringComparison.OrdinalIgnoreCase))
+            finally
             {
-                var replacement = _profiles.FirstOrDefault(profile =>
-                    profile.Address == previousActive.Address &&
-                    profile.Port == previousActive.Port &&
-                    string.Equals(profile.Protocol, previousActive.Protocol, StringComparison.OrdinalIgnoreCase) &&
-                    string.Equals(profile.SubscriptionName, subscriptionName, StringComparison.OrdinalIgnoreCase));
-                nextActiveId = replacement?.Id ?? _profiles.FirstOrDefault()?.Id;
-            }
-            else if (_profiles.All(profile => profile.Id != nextActiveId))
-            {
-                nextActiveId = _profiles.FirstOrDefault()?.Id;
+                ExitProfilesViewFrozenState();
+                _subscriptionUpdateBatchActive--;
             }
 
-            SaveProfiles(nextActiveId);
-            RefreshNodePicker();
-            SyncNodePickerDisplay();
-            RefreshRegionFilterOptions();
-            RefreshSubscriptionFilterOptions();
-            ProfilesGrid.Items.Refresh();
-            ScheduleRegionEnrichment(result.Profiles);
-
-            if (result.Profiles.Count > 0)
-            {
-                if (!silent)
-                {
-                    SetCloudSubscriptionStatus($"订阅「{subscriptionName}」已刷新，正在重新测速 {result.Profiles.Count} 个节点...");
-                }
-
-                await RunTcpLatencyTestsAsync(result.Profiles, parallel: true);
-            }
+            ScheduleRegionEnrichment(GetProfilesForSubscription(scope));
         }
         catch (Exception ex)
         {
-            if (ShouldTreatRefreshFailureAsTrafficExhausted(subscriptionName, ex.Message, ex))
+            if (ShouldTreatRefreshFailureAsTrafficExhausted(scope, ex.Message, ex))
             {
-                SetSubscriptionTrafficExhausted(subscriptionName);
+                SetSubscriptionTrafficExhausted(sourceKey);
                 if (!silent)
                 {
-                    MessageBox.Show(
-                        $"订阅「{subscriptionName}」流量可能已用尽或订阅源暂时不可用，已保留现有节点并显示超时。充值后可手动刷新。",
-                        "Nexora",
-                        MessageBoxButton.OK,
-                        MessageBoxImage.Information);
+                    ShowSubscriptionTrafficExhaustedDialog(subscriptionName);
                 }
 
                 return;
@@ -6972,10 +7600,10 @@ public partial class MainWindow : Window
                 return;
             }
 
-            if (!silent)
+            if (!silent && !scope.IsLocal)
             {
                 MarkSubscriptionSourceInvalid(subscriptionName);
-                RemoveProfilesForSubscription(subscriptionName);
+                RemoveProfilesForSubscription(scope);
                 var nextActiveId = _profiles.FirstOrDefault(profile => profile.Id == _settings.SelectedProfileId)?.Id
                     ?? _profiles.FirstOrDefault()?.Id;
                 SaveProfiles(nextActiveId);
@@ -6987,9 +7615,21 @@ public partial class MainWindow : Window
                 ProfilesGrid.SelectedItem = _profiles.FirstOrDefault(profile => profile.Id == nextActiveId);
                 ShowError(ex);
             }
+            else if (!silent)
+            {
+                ShowError(ex);
+            }
 
             DiagnosticLogService.Warning($"Subscription refresh failed for \"{subscriptionName}\": {ex.Message}");
+            return;
         }
+
+        if (profilesToTest is { Count: > 0 })
+        {
+            await RunTcpLatencyTestsAsync(profilesToTest, parallel: true);
+        }
+
+        ApplyActiveProfileSelection(autoSelectIfMissing: GetSelectedProfileOrNull() is null, save: true);
     }
 
     private static string DecodeQrCodeFromFile(string path)
@@ -7295,24 +7935,38 @@ public partial class MainWindow : Window
         _latencyTestCancellation = new CancellationTokenSource();
         var cancellationToken = _latencyTestCancellation.Token;
 
+        _latencyTestBatchActive++;
+        FreezeProfilesViewForLatencyTest();
         SetLatencyTestingEnabled(false);
 
         try
         {
+            IReadOnlyList<(VmessProfile Profile, int? Latency)> results;
             if (parallel)
             {
-                await Task.WhenAll(profiles.Select(profile => TestTcpLatencyAsync(profile, cancellationToken)));
+                var tasks = profiles.Select(profile => MeasureProfileLatencyAsync(profile, cancellationToken));
+                results = await Task.WhenAll(tasks);
             }
             else
             {
+                var sequentialResults = new List<(VmessProfile Profile, int? Latency)>(profiles.Count);
                 foreach (var profile in profiles)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-                    await TestTcpLatencyAsync(profile, cancellationToken);
+                    sequentialResults.Add(await MeasureProfileLatencyAsync(profile, cancellationToken));
                 }
+
+                results = sequentialResults;
             }
 
-            UpdateNodeStatusBar(GetSelectedProfileOrNull());
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
+
+            await Dispatcher.InvokeAsync(() => ApplyLatencyResultsOnUiThread(results), DispatcherPriority.Send);
+            await TryAutoSwitchFromTimedOutCurrentNodeAsync();
+            await Dispatcher.InvokeAsync(() => UpdateTopBarLatencyForProfile(GetSelectedProfileOrNull()), DispatcherPriority.Send);
         }
         catch (OperationCanceledException)
         {
@@ -7323,24 +7977,159 @@ public partial class MainWindow : Window
         }
         finally
         {
+            _latencyTestBatchActive--;
+            ExitProfilesViewFrozenState();
             SetLatencyTestingEnabled(true);
         }
     }
 
-    private static async Task TestTcpLatencyAsync(VmessProfile profile, CancellationToken cancellationToken)
+    private static async Task<(VmessProfile Profile, int? Latency)> MeasureProfileLatencyAsync(
+        VmessProfile profile,
+        CancellationToken cancellationToken)
     {
         if (profile.IsExpired)
         {
-            profile.CompleteTcpLatencyTest(null);
+            return (profile, null);
+        }
+
+        var latency = await LatencyTestService.MeasureTcpAsync(
+            profile.Address,
+            profile.Port,
+            cancellationToken: cancellationToken);
+        return (profile, cancellationToken.IsCancellationRequested ? null : latency);
+    }
+
+    private void UpdateTopBarLatencyForProfile(VmessProfile? profile)
+    {
+        if (profile is null)
+        {
+            _topBarLatencyProfileId = null;
+            _topBarLastLatencyMs = null;
+            _topBarShowingTimeout = false;
+            CurrentTcpLatencyText.Text = TopBarLatencyPlaceholder;
             return;
         }
 
-        profile.BeginTcpLatencyTest();
-        var latency = await LatencyTestService.MeasureTcpAsync(profile.Address, profile.Port, cancellationToken: cancellationToken);
-        if (!cancellationToken.IsCancellationRequested)
+        UpdateTopBarLatencyDisplay(profile, force: true);
+    }
+
+    private void EnterProfilesViewFrozenState()
+    {
+        if (_profilesViewFreezeDepth++ > 0)
         {
-            profile.CompleteTcpLatencyTest(latency);
+            return;
         }
+
+        if (_profilesView is not ListCollectionView listView)
+        {
+            return;
+        }
+
+        _profilesViewLiveSorting = listView.IsLiveSorting ?? false;
+        _profilesViewLiveFiltering = listView.IsLiveFiltering ?? false;
+        listView.IsLiveSorting = false;
+        listView.IsLiveFiltering = false;
+        _frozenProfilesSort = listView.SortDescriptions
+            .Select(sort => new SortDescription(sort.PropertyName, sort.Direction))
+            .ToList();
+        listView.SortDescriptions.Clear();
+    }
+
+    private void ExitProfilesViewFrozenState()
+    {
+        if (_profilesViewFreezeDepth <= 0)
+        {
+            return;
+        }
+
+        if (--_profilesViewFreezeDepth > 0)
+        {
+            return;
+        }
+
+        UnfreezeProfilesViewAfterLatencyTest();
+        RefreshProfilesView();
+    }
+
+    private void FreezeProfilesViewForLatencyTest() => EnterProfilesViewFrozenState();
+
+    private void UnfreezeProfilesViewAfterLatencyTest()
+    {
+        if (_profilesView is not ListCollectionView listView)
+        {
+            return;
+        }
+
+        listView.SortDescriptions.Clear();
+        foreach (var sort in _frozenProfilesSort)
+        {
+            listView.SortDescriptions.Add(sort);
+        }
+
+        listView.IsLiveFiltering = _profilesViewLiveFiltering;
+        listView.IsLiveSorting = SortsByLatency(_frozenProfilesSort)
+            ? false
+            : _profilesViewLiveSorting;
+    }
+
+    private void ApplyLatencyResultsOnUiThread(IReadOnlyList<(VmessProfile Profile, int? Latency)> results)
+    {
+        if (_profilesView is ListCollectionView listView)
+        {
+            using (listView.DeferRefresh())
+            {
+                foreach (var (profile, latency) in results)
+                {
+                    profile.TryApplyLatencyResult(latency);
+                }
+            }
+
+            return;
+        }
+
+        foreach (var (profile, latency) in results)
+        {
+            profile.TryApplyLatencyResult(latency);
+        }
+    }
+
+    private async Task TryAutoSwitchFromTimedOutCurrentNodeAsync()
+    {
+        var current = GetSelectedProfileOrNull();
+        if (current is null || !IsUnavailableProfile(current))
+        {
+            return;
+        }
+
+        var alternative = FindBestAvailableProfile(excludeId: current.Id);
+        if (alternative is null)
+        {
+            DiagnosticLogService.Info($"Current node \"{current.DisplayName}\" timed out; no other available node to switch.");
+            return;
+        }
+
+        DiagnosticLogService.Info(
+            $"Current node \"{current.DisplayName}\" timed out; switching to \"{alternative.DisplayName}\" ({alternative.TcpLatencyMs} ms).");
+        SaveProfiles(alternative.Id);
+        ProfilesGrid.SelectedItem = alternative;
+        UpdateNodeAddressInStatusBar(alternative);
+        UpdateTopBarLatencyForProfile(alternative);
+        if (_coreService.IsRunning)
+        {
+            await RestartCoreAsync();
+        }
+
+        UpdateTrayStatus();
+    }
+
+    private VmessProfile? FindBestAvailableProfile(string? excludeId = null)
+    {
+        return _profiles
+            .Where(profile => excludeId is null || profile.Id != excludeId)
+            .Where(profile => !profile.IsExpired)
+            .Where(profile => profile.TcpLatencyMs is not null)
+            .OrderBy(profile => profile.TcpLatencyMs)
+            .FirstOrDefault();
     }
 
     private void SetLatencyTestingEnabled(bool enabled)
@@ -7400,6 +8189,74 @@ public partial class MainWindow : Window
         };
     }
 
+    private string? PreserveActiveProfileId(VmessProfile? referenceActive = null)
+    {
+        referenceActive ??= GetSelectedProfileOrNull();
+        var currentId = _settings.SelectedProfileId;
+        if (!string.IsNullOrWhiteSpace(currentId) && _profiles.Any(profile => profile.Id == currentId))
+        {
+            return currentId;
+        }
+
+        if (referenceActive is not null)
+        {
+            var referenceKey = BuildProfileKey(referenceActive);
+            var matched = _profiles.FirstOrDefault(profile => BuildProfileKey(profile) == referenceKey);
+            if (matched is not null)
+            {
+                return matched.Id;
+            }
+        }
+
+        return currentId;
+    }
+
+    private string? EnsureActiveProfileId()
+    {
+        var preserved = PreserveActiveProfileId();
+        if (!string.IsNullOrWhiteSpace(preserved) && _profiles.Any(profile => profile.Id == preserved))
+        {
+            return preserved;
+        }
+
+        return FindBestAvailableProfile()?.Id
+            ?? _profiles
+                .Where(profile => !profile.IsExpired)
+                .OrderBy(profile => profile.TcpLatencyMs ?? int.MaxValue)
+                .ThenBy(profile => profile.DisplayName, StringComparer.OrdinalIgnoreCase)
+                .FirstOrDefault()?.Id
+            ?? _profiles.FirstOrDefault()?.Id;
+    }
+
+    private void ApplyActiveProfileSelection(bool autoSelectIfMissing = false, bool save = false, VmessProfile? referenceActive = null)
+    {
+        var activeId = autoSelectIfMissing
+            ? EnsureActiveProfileId()
+            : PreserveActiveProfileId(referenceActive);
+
+        if (string.IsNullOrWhiteSpace(activeId))
+        {
+            UpdateActiveProfileMarkers(null);
+            UpdateNodeStatusBar(null);
+            ProfilesGrid.SelectedItem = null;
+            return;
+        }
+
+        if (save)
+        {
+            SaveProfiles(activeId);
+        }
+        else
+        {
+            _settings.SelectedProfileId = activeId;
+            UpdateActiveProfileMarkers(activeId);
+        }
+
+        var active = GetSelectedProfileOrNull();
+        ProfilesGrid.SelectedItem = active;
+        UpdateNodeStatusBar(active);
+    }
+
     private void SaveProfiles(string? selectedProfileId)
     {
         _settings.Profiles = _profiles.ToList();
@@ -7419,6 +8276,110 @@ public partial class MainWindow : Window
         StopProxy();
     }
 
+    private sealed class SubscriptionMergeResult
+    {
+        public int AddedCount { get; set; }
+        public int UpdatedCount { get; set; }
+        public int RemovedCount { get; set; }
+    }
+
+    private SubscriptionMergeResult MergeSubscriptionProfiles(
+        SubscriptionGroupIdentity scope,
+        IReadOnlyList<VmessProfile> importedProfiles)
+    {
+        var mergeResult = new SubscriptionMergeResult();
+        var existingProfiles = GetProfilesForSubscription(scope);
+        var existingByKey = existingProfiles.ToDictionary(BuildProfileKey, profile => profile);
+        var importedByKey = new Dictionary<string, VmessProfile>(importedProfiles.Count);
+        foreach (var imported in importedProfiles)
+        {
+            importedByKey[BuildProfileKey(imported)] = imported;
+        }
+
+        foreach (var (key, imported) in importedByKey)
+        {
+            imported.SubscriptionUpdatedAt = DateTime.Now;
+            if (existingByKey.TryGetValue(key, out var existing))
+            {
+                CopyProfile(imported, existing);
+                if (scope.IsLocal)
+                {
+                    MarkProfileAsLocalSubscription(existing);
+                }
+                else
+                {
+                    MarkProfileAsCloudManaged(existing);
+                }
+
+                existing.NotifyListDisplayChanged();
+                mergeResult.UpdatedCount++;
+                continue;
+            }
+
+            imported.UpdatedAt = DateTime.Now;
+            if (scope.IsLocal)
+            {
+                MarkProfileAsLocalSubscription(imported);
+            }
+            else
+            {
+                MarkProfileAsCloudManaged(imported);
+            }
+
+            _profiles.Add(imported);
+            mergeResult.AddedCount++;
+        }
+
+        foreach (var existing in existingProfiles)
+        {
+            if (importedByKey.ContainsKey(BuildProfileKey(existing)))
+            {
+                continue;
+            }
+
+            _profiles.Remove(existing);
+            mergeResult.RemovedCount++;
+        }
+
+        return mergeResult;
+    }
+
+    private void ShowSubscriptionRefreshSummary(
+        string subscriptionName,
+        SubscriptionMergeResult mergeResult,
+        int latencyTestedCount,
+        bool? cloudSyncSuccess,
+        string? cloudSyncMessage)
+    {
+        var details = new List<string>
+        {
+            $"新增节点：{mergeResult.AddedCount}",
+            $"更新节点：{mergeResult.UpdatedCount}",
+            $"移除节点：{mergeResult.RemovedCount}"
+        };
+
+        if (latencyTestedCount > 0)
+        {
+            details.Add($"测速节点：{latencyTestedCount}");
+        }
+
+        if (cloudSyncSuccess == true)
+        {
+            details.Add("已同步到云端。");
+        }
+        else if (cloudSyncSuccess == false)
+        {
+            details.Add($"同步到云端失败：{cloudSyncMessage}");
+        }
+        else
+        {
+            details.Add("订阅已本地刷新完成。");
+        }
+
+        var kind = cloudSyncSuccess == false ? ThemedMessageKind.Warning : ThemedMessageKind.Information;
+        ThemedMessageDialog.Show(this, $"订阅「{subscriptionName}」刷新完成。", details, kind);
+    }
+
     private static void CopyProfile(VmessProfile source, VmessProfile target)
     {
         target.Name = source.Name;
@@ -7436,8 +8397,15 @@ public partial class MainWindow : Window
         target.Tls = source.Tls;
         target.Sni = source.Sni;
         target.Remark = source.Remark;
-        target.Region = source.Region;
+        if (!string.IsNullOrWhiteSpace(source.Region) && source.Region != "-")
+        {
+            target.Region = source.Region;
+        }
+
         target.SubscriptionName = source.SubscriptionName;
+        target.IsCloudManaged = source.IsCloudManaged;
+        target.IsLocalManual = source.IsLocalManual;
+        target.IsLocalSubscription = source.IsLocalSubscription;
         target.SubscriptionUpdatedAt = source.SubscriptionUpdatedAt;
         target.SubscriptionUploadBytes = source.SubscriptionUploadBytes;
         target.SubscriptionDownloadBytes = source.SubscriptionDownloadBytes;

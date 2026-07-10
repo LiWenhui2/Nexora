@@ -151,6 +151,11 @@ public sealed class SubscriptionSyncService
 
     public bool ResolveAndAssignServerSubscriptionId(SubscriptionSource source, string subscriptionName)
     {
+        if (source.IsLocalOnly)
+        {
+            return false;
+        }
+
         if (source.ServerSubscriptionId is int existingId && existingId > 0)
         {
             return true;
@@ -202,6 +207,23 @@ public sealed class SubscriptionSyncService
         }
 
         return null;
+    }
+
+    public string SaveLocalImportSnapshot(
+        SubscriptionImportResult importResult,
+        SubscriptionSource source,
+        string subscriptionName)
+    {
+        var userId = _authService.CurrentSession?.UserId ?? 0;
+        var snapshot = SubscriptionSnapshotBuilder.Build(
+            importResult,
+            0,
+            userId,
+            subscriptionName,
+            source.Url,
+            source.CreatedAtUtc);
+
+        return _snapshotStore.Save(snapshot, subscriptionName);
     }
 
     public async Task<SubscriptionSyncResult> SyncRefreshAsync(
@@ -270,6 +292,19 @@ public sealed class SubscriptionSyncService
         CancellationToken cancellationToken = default)
     {
         var userId = _authService.CurrentSession?.UserId ?? 0;
+        if (source.IsLocalOnly)
+        {
+            var localSnapshot = SubscriptionSnapshotBuilder.Build(
+                importResult,
+                0,
+                userId,
+                subscriptionName,
+                source.Url,
+                source.CreatedAtUtc);
+            var localSnapshotPath = _snapshotStore.Save(localSnapshot, subscriptionName);
+            return SubscriptionSyncResult.LocalOnly(localSnapshotPath, localSnapshot);
+        }
+
         var serverId = source.ServerSubscriptionId ?? 0;
         var snapshot = SubscriptionSnapshotBuilder.Build(
             importResult,

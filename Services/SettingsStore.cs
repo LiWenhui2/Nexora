@@ -108,6 +108,12 @@ public sealed class SettingsStore
             settings.ThemeAccentColor = ThemeService.DefaultAccentHex;
         }
 
+        if (string.Equals(settings.ThemeBackgroundSource, "wallpaper", StringComparison.OrdinalIgnoreCase))
+        {
+            settings.ThemeBackgroundSource = "default";
+            settings.ThemeBackgroundImagePath = null;
+        }
+
         settings.RoutingMode = NormalizeRoutingMode(settings.RoutingMode);
         RemoveBuiltInDirectRulesFromVisibleSettings(settings);
 

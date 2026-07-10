@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
@@ -348,6 +349,7 @@ public sealed class ForceLogoutPushMessage
     public string? KickedSessionId { get; set; }
     public string? SessionId { get; set; }
     public ForceLogoutDeviceInfo? NewLoginDevice { get; set; }
+    public string? LockedUntil { get; set; }
     public long Timestamp { get; set; }
 
     public string? ResolvedKickedSessionId =>
@@ -360,12 +362,168 @@ public sealed class ForceLogoutPushMessage
             return Message.Trim();
         }
 
+        if (IsAdminKickout)
+        {
+            return "当前设备已被管理员强制下线，请重新登录。";
+        }
+
+        if (IsAccountDisabled)
+        {
+            return "当前账号已被管理员禁用";
+        }
+
+        if (IsAccountLocked)
+        {
+            return "当前账号已被管理员锁定";
+        }
+
         if (string.Equals(Reason, "DEVICE_LIMIT_EXCEEDED", StringComparison.OrdinalIgnoreCase))
         {
             return "当前账号已在新设备登录，登录设备数量超过限制，此设备已被下线。";
         }
 
-        return "当前账号登录设备数量已达上限，本设备已被强制下线，请重新登录。";
+        return "当前账号登录状态已失效，请重新登录。";
+    }
+
+    public bool IsAdminKickout =>
+        string.Equals(Reason, "ADMIN_KICKOUT", StringComparison.OrdinalIgnoreCase);
+
+    public bool IsAccountDisabled =>
+        string.Equals(Reason, "ACCOUNT_DISABLED", StringComparison.OrdinalIgnoreCase);
+
+    public bool IsAccountLocked =>
+        string.Equals(Reason, "ACCOUNT_LOCKED", StringComparison.OrdinalIgnoreCase);
+
+    public bool PreventsRelogin => IsAccountDisabled || IsAccountLocked;
+
+    public bool IsSimpleNotice => IsAdminKickout || IsAccountDisabled;
+
+    public string GetHeadline()
+    {
+        if (IsAccountDisabled)
+        {
+            return "账号已被禁用";
+        }
+
+        if (IsAccountLocked)
+        {
+            return "账号已被锁定";
+        }
+
+        return "账号已下线";
+    }
+
+    public string GetConfirmButtonText() =>
+        PreventsRelogin ? "我知道了" : "我知道了，重新登录";
+
+    public IReadOnlyList<string> BuildUserFriendlyDetails()
+    {
+        if (IsSimpleNotice)
+        {
+            return [];
+        }
+
+        if (IsAccountLocked)
+        {
+            var lockedUntilText = FormatLockedUntilDisplay();
+            return string.IsNullOrWhiteSpace(lockedUntilText)
+                ? []
+                : [$"解锁时间：{lockedUntilText}"];
+        }
+
+        var details = new List<string>();
+        if (MaxActiveDevices is > 0)
+        {
+            details.Add($"设备上限：{MaxActiveDevices.Value} 台");
+        }
+
+        var device = NewLoginDevice;
+        if (device is null)
+        {
+            return details;
+        }
+
+        AddDetailIfPresent(details, "新登录设备", device.DeviceName);
+        AddDetailIfPresent(details, "客户端", FormatClientType(device.ClientType));
+        AddDetailIfPresent(details, "操作系统", FormatOperatingSystem(device));
+        AddDetailIfPresent(details, "IP 地址", device.IpAddress);
+        AddDetailIfPresent(details, "地理位置", FormatLocation(device));
+        AddDetailIfPresent(details, "运营商", device.Isp);
+        return details;
+    }
+
+    private static void AddDetailIfPresent(List<string> details, string label, string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value) || string.Equals(value.Trim(), "未知", StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        details.Add($"{label}：{value.Trim()}");
+    }
+
+    private string? FormatLockedUntilDisplay()
+    {
+        if (string.IsNullOrWhiteSpace(LockedUntil))
+        {
+            return null;
+        }
+
+        var text = LockedUntil.Trim();
+        if (DateTimeOffset.TryParse(text, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var offset))
+        {
+            return offset.LocalDateTime.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture);
+        }
+
+        if (DateTime.TryParse(text, CultureInfo.InvariantCulture, DateTimeStyles.AssumeLocal, out var localTime))
+        {
+            return localTime.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture);
+        }
+
+        return text;
+    }
+
+    public static string FormatOperatingSystem(ForceLogoutDeviceInfo? device)
+    {
+        if (device is null)
+        {
+            return "未知";
+        }
+
+        var osName = device.OsName?.Trim();
+        var osVersion = device.OsVersion?.Trim();
+        if (!string.IsNullOrWhiteSpace(osName) && !string.IsNullOrWhiteSpace(osVersion))
+        {
+            return $"{osName} {osVersion}";
+        }
+
+        if (!string.IsNullOrWhiteSpace(osName))
+        {
+            return osName;
+        }
+
+        if (!string.IsNullOrWhiteSpace(osVersion))
+        {
+            return osVersion;
+        }
+
+        return "未知";
+    }
+
+    public static string FormatLocation(ForceLogoutDeviceInfo? device)
+    {
+        if (device is null)
+        {
+            return "未知";
+        }
+
+        var parts = new[] { device.Country, device.Region, device.City }
+            .Where(part => !string.IsNullOrWhiteSpace(part))
+            .Select(part => part!.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        return parts.Count == 0 ? "未知" : string.Join(" · ", parts);
     }
 
     public static string FormatValue(string? value) =>
@@ -381,6 +539,9 @@ public sealed class ForceLogoutPushMessage
         return reason.Trim() switch
         {
             "DEVICE_LIMIT_EXCEEDED" => "设备数量超限",
+            "ADMIN_KICKOUT" => "管理员强制下线",
+            "ACCOUNT_DISABLED" => "账号已被禁用",
+            "ACCOUNT_LOCKED" => "账号已被锁定",
             _ => reason.Trim()
         };
     }
