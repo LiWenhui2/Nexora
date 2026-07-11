@@ -24,6 +24,8 @@ public sealed class AppSettings
     public bool RunAtStartup { get; set; }
     public bool RunAtStartupSilent { get; set; }
     public bool AllowLanAccess { get; set; }
+    public bool OpenAiCodexOptimizationEnabled { get; set; }
+    public OpenAiCodexOptimizationSnapshot? OpenAiCodexOptimizationSnapshot { get; set; }
     public string ThemeAccentColor { get; set; } = "#2563EB";
     public string? ThemeBackgroundImagePath { get; set; }
     public string ThemeBackgroundSource { get; set; } = "default";
@@ -31,6 +33,13 @@ public sealed class AppSettings
     public int? DownloadedUpdateReleaseId { get; set; }
     public string? DownloadedUpdateFilePath { get; set; }
     public Dictionary<string, SubscriptionSource> SubscriptionSources { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+}
+
+public sealed class OpenAiCodexOptimizationSnapshot
+{
+    public string RoutingMode { get; set; } = "BypassChina";
+    public string SystemProxyMode { get; set; } = "Auto";
+    public CustomRoutingSettings CustomRouting { get; set; } = new();
 }
 
 public sealed class CustomRoutingSettings

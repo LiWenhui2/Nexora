@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Net;
 using System.Net.Http;
@@ -21,7 +22,6 @@ using Microsoft.Win32;
 using NaiwaProxy.Dialogs;
 using NaiwaProxy.Models;
 using NaiwaProxy.Services;
-using QRCoder;
 using ZXing;
 using ZXing.Common;
 using Forms = System.Windows.Forms;
@@ -37,7 +37,23 @@ namespace NaiwaProxy;
 
 public partial class MainWindow : Window
 {
+    public static readonly DependencyProperty WebsiteTestCardWidthProperty =
+        DependencyProperty.Register(
+            nameof(WebsiteTestCardWidth),
+            typeof(double),
+            typeof(MainWindow),
+            new PropertyMetadata(300d));
+
+    public double WebsiteTestCardWidth
+    {
+        get => (double)GetValue(WebsiteTestCardWidthProperty);
+        set => SetValue(WebsiteTestCardWidthProperty, value);
+    }
+
     private const double AboutTwoColumnBreakpoint = 980;
+    private const double WebsiteTestCardMinWidth = 220;
+    private const double WebsiteTestCardGap = 12;
+    private const double WebsiteTestCardAbsoluteMinWidth = 180;
     private static readonly DateTime AppStartTime = DateTime.Now;
     private const string ProjectUrl = "https://github.com/LiWenhui2/NaiwaProxy";
     private const string DefaultChatBackgroundResource = "assets/chat/chat-bg-default.png";
@@ -73,6 +89,7 @@ public partial class MainWindow : Window
     private bool _suppressAutoDownloadNewVersionToggleEvent;
     private bool _suppressRunAtStartupSilentToggleEvent;
     private bool _suppressAllowLanAccessToggleEvent;
+    private bool _suppressOpenAiCodexOptimizationToggleEvent;
     private bool _startSilent;
     private bool _isUiReady;
     private bool _isExiting;
@@ -82,6 +99,7 @@ public partial class MainWindow : Window
     private string _lastUpSpeedText = "-";
     private CancellationTokenSource? _regionEnrichmentCancellation;
     private CancellationTokenSource? _websiteTestCancellation;
+    private CancellationTokenSource? _openAiCodexPreWarmCts;
     private readonly DispatcherTimer _registerCodeCooldownTimer = new() { Interval = TimeSpan.FromSeconds(1) };
     private readonly DispatcherTimer _forgotPasswordCodeCooldownTimer = new() { Interval = TimeSpan.FromSeconds(1) };
     private readonly DispatcherTimer _authRefreshTimer = new() { Interval = TimeSpan.FromMinutes(30) };
@@ -106,6 +124,10 @@ public partial class MainWindow : Window
     private int _registerCodeCooldownSeconds;
     private int _forgotPasswordCodeCooldownSeconds;
     private SubscriptionGroupIdentity? _subscriptionContextMenuScope;
+    private const double DefaultWindowWidth = 1280;
+    private const double DefaultWindowHeight = 720;
+    private const double WindowAspectRatio = 16.0 / 9.0;
+    private const double WindowWorkAreaMargin = 16;
     private const string InvalidSubscriptionSuffix = "（已失效）";
     private int _unreadAdminChatCount;
     private Drawing.Icon? _trayIconNormal;
@@ -123,6 +145,7 @@ public partial class MainWindow : Window
                 : _authService.ApiBaseUrl);
         DiagnosticLogService.Startup("MainWindow constructor begin");
         InitializeComponent();
+        ApplyInitialWindowBounds();
         RefreshLogView();
         LoadBrandIcon();
         LoadInfoHintIcons();
@@ -154,6 +177,7 @@ public partial class MainWindow : Window
         _profilesView.Filter = FilterProfile;
         _profilesView.GroupDescriptions.Add(new PropertyGroupDescription(nameof(VmessProfile.SubscriptionDisplay)));
         ProfilesGrid.ItemsSource = _profilesView;
+        ConfigureImportPlaceholder();
         InitializeWebsiteTests();
         _isUiReady = true;
         LoadSettings();
@@ -585,6 +609,45 @@ public partial class MainWindow : Window
         Close();
     }
 
+    private void ApplyInitialWindowBounds()
+    {
+        var workArea = SystemParameters.WorkArea;
+        var maxWidth = Math.Max(MinWidth, workArea.Width - WindowWorkAreaMargin * 2);
+        var maxHeight = Math.Max(MinHeight, workArea.Height - WindowWorkAreaMargin * 2);
+
+        var width = Math.Min(DefaultWindowWidth, maxWidth);
+        var height = Math.Min(DefaultWindowHeight, maxHeight);
+
+        if (width / height > WindowAspectRatio)
+        {
+            width = height * WindowAspectRatio;
+        }
+        else
+        {
+            height = width / WindowAspectRatio;
+        }
+
+        width = Math.Min(width, maxWidth);
+        height = Math.Min(height, maxHeight);
+
+        if (width < MinWidth)
+        {
+            width = MinWidth;
+            height = Math.Min(width / WindowAspectRatio, maxHeight);
+        }
+
+        if (height < MinHeight)
+        {
+            height = MinHeight;
+            width = Math.Min(height * WindowAspectRatio, maxWidth);
+        }
+
+        Width = width;
+        Height = height;
+        Left = workArea.Left + Math.Max(0, (workArea.Width - width) / 2);
+        Top = workArea.Top + Math.Max(0, (workArea.Height - height) / 2);
+    }
+
     private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
     {
         Loaded -= MainWindow_Loaded;
@@ -723,6 +786,13 @@ public partial class MainWindow : Window
         SyncRunAtStartupFromSettings();
         SyncAllowLanAccessFromSettings();
         SyncAutoDownloadUpdateFromSettings();
+        if (_settings.OpenAiCodexOptimizationEnabled &&
+            OpenAiCodexOptimizationService.EnsureRulesMerged(_settings))
+        {
+            _settingsStore.Save(_settings);
+        }
+
+        SyncOpenAiCodexOptimizationFromSettings();
         ApplyStartupSettings(save: false);
         RestoreSubscriptionAutoRefreshTimers();
         ReconcileSubscriptionTrafficExhaustedState();
@@ -808,6 +878,7 @@ public partial class MainWindow : Window
         }
 
         WebsiteTestList.ItemsSource = _websiteTests;
+        ScheduleWebsiteTestResponsiveLayout();
     }
 
     private void UpdateNodeTestHeader()
@@ -919,6 +990,7 @@ public partial class MainWindow : Window
     {
         UpdateNodeTestHeader();
         ShowPage(NodeTestPageScroll, NodeTestNavButton);
+        Dispatcher.BeginInvoke(ScheduleWebsiteTestResponsiveLayout, DispatcherPriority.Loaded);
     }
 
     private async void RunAllWebsiteTestsButton_Click(object sender, RoutedEventArgs e)
@@ -1035,6 +1107,101 @@ public partial class MainWindow : Window
         _suppressAllowLanAccessToggleEvent = true;
         AllowLanAccessToggle.IsChecked = _settings.AllowLanAccess;
         _suppressAllowLanAccessToggleEvent = false;
+    }
+
+    private void SyncOpenAiCodexOptimizationFromSettings()
+    {
+        if (!_isUiReady || OpenAiCodexOptimizationToggle is null)
+        {
+            return;
+        }
+
+        _suppressOpenAiCodexOptimizationToggleEvent = true;
+        OpenAiCodexOptimizationToggle.IsChecked = _settings.OpenAiCodexOptimizationEnabled;
+        _suppressOpenAiCodexOptimizationToggleEvent = false;
+    }
+
+    private async void OpenAiCodexOptimizationToggle_Changed(object sender, RoutedEventArgs e)
+    {
+        if (!_isUiReady || _suppressOpenAiCodexOptimizationToggleEvent)
+        {
+            return;
+        }
+
+        var enabling = OpenAiCodexOptimizationToggle.IsChecked == true;
+        try
+        {
+            if (enabling)
+            {
+                OpenAiCodexOptimizationService.Apply(_settings);
+                _settingsStore.Save(_settings);
+                ApplyOpenAiCodexOptimizationUi();
+
+                if (_coreService.IsRunning)
+                {
+                    await RestartCoreAsync();
+                }
+
+                ThemedMessageDialog.Show(
+                    this,
+                    "已启用 OpenAI/Codex 优化。请先开启代理，等待数秒后再打开 Codex，可减少首次重连。");
+
+                ScheduleOpenAiCodexPreWarmIfEnabled();
+            }
+            else
+            {
+                OpenAiCodexOptimizationService.Restore(_settings);
+                _settingsStore.Save(_settings);
+                SelectRoutingCombo(_settings.RoutingMode);
+                SelectSystemProxyCombo(_settings.SystemProxyMode);
+                UpdateRoutingEditorVisibility();
+
+                if (_coreService.IsRunning)
+                {
+                    await RestartCoreAsync();
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            ShowError(ex);
+        }
+    }
+
+    private void ApplyOpenAiCodexOptimizationUi()
+    {
+        SelectRoutingCombo(_settings.RoutingMode);
+        SelectSystemProxyCombo(_settings.SystemProxyMode);
+        UpdateRoutingEditorVisibility();
+    }
+
+    private void ScheduleOpenAiCodexPreWarmIfEnabled()
+    {
+        if (!_settings.OpenAiCodexOptimizationEnabled || !_coreService.IsRunning)
+        {
+            return;
+        }
+
+        _openAiCodexPreWarmCts?.Cancel();
+        _openAiCodexPreWarmCts?.Dispose();
+        _openAiCodexPreWarmCts = new CancellationTokenSource();
+        var token = _openAiCodexPreWarmCts.Token;
+        var httpPort = _settings.HttpPort;
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await OpenAiCodexOptimizationService.PreWarmAsync(httpPort, token);
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            catch (Exception ex)
+            {
+                DiagnosticLogService.Warning($"OpenAI/Codex prewarm task failed: {ex.Message}");
+            }
+        }, token);
     }
 
     private async void AllowLanAccessToggle_Changed(object sender, RoutedEventArgs e)
@@ -1348,7 +1515,7 @@ public partial class MainWindow : Window
     {
         if (profile is null)
         {
-            NodeAddressText.Text = "[VMess] -";
+            ApplyNodeHeaderTexts(null);
             _topBarLatencyProfileId = null;
             _topBarLastLatencyMs = null;
             _topBarShowingTimeout = false;
@@ -1356,7 +1523,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        NodeAddressText.Text = $"[{profile.ProtocolDisplay}] {profile.DisplayName} · {profile.Endpoint}";
+        ApplyNodeHeaderTexts(profile);
         UpdateTopBarLatencyDisplay(profile);
     }
 
@@ -1445,24 +1612,128 @@ public partial class MainWindow : Window
             ? null
             : _profiles.FirstOrDefault(p => p.Id == activeId);
 
-        SideNodeText.Text = active is null
-            ? "节点：无活动节点"
-            : $"节点：{active.DisplayName} · {active.ProtocolDisplay}";
-
         SyncNodePickerDisplay(active);
         UpdateNodeAddressInStatusBar(active);
         UpdateTrayStatus();
     }
 
-    private void UpdateNodeAddressInStatusBar(VmessProfile? profile)
+    private void UpdateNodeAddressInStatusBar(VmessProfile? profile) => ApplyNodeHeaderTexts(profile);
+
+    private void ApplyNodeHeaderTexts(VmessProfile? profile)
     {
-        if (profile is null)
+        if (NodeSummaryText is null || NodeEndpointText is null)
         {
-            NodeAddressText.Text = "[VMess] -";
             return;
         }
 
-        NodeAddressText.Text = $"[{profile.ProtocolDisplay}] {profile.DisplayName} · {profile.Endpoint}";
+        if (profile is null)
+        {
+            NodeSummaryText.Text = "[VMess] -";
+            NodeEndpointText.Text = string.Empty;
+            ScheduleMainHeaderResponsiveLayout();
+            return;
+        }
+
+        NodeSummaryText.Text = $"[{profile.ProtocolDisplay}] {profile.DisplayName}";
+        NodeEndpointText.Text = profile.Endpoint;
+        ScheduleMainHeaderResponsiveLayout();
+    }
+
+    private void ScheduleMainHeaderResponsiveLayout()
+    {
+        Dispatcher.BeginInvoke(UpdateMainHeaderResponsiveLayout, DispatcherPriority.Loaded);
+    }
+
+    private void MainHeaderBorder_SizeChanged(object sender, SizeChangedEventArgs e) =>
+        ScheduleMainHeaderResponsiveLayout();
+
+    private void UpdateMainHeaderResponsiveLayout()
+    {
+        if (!_isUiReady || NodeEndpointPanel is null || NodeSummaryText is null || NodeEndpointText is null)
+        {
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(NodeEndpointText.Text))
+        {
+            NodeEndpointPanel.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        var availableWidth = GetNodeInfoAvailableWidth();
+        var requiredWidth = MeasureNodeInfoContentWidth(includeEndpoint: true);
+        var showEndpoint = requiredWidth <= availableWidth;
+        NodeEndpointPanel.Visibility = showEndpoint ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private double GetNodeInfoAvailableWidth()
+    {
+        if (MainHeaderBorder is null)
+        {
+            return double.PositiveInfinity;
+        }
+
+        var headerWidth = MainHeaderBorder.ActualWidth;
+        if (headerWidth <= 0)
+        {
+            return double.PositiveInfinity;
+        }
+
+        var proxyWidth = ProxyToggleBorder?.ActualWidth ?? 0;
+        var trafficWidth = TrafficStatsPanel?.ActualWidth ?? 0;
+        const double headerHorizontalPadding = 48;
+        const double nodeInfoHorizontalMargin = 24;
+        const double layoutBuffer = 12;
+
+        return Math.Max(
+            0,
+            headerWidth - headerHorizontalPadding - proxyWidth - trafficWidth - nodeInfoHorizontalMargin - layoutBuffer);
+    }
+
+    private double MeasureNodeInfoContentWidth(bool includeEndpoint)
+    {
+        var width = MeasureTextBlockWidth(NodeSummaryText, NodeSummaryText.Text);
+        if (includeEndpoint)
+        {
+            width += MeasureTextBlockWidth(NodeSummaryText, " · ");
+            width += MeasureTextBlockWidth(NodeEndpointText, NodeEndpointText.Text);
+        }
+
+        width += MeasureTextBlockWidth(NodeSummaryText, " · ");
+        width += Math.Max(MeasureTextBlockWidth(CurrentTcpLatencyText, CurrentTcpLatencyText.Text), 72);
+
+        if (NodeAvailabilityTag is not null && NodeAvailabilityTag.Visibility == Visibility.Visible)
+        {
+            NodeAvailabilityTag.UpdateLayout();
+            width += NodeAvailabilityTag.ActualWidth + NodeAvailabilityTag.Margin.Left + NodeAvailabilityTag.Margin.Right;
+        }
+
+        if (NodeInfoBorder is not null)
+        {
+            width += NodeInfoBorder.Padding.Left + NodeInfoBorder.Padding.Right;
+            width += NodeInfoBorder.BorderThickness.Left + NodeInfoBorder.BorderThickness.Right;
+        }
+
+        return width;
+    }
+
+    private static double MeasureTextBlockWidth(TextBlock reference, string text)
+    {
+        if (string.IsNullOrEmpty(text))
+        {
+            return 0;
+        }
+
+        var formattedText = new FormattedText(
+            text,
+            CultureInfo.CurrentUICulture,
+            System.Windows.FlowDirection.LeftToRight,
+            new Typeface(reference.FontFamily, reference.FontStyle, reference.FontWeight, reference.FontStretch),
+            reference.FontSize,
+            reference.Foreground,
+            VisualTreeHelper.GetDpi(reference).PixelsPerDip);
+
+        return formattedText.WidthIncludingTrailingWhitespace;
     }
 
     private void SyncNodePickerDisplay(VmessProfile? active = null)
@@ -1602,7 +1873,7 @@ public partial class MainWindow : Window
         if (MainHeaderBorder is not null)
         {
             MainHeaderBorder.Background = CreateFrozenBrush(
-                light ? Color.FromArgb(0xD9, 0xFF, 0xFF, 0xFF) : Color.FromArgb(0xD9, 0x25, 0x25, 0x26));
+                light ? Color.FromArgb(0xE0, 0xFF, 0xFF, 0xFF) : Color.FromArgb(0xE0, 0x25, 0x25, 0x26));
         }
     }
 
@@ -1613,15 +1884,15 @@ public partial class MainWindow : Window
     {
         var light = SystemThemeService.IsLightMode();
         Resources["PanelGlassBrush"] = CreateFrozenBrush(
-            light ? Color.FromArgb(0xA6, 0xFF, 0xFF, 0xFF) : Color.FromArgb(0xA6, 0x25, 0x25, 0x26));
+            light ? Color.FromArgb(0xE0, 0xFF, 0xFF, 0xFF) : Color.FromArgb(0xE0, 0x25, 0x25, 0x26));
         Resources["Panel2GlassBrush"] = CreateFrozenBrush(
-            light ? Color.FromArgb(0x99, 0xF8, 0xFA, 0xFC) : Color.FromArgb(0x99, 0x2D, 0x2D, 0x30));
+            light ? Color.FromArgb(0xD2, 0xF8, 0xFA, 0xFC) : Color.FromArgb(0xD2, 0x2D, 0x2D, 0x30));
         Resources["Panel3GlassBrush"] = CreateFrozenBrush(
-            light ? Color.FromArgb(0xB3, 0xFF, 0xFF, 0xFF) : Color.FromArgb(0xB3, 0x30, 0x30, 0x32));
+            light ? Color.FromArgb(0xE6, 0xFF, 0xFF, 0xFF) : Color.FromArgb(0xE6, 0x30, 0x30, 0x32));
         Resources["RowAltGlassBrush"] = CreateFrozenBrush(
-            light ? Color.FromArgb(0x66, 0xFF, 0xFF, 0xFF) : Color.FromArgb(0x66, 0x25, 0x25, 0x26));
+            light ? Color.FromArgb(0xB3, 0xFF, 0xFF, 0xFF) : Color.FromArgb(0xB3, 0x25, 0x25, 0x26));
         Resources["RowHoverGlassBrush"] = CreateFrozenBrush(
-            light ? Color.FromArgb(0x80, 0xF8, 0xFA, 0xFC) : Color.FromArgb(0x80, 0x3A, 0x3A, 0x3C));
+            light ? Color.FromArgb(0xCC, 0xF8, 0xFA, 0xFC) : Color.FromArgb(0xCC, 0x3A, 0x3A, 0x3C));
         Resources["ChatPanelGlassBrush"] = CreateFrozenBrush(
             light ? Color.FromArgb(0x73, 0xFF, 0xFF, 0xFF) : Color.FromArgb(0x73, 0x25, 0x25, 0x28));
         Resources["ChatBubbleAdminBrush"] = CreateFrozenBrush(
@@ -1639,13 +1910,13 @@ public partial class MainWindow : Window
         };
         if (light)
         {
-            brush.GradientStops.Add(new GradientStop(Color.FromArgb(0xD9, 0xFF, 0xFF, 0xFF), 0));
-            brush.GradientStops.Add(new GradientStop(Color.FromArgb(0xD9, 0xF8, 0xFA, 0xFC), 1));
+            brush.GradientStops.Add(new GradientStop(Color.FromArgb(0xBF, 0xFF, 0xFF, 0xFF), 0));
+            brush.GradientStops.Add(new GradientStop(Color.FromArgb(0xBF, 0xF8, 0xFA, 0xFC), 1));
         }
         else
         {
-            brush.GradientStops.Add(new GradientStop(Color.FromArgb(0xD9, 0x25, 0x25, 0x26), 0));
-            brush.GradientStops.Add(new GradientStop(Color.FromArgb(0xD9, 0x2D, 0x2D, 0x30), 1));
+            brush.GradientStops.Add(new GradientStop(Color.FromArgb(0xBF, 0x25, 0x25, 0x26), 0));
+            brush.GradientStops.Add(new GradientStop(Color.FromArgb(0xBF, 0x2D, 0x2D, 0x30), 1));
         }
 
         brush.Freeze();
@@ -2104,6 +2375,21 @@ public partial class MainWindow : Window
             SideAuthEmailText.Text = email;
             SetSideAuthAvatar(AvatarUrlHelper.ResolveUserAvatarUrl(_authService.CurrentAvatarUrl));
 
+            if (SideMenuEditProfile is not null)
+            {
+                SideMenuEditProfile.Visibility = Visibility.Visible;
+            }
+
+            if (SideMenuLogout is not null)
+            {
+                SideMenuLogout.Visibility = Visibility.Visible;
+            }
+
+            if (SideMenuLogin is not null)
+            {
+                SideMenuLogin.Visibility = Visibility.Collapsed;
+            }
+
             if (SyncCloudSubscriptionsButton is not null)
             {
                 SyncCloudSubscriptionsButton.Visibility = Visibility.Visible;
@@ -2113,11 +2399,47 @@ public partial class MainWindow : Window
         {
             AuthGuestPanel.Visibility = Visibility.Visible;
             AuthUserPanel.Visibility = Visibility.Collapsed;
+
+            if (SideMenuEditProfile is not null)
+            {
+                SideMenuEditProfile.Visibility = Visibility.Collapsed;
+            }
+
+            if (SideMenuLogout is not null)
+            {
+                SideMenuLogout.Visibility = Visibility.Collapsed;
+            }
+
+            if (SideMenuLogin is not null)
+            {
+                SideMenuLogin.Visibility = Visibility.Visible;
+            }
+
             if (SyncCloudSubscriptionsButton is not null)
             {
                 SyncCloudSubscriptionsButton.Visibility = Visibility.Collapsed;
             }
         }
+    }
+
+    private void SideUserArea_Click(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is not FrameworkElement element || SideUserContextMenu is null)
+        {
+            return;
+        }
+
+        if (!_authService.HasPersistedSession)
+        {
+            ShowLoginPage();
+            e.Handled = true;
+            return;
+        }
+
+        SideUserContextMenu.PlacementTarget = element;
+        SideUserContextMenu.Placement = System.Windows.Controls.Primitives.PlacementMode.Top;
+        SideUserContextMenu.IsOpen = true;
+        e.Handled = true;
     }
 
     private void SetSideAuthAvatar(string avatarUrl)
@@ -2237,7 +2559,11 @@ public partial class MainWindow : Window
             return;
         }
 
-        SideEditProfileButton.IsEnabled = false;
+        if (SideMenuEditProfile is not null)
+        {
+            SideMenuEditProfile.IsEnabled = false;
+        }
+
         try
         {
             var result = await _authService.UpdateProfileAsync(
@@ -2261,7 +2587,10 @@ public partial class MainWindow : Window
         }
         finally
         {
-            SideEditProfileButton.IsEnabled = true;
+            if (SideMenuEditProfile is not null)
+            {
+                SideMenuEditProfile.IsEnabled = true;
+            }
         }
     }
 
@@ -3311,8 +3640,6 @@ public partial class MainWindow : Window
     {
         _suppressTunToggleEvent = true;
         TunToggle.IsChecked = _settings.IsTunEnabled;
-        TunStateText.Text = TunService.IsRunning ? "运行中" : _settings.IsTunEnabled ? "待启动" : "已关闭";
-        TunStateText.Foreground = TunService.IsRunning ? GreenBrush() : new SolidColorBrush(Color.FromRgb(0x64, 0x74, 0x8B));
         _suppressTunToggleEvent = false;
     }
 
@@ -3347,7 +3674,6 @@ public partial class MainWindow : Window
         _lastTrafficSampleAt = DateTime.Now;
         _lastTrafficPersistAt = DateTime.Now;
         UpdateTrafficStatsDisplay(running: true);
-        TrafficBadgeText.Text = "下行 0 B/s · 上传 0 B/s";
         _trafficTimer.Start();
         _ = RefreshTrafficAsync();
     }
@@ -3357,7 +3683,6 @@ public partial class MainWindow : Window
         _trafficTimer.Stop();
         _lastTrafficSnapshot = null;
         UpdateTrafficStatsDisplay();
-        TrafficBadgeText.Text = "下行 — · 上传 —";
     }
 
     private async void TrafficTimer_Tick(object? sender, EventArgs e)
@@ -3398,7 +3723,6 @@ public partial class MainWindow : Window
             _lastTrafficSampleAt = now;
 
             UpdateTrafficStatsDisplay(downSpeed, upSpeed, running: true);
-            TrafficBadgeText.Text = $"下行 {FormatBytes(downSpeed)}/s · 上传 {FormatBytes(upSpeed)}/s";
 
             if ((now - _lastTrafficPersistAt).TotalSeconds >= 5)
             {
@@ -3432,13 +3756,99 @@ public partial class MainWindow : Window
     private void UpdateTrafficStatsDisplay(double downSpeed = 0, double upSpeed = 0, bool running = false)
     {
         EnsureTodayTraffic();
-        _lastDownSpeedText = running ? $"{FormatBytes(downSpeed)}/s" : "-";
-        _lastUpSpeedText = running ? $"{FormatBytes(upSpeed)}/s" : "-";
-        StatDownloadText.Text = running ? $"{FormatBytes(downSpeed)}/s" : "—";
-        StatUploadText.Text = running ? $"{FormatBytes(upSpeed)}/s" : "—";
-        StatTodayText.Text = FormatBytes(_settings.TodayUplinkBytes + _settings.TodayDownlinkBytes);
-        StatTotalText.Text = FormatBytes(_settings.TotalDownlinkBytes + _settings.TotalUplinkBytes);
+        _lastDownSpeedText = running ? $"{FormatBytes(downSpeed)}/s" : "—";
+        _lastUpSpeedText = running ? $"{FormatBytes(upSpeed)}/s" : "—";
+        var todayText = FormatBytes(_settings.TodayUplinkBytes + _settings.TodayDownlinkBytes);
+        var totalText = FormatBytes(_settings.TotalDownlinkBytes + _settings.TotalUplinkBytes);
+        TrafficDownSpeedText.Text = _lastDownSpeedText;
+        TrafficUpSpeedText.Text = _lastUpSpeedText;
+        TrafficTodayText.Text = todayText;
+        TrafficTotalText.Text = totalText;
         UpdateTrayStatus();
+    }
+
+    private void NavGroupToggle_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not System.Windows.Controls.Primitives.ToggleButton toggle || toggle.Tag is not string panelName)
+        {
+            return;
+        }
+
+        if (FindName(panelName) is not FrameworkElement panel)
+        {
+            return;
+        }
+
+        if (toggle.IsChecked == true)
+        {
+            ExpandNavPanel(panel);
+        }
+        else
+        {
+            CollapseNavPanel(panel);
+        }
+    }
+
+    private static void ExpandNavPanel(FrameworkElement panel)
+    {
+        panel.Visibility = Visibility.Visible;
+        panel.UpdateLayout();
+        var targetHeight = panel.ActualHeight;
+        if (targetHeight <= 0)
+        {
+            panel.Measure(new System.Windows.Size(double.PositiveInfinity, double.PositiveInfinity));
+            targetHeight = panel.DesiredSize.Height;
+        }
+
+        if (targetHeight <= 0)
+        {
+            panel.MaxHeight = double.PositiveInfinity;
+            return;
+        }
+
+        panel.MaxHeight = 0;
+        var animation = new DoubleAnimation
+        {
+            From = 0,
+            To = targetHeight,
+            Duration = TimeSpan.FromMilliseconds(220),
+            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
+        };
+        animation.Completed += (_, _) => panel.MaxHeight = double.PositiveInfinity;
+        panel.BeginAnimation(FrameworkElement.MaxHeightProperty, animation);
+    }
+
+    private static void CollapseNavPanel(FrameworkElement panel)
+    {
+        var currentHeight = panel.ActualHeight;
+        if (currentHeight <= 0)
+        {
+            panel.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        panel.MaxHeight = currentHeight;
+        var animation = new DoubleAnimation
+        {
+            From = currentHeight,
+            To = 0,
+            Duration = TimeSpan.FromMilliseconds(220),
+            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseIn }
+        };
+        animation.Completed += (_, _) =>
+        {
+            panel.Visibility = Visibility.Collapsed;
+            panel.MaxHeight = double.PositiveInfinity;
+        };
+        panel.BeginAnimation(FrameworkElement.MaxHeightProperty, animation);
+    }
+
+    private async void RowSetActiveNode_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: VmessProfile profile })
+        {
+            await SwitchToProfileAsync(profile);
+        }
     }
 
     private void ApplySubscriptionTrafficInfo(SubscriptionTrafficInfo? trafficInfo)
@@ -3572,6 +3982,7 @@ public partial class MainWindow : Window
             StartTunIfEnabled();
             StartTrafficMonitor();
             SyncProxyToggleFromCoreState();
+            ScheduleOpenAiCodexPreWarmIfEnabled();
         }
         catch (Exception ex)
         {
@@ -3616,6 +4027,7 @@ public partial class MainWindow : Window
         StartTunIfEnabled();
         StartTrafficMonitor();
         UpdateSidebarStatus();
+        ScheduleOpenAiCodexPreWarmIfEnabled();
     }
 
     private void SystemProxyCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -3950,7 +4362,7 @@ public partial class MainWindow : Window
         }
 
         e.Handled = true;
-        NodePageScroll.ScrollToVerticalOffset(NodePageScroll.VerticalOffset - e.Delta);
+        NodeListScroll.ScrollToVerticalOffset(NodeListScroll.VerticalOffset - e.Delta);
     }
 
     private async void CtxSetActiveNode_Click(object sender, RoutedEventArgs e)
@@ -4064,6 +4476,32 @@ public partial class MainWindow : Window
         ScheduleRegionEnrichment([existing ?? saved]);
     }
 
+    private void OpenNewNodeDialog()
+    {
+        var dialog = new NodeEditDialog(null) { Owner = this };
+        if (dialog.ShowDialog() != true)
+        {
+            return;
+        }
+
+        var saved = dialog.Profile;
+        ProfileMetadataHelper.ApplyNew(saved);
+        MarkProfileAsLocalManual(saved);
+        _profiles.Add(saved);
+        SaveProfiles(saved.Id);
+        RefreshNodePicker();
+        ProfilesGrid.SelectedItem = saved;
+        ScheduleRegionEnrichment([saved]);
+    }
+
+    private void OpenExportNodeDialog(VmessProfile profile)
+    {
+        var dialog = new ExportNodeDialog(profile, this);
+        dialog.ShowDialog();
+    }
+
+    private void InlineNewNodeButton_Click(object sender, RoutedEventArgs e) => OpenNewNodeDialog();
+
     private void OpenImportDialog()
     {
         var dialog = new ImportDialog { Owner = this };
@@ -4085,15 +4523,13 @@ public partial class MainWindow : Window
 
     private void NodeListNavButton_Click(object sender, RoutedEventArgs e) => ShowNodePage();
 
-    private void CtxNewNode_Click(object sender, RoutedEventArgs e) => ShowNewNodePage();
+    private void CtxNewNode_Click(object sender, RoutedEventArgs e) => OpenNewNodeDialog();
 
     private void CtxImportNode_Click(object sender, RoutedEventArgs e) => ShowImportPage();
 
     private void ImportNodeNavButton_Click(object sender, RoutedEventArgs e) => ShowImportPage();
 
-    private void NewNodeNavButton_Click(object sender, RoutedEventArgs e) => ShowNewNodePage();
-
-    private void ExportNodeNavButton_Click(object sender, RoutedEventArgs e) => ShowExportPage();
+    private void NewNodeNavButton_Click(object sender, RoutedEventArgs e) => OpenNewNodeDialog();
 
     private void GithubNavButton_Click(object sender, RoutedEventArgs e) => OpenPath(ProjectUrl);
 
@@ -6691,21 +7127,9 @@ public partial class MainWindow : Window
         ShowPage(NodePageScroll, NodeListNavButton);
     }
 
-    private void ShowNewNodePage()
-    {
-        InlineClearNodeForm();
-        ShowPage(NewNodePageScroll, NewNodeNavButton);
-    }
-
     private void ShowImportPage()
     {
         ShowPage(ImportPageScroll, ImportNodeNavButton);
-    }
-
-    private void ShowExportPage()
-    {
-        RefreshExportProfiles();
-        ShowPage(ExportPageScroll, ExportNodeNavButton);
     }
 
     private void SettingsNavButton_Click(object sender, RoutedEventArgs e) => ShowSettingsPage();
@@ -6715,6 +7139,7 @@ public partial class MainWindow : Window
         SyncRunAtStartupFromSettings();
         SyncAllowLanAccessFromSettings();
         SyncAutoDownloadUpdateFromSettings();
+        SyncOpenAiCodexOptimizationFromSettings();
         SyncThemeSettingsUi(ThemeService.ParseAccentColor(_settings.ThemeAccentColor));
         ShowPage(SettingsPageScroll, SettingsNavButton);
     }
@@ -6747,7 +7172,6 @@ public partial class MainWindow : Window
         NodePageScroll.Visibility = Visibility.Collapsed;
         NewNodePageScroll.Visibility = Visibility.Collapsed;
         ImportPageScroll.Visibility = Visibility.Collapsed;
-        ExportPageScroll.Visibility = Visibility.Collapsed;
         NodeTestPageScroll.Visibility = Visibility.Collapsed;
         AnnouncementPageScroll.Visibility = Visibility.Collapsed;
         ContactAdminPageScroll.Visibility = Visibility.Collapsed;
@@ -6765,7 +7189,7 @@ public partial class MainWindow : Window
             _aboutRuntimeTimer.Stop();
         }
 
-        foreach (var button in new[] { NodeListNavButton, NewNodeNavButton, ImportNodeNavButton, ExportNodeNavButton, NodeTestNavButton, AnnouncementNavButton, ContactAdminNavButton, VersionUpdateNavButton, SettingsNavButton, LogNavButton, AboutNavButton })
+        foreach (var button in new[] { NodeListNavButton, ImportNodeNavButton, NodeTestNavButton, AnnouncementNavButton, ContactAdminNavButton, VersionUpdateNavButton, SettingsNavButton, LogNavButton, AboutNavButton })
         {
             button.Style = ReferenceEquals(button, activeButton)
                 ? (Style)FindResource("ActiveNavButtonStyle")
@@ -6797,12 +7221,85 @@ public partial class MainWindow : Window
     private void AboutPageScroll_SizeChanged(object sender, SizeChangedEventArgs e) =>
         UpdateAboutResponsiveLayout(e.NewSize.Width);
 
+    private void NodeTestPageScroll_SizeChanged(object sender, SizeChangedEventArgs e) =>
+        ScheduleWebsiteTestResponsiveLayout();
+
+    private void WebsiteTestList_SizeChanged(object sender, SizeChangedEventArgs e) =>
+        UpdateWebsiteTestResponsiveLayout();
+
+    private void ScheduleWebsiteTestResponsiveLayout()
+    {
+        Dispatcher.BeginInvoke(UpdateWebsiteTestResponsiveLayout, DispatcherPriority.Loaded);
+    }
+
+    private double GetWebsiteTestListWidth()
+    {
+        if (WebsiteTestList?.Parent is FrameworkElement parent)
+        {
+            parent.UpdateLayout();
+            if (parent.ActualWidth > 0)
+            {
+                return parent.ActualWidth;
+            }
+        }
+
+        if (NodeTestPageScroll is null)
+        {
+            return Math.Max(0, ActualWidth - 330);
+        }
+
+        var viewportWidth = NodeTestPageScroll.ViewportWidth > 0
+            ? NodeTestPageScroll.ViewportWidth
+            : NodeTestPageScroll.ActualWidth;
+
+        return Math.Max(0, viewportWidth - 80);
+    }
+
+    private void UpdateWebsiteTestResponsiveLayout()
+    {
+        if (!_isUiReady || _websiteTests.Count == 0)
+        {
+            return;
+        }
+
+        var availableWidth = GetWebsiteTestListWidth();
+        if (availableWidth <= 0)
+        {
+            return;
+        }
+
+        var itemCount = _websiteTests.Count;
+        var columns = Math.Max(1, (int)Math.Floor(availableWidth / (WebsiteTestCardMinWidth + WebsiteTestCardGap)));
+        columns = Math.Min(columns, itemCount);
+
+        var cardWidth = (availableWidth / columns) - WebsiteTestCardGap;
+        while (columns > 1 && cardWidth < WebsiteTestCardMinWidth)
+        {
+            columns--;
+            cardWidth = (availableWidth / columns) - WebsiteTestCardGap;
+        }
+
+        cardWidth = Math.Max(WebsiteTestCardAbsoluteMinWidth, cardWidth);
+
+        if (Math.Abs(WebsiteTestCardWidth - cardWidth) > 0.5)
+        {
+            WebsiteTestCardWidth = cardWidth;
+        }
+    }
+
     private void MainWindow_SizeChanged(object sender, SizeChangedEventArgs e)
     {
         if (AboutPageScroll.Visibility == Visibility.Visible)
         {
             UpdateAboutResponsiveLayout(GetAboutContentWidth());
         }
+
+        if (NodeTestPageScroll.Visibility == Visibility.Visible)
+        {
+            ScheduleWebsiteTestResponsiveLayout();
+        }
+
+        ScheduleMainHeaderResponsiveLayout();
     }
 
     private double GetAboutContentWidth()
@@ -6964,7 +7461,7 @@ public partial class MainWindow : Window
     {
         if (Clipboard.ContainsText())
         {
-            InlineImportBox.Text = Clipboard.GetText();
+            SetInlineImportText(Clipboard.GetText());
         }
     }
 
@@ -6977,7 +7474,7 @@ public partial class MainWindow : Window
         };
         if (dialog.ShowDialog(this) == true)
         {
-            InlineImportBox.Text = await File.ReadAllTextAsync(dialog.FileName);
+            SetInlineImportText(await File.ReadAllTextAsync(dialog.FileName));
         }
     }
 
@@ -6985,7 +7482,7 @@ public partial class MainWindow : Window
     {
         try
         {
-            await ImportContentAsync(InlineImportBox.Text);
+            await ImportContentAsync(GetInlineImportText());
         }
         catch (Exception ex)
         {
@@ -6995,9 +7492,54 @@ public partial class MainWindow : Window
 
     private async Task ImportContentAsync(string content)
     {
-        InlineImportBox.Text = content;
+        SetInlineImportText(content);
         var result = await SubscriptionImportService.ImportAsync(content);
         await AddImportedProfilesAsync(result);
+    }
+
+    private void ConfigureImportPlaceholder()
+    {
+        const string placeholder = "支持节点链接、订阅地址、Base64 订阅内容与多行批量导入…";
+        InlineImportBox.Tag = placeholder;
+        if (string.IsNullOrWhiteSpace(InlineImportBox.Text))
+        {
+            ApplyInlineImportPlaceholder();
+        }
+
+        InlineImportBox.GotFocus += (_, _) =>
+        {
+            if (IsInlineImportShowingPlaceholder())
+            {
+                InlineImportBox.Text = "";
+                InlineImportBox.Foreground = (System.Windows.Media.Brush)FindResource("TextBrush");
+            }
+        };
+
+        InlineImportBox.LostFocus += (_, _) =>
+        {
+            if (string.IsNullOrWhiteSpace(InlineImportBox.Text))
+            {
+                ApplyInlineImportPlaceholder();
+            }
+        };
+    }
+
+    private void ApplyInlineImportPlaceholder()
+    {
+        InlineImportBox.Text = (string)InlineImportBox.Tag;
+        InlineImportBox.Foreground = (System.Windows.Media.Brush)FindResource("MutedBrush");
+    }
+
+    private bool IsInlineImportShowingPlaceholder() =>
+        InlineImportBox.Tag is string placeholder && InlineImportBox.Text == placeholder;
+
+    private string GetInlineImportText() =>
+        IsInlineImportShowingPlaceholder() ? "" : InlineImportBox.Text;
+
+    private void SetInlineImportText(string text)
+    {
+        InlineImportBox.Text = text;
+        InlineImportBox.Foreground = (System.Windows.Media.Brush)FindResource("TextBrush");
     }
 
     private async void InlineOpenQrImageButton_Click(object sender, RoutedEventArgs e)
@@ -7671,60 +8213,16 @@ public partial class MainWindow : Window
         return result.Text.Trim();
     }
 
-    private void RefreshExportProfiles()
-    {
-        ExportProfileCombo.ItemsSource = null;
-        ExportProfileCombo.ItemsSource = _profiles;
-        ExportProfileCombo.SelectedItem = ProfilesGrid.SelectedItem as VmessProfile ?? _profiles.FirstOrDefault();
-        RefreshExportPreview();
-    }
-
-    private void ExportProfileCombo_SelectionChanged(object sender, SelectionChangedEventArgs e) => RefreshExportPreview();
-
-    private void RefreshExportPreview()
-    {
-        if (ExportProfileCombo.SelectedItem is not VmessProfile profile)
-        {
-            ExportShareBox.Text = "";
-            ExportQrImage.Source = null;
-            return;
-        }
-
-        var link = ShareLinkBuilder.Build(profile);
-        ExportShareBox.Text = link;
-        ExportQrImage.Source = GenerateQrImage(link);
-    }
-
-    private void CopyExportLinkButton_Click(object sender, RoutedEventArgs e)
-    {
-        if (!string.IsNullOrWhiteSpace(ExportShareBox.Text))
-        {
-            Clipboard.SetText(ExportShareBox.Text);
-        }
-    }
-
-    private void SaveExportLinkButton_Click(object sender, RoutedEventArgs e)
-    {
-        if (ExportProfileCombo.SelectedItem is not VmessProfile profile || string.IsNullOrWhiteSpace(ExportShareBox.Text))
-        {
-            return;
-        }
-
-        var dialog = new SaveFileDialog
-        {
-            Title = "导出节点",
-            FileName = $"{SanitizeFileName(profile.DisplayName)}.txt",
-            Filter = "文本文件|*.txt|所有文件|*.*"
-        };
-        if (dialog.ShowDialog(this) == true)
-        {
-            File.WriteAllText(dialog.FileName, ExportShareBox.Text, Encoding.UTF8);
-        }
-    }
-
     private void CtxExportNode_Click(object sender, RoutedEventArgs e)
     {
-        ShowExportPage();
+        var profile = ProfilesGrid.SelectedItem as VmessProfile;
+        if (profile is null)
+        {
+            MessageBox.Show("请先选择要导出的节点。", "Nexora", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        OpenExportNodeDialog(profile);
     }
 
     private void RemoveUnavailableButton_Click(object sender, RoutedEventArgs e)
@@ -8395,6 +8893,11 @@ public partial class MainWindow : Window
         target.Host = source.Host;
         target.Path = source.Path;
         target.Tls = source.Tls;
+        target.Flow = source.Flow;
+        target.RealityPublicKey = source.RealityPublicKey;
+        target.RealityShortId = source.RealityShortId;
+        target.Fingerprint = source.Fingerprint;
+        target.RealitySpiderX = source.RealitySpiderX;
         target.Sni = source.Sni;
         target.Remark = source.Remark;
         if (!string.IsNullOrWhiteSpace(source.Region) && source.Region != "-")
@@ -8420,22 +8923,6 @@ public partial class MainWindow : Window
     private static string BuildProfileKey(VmessProfile profile)
     {
         return string.Join("|", profile.Protocol, profile.Address, profile.Port, profile.UserId, profile.Password, profile.Security);
-    }
-
-    private static BitmapImage GenerateQrImage(string value)
-    {
-        using var generator = new QRCodeGenerator();
-        using var data = generator.CreateQrCode(value, QRCodeGenerator.ECCLevel.Q);
-        var qr = new PngByteQRCode(data);
-        var bytes = qr.GetGraphic(8);
-        using var stream = new MemoryStream(bytes);
-        var bitmap = new BitmapImage();
-        bitmap.BeginInit();
-        bitmap.CacheOption = BitmapCacheOption.OnLoad;
-        bitmap.StreamSource = stream;
-        bitmap.EndInit();
-        bitmap.Freeze();
-        return bitmap;
     }
 
     private static string SanitizeFileName(string value)

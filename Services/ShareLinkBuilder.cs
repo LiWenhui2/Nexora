@@ -45,7 +45,12 @@ public static class ShareLinkBuilder
         var query = BuildQuery([
             ("encryption", string.IsNullOrWhiteSpace(profile.Security) ? "none" : profile.Security),
             ("type", profile.Network),
-            ("security", string.IsNullOrWhiteSpace(profile.Tls) ? "" : "tls"),
+            ("security", profile.Tls),
+            ("flow", profile.Flow),
+            ("pbk", profile.RealityPublicKey),
+            ("sid", profile.RealityShortId),
+            ("fp", profile.Fingerprint),
+            ("spx", profile.RealitySpiderX),
             ("sni", profile.Sni),
             ("host", profile.Host),
             ("path", profile.Path)

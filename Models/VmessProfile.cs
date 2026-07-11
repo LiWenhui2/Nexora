@@ -26,6 +26,11 @@ public sealed class VmessProfile : INotifyPropertyChanged
     public string Host { get; set; } = "";
     public string Path { get; set; } = "";
     public string Tls { get; set; } = "";
+    public string Flow { get; set; } = "";
+    public string RealityPublicKey { get; set; } = "";
+    public string RealityShortId { get; set; } = "";
+    public string Fingerprint { get; set; } = "";
+    public string RealitySpiderX { get; set; } = "";
     public string Sni { get; set; } = "";
     public string Remark { get; set; } = "";
     public string Region { get; set; } = "";
@@ -235,7 +240,12 @@ public sealed class VmessProfile : INotifyPropertyChanged
     {
         get
         {
-            var tls = string.IsNullOrWhiteSpace(Tls) ? "" : " · TLS";
+            var tls = Tls.ToLowerInvariant() switch
+            {
+                "tls" => " · TLS",
+                "reality" => " · Reality",
+                _ => ""
+            };
             return $"{DisplayName} · {ProtocolDisplay}{tls}";
         }
     }

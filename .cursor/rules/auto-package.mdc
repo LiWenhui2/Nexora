@@ -1,20 +1,39 @@
 ---
-description: After code changes, build and package the Windows installer automatically
+description: After code changes, automatically build a preview exe (not installer unless asked)
 alwaysApply: true
 ---
 
-# Auto Package After Code Changes
+# Auto Preview Build After Code Changes
 
-When modifying application source code in this repository (C#, XAML, assets used by the app, installer script, etc.):
+When modifying application source code in this repository (C#, XAML, assets used by the app, etc.):
 
-1. After changes compile successfully, **always** build the installable exe without asking the user.
-2. Run publish + Inno Setup in sequence:
+1. After changes compile successfully, **always** run a preview build without asking the user.
+2. Default command:
+
+```powershell
+dotnet build "NaiwaProxy.csproj" -c Release
+```
+
+3. Tell the user the preview path: `bin\Release\net10.0-windows\Nexora.exe`.
+
+4. If build fails because `Nexora.exe` is locked, stop the running process once and retry:
+
+```powershell
+Stop-Process -Name Nexora -Force -ErrorAction SilentlyContinue
+dotnet build "NaiwaProxy.csproj" -c Release
+```
+
+## Full Installer (only when explicitly requested)
+
+Run publish + Inno Setup **only** when the user explicitly asks for an installable package / installer / setup exe:
 
 ```powershell
 dotnet publish "NaiwaProxy.csproj" -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o "publish\win-x64"
 & "C:\Program Files\InnoSetup6\ISCC.exe" "installer\NaiwaProxy.iss"
 ```
 
-3. Tell the user the output path: `dist/Nexora-Setup-{version}.exe` (read version from `NaiwaProxy.csproj` or `installer/NaiwaProxy.iss`).
+Output: `dist/Nexora-Setup-{version}.exe` (read version from `NaiwaProxy.csproj` or `installer/NaiwaProxy.iss`).
 
-Skip packaging only when the user explicitly says not to, or when changes are docs-only / non-buildable and cannot affect the exe.
+## Skip
+
+Skip building only when the user explicitly says not to, or when changes are docs-only / non-buildable and cannot affect the exe.

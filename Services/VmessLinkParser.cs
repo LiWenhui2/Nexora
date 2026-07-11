@@ -98,9 +98,15 @@ public static class VmessLinkParser
         profile.Security = query.GetValueOrDefault("encryption", "none");
         profile.Network = query.GetValueOrDefault("type", "tcp");
         profile.Tls = NormalizeTls(query.GetValueOrDefault("security", ""));
+        profile.Flow = query.GetValueOrDefault("flow", "");
+        profile.RealityPublicKey = query.GetValueOrDefault("pbk", "");
+        profile.RealityShortId = query.GetValueOrDefault("sid", "");
+        profile.Fingerprint = query.GetValueOrDefault("fp", "");
+        profile.RealitySpiderX = query.GetValueOrDefault("spx", "");
         profile.Host = query.GetValueOrDefault("host", "");
         profile.Path = query.GetValueOrDefault("path", "");
-        profile.Sni = query.GetValueOrDefault("sni", query.GetValueOrDefault("peer", ""));
+        profile.Sni = query.GetValueOrDefault("sni",
+            query.GetValueOrDefault("peer", query.GetValueOrDefault("servername", "")));
         profile.Type = query.GetValueOrDefault("headerType", "none");
         if (string.IsNullOrWhiteSpace(profile.UserId))
         {
@@ -299,9 +305,16 @@ public static class VmessLinkParser
 
     private static string NormalizeTls(string security)
     {
-        return string.Equals(security, "tls", StringComparison.OrdinalIgnoreCase) ||
-               string.Equals(security, "reality", StringComparison.OrdinalIgnoreCase)
-            ? "tls"
-            : "";
+        if (string.Equals(security, "tls", StringComparison.OrdinalIgnoreCase))
+        {
+            return "tls";
+        }
+
+        if (string.Equals(security, "reality", StringComparison.OrdinalIgnoreCase))
+        {
+            return "reality";
+        }
+
+        return "";
     }
 }

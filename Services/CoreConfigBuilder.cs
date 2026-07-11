@@ -105,11 +105,7 @@ public static class CoreConfigBuilder
                             port = profile.Port,
                             users = new object[]
                             {
-                                new
-                                {
-                                    id = profile.UserId,
-                                    encryption = string.IsNullOrWhiteSpace(profile.Security) ? "none" : profile.Security
-                                }
+                                BuildVlessUser(profile)
                             }
                         }
                     }
@@ -199,6 +195,25 @@ public static class CoreConfigBuilder
         };
     }
 
+    private static object BuildVlessUser(VmessProfile profile)
+    {
+        if (string.IsNullOrWhiteSpace(profile.Flow))
+        {
+            return new
+            {
+                id = profile.UserId,
+                encryption = string.IsNullOrWhiteSpace(profile.Security) ? "none" : profile.Security
+            };
+        }
+
+        return new
+        {
+            id = profile.UserId,
+            encryption = string.IsNullOrWhiteSpace(profile.Security) ? "none" : profile.Security,
+            flow = profile.Flow
+        };
+    }
+
     private static object[] BuildUserPassServers(VmessProfile profile)
     {
         var server = new Dictionary<string, object>
@@ -253,19 +268,36 @@ public static class CoreConfigBuilder
         };
 
         var network = string.IsNullOrWhiteSpace(profile.Network) ? "tcp" : profile.Network.ToLowerInvariant();
-        var tls = profile.Tls.Equals("tls", StringComparison.OrdinalIgnoreCase) ? "tls" : "none";
+        var security = profile.Tls.ToLowerInvariant() switch
+        {
+            "tls" => "tls",
+            "reality" => "reality",
+            _ => "none"
+        };
         var result = new Dictionary<string, object?>
         {
             ["network"] = network,
-            ["security"] = tls
+            ["security"] = security
         };
 
-        if (tls == "tls")
+        if (security == "tls")
         {
             result["tlsSettings"] = new
             {
                 serverName = string.IsNullOrWhiteSpace(profile.Sni) ? profile.Host : profile.Sni,
                 allowInsecure = false
+            };
+        }
+        else if (security == "reality")
+        {
+            result["realitySettings"] = new
+            {
+                show = false,
+                fingerprint = profile.Fingerprint,
+                serverName = string.IsNullOrWhiteSpace(profile.Sni) ? profile.Host : profile.Sni,
+                publicKey = profile.RealityPublicKey,
+                shortId = profile.RealityShortId,
+                spiderX = string.IsNullOrWhiteSpace(profile.RealitySpiderX) ? "/" : profile.RealitySpiderX
             };
         }
 

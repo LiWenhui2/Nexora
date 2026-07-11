@@ -87,7 +87,17 @@ public partial class NodeEditDialog : Window
             AlterId = alterId,
             Security = SelectedComboValue(SecurityBox, "auto"),
             Network = SelectedComboValue(NetworkBox, "tcp"),
-            Tls = SelectedComboValue(TlsBox, "none") == "tls" ? "tls" : "",
+            Tls = SelectedComboValue(TlsBox, "none") switch
+            {
+                "tls" => "tls",
+                "reality" => "reality",
+                _ => ""
+            },
+            Flow = Profile.Flow,
+            RealityPublicKey = Profile.RealityPublicKey,
+            RealityShortId = Profile.RealityShortId,
+            Fingerprint = Profile.Fingerprint,
+            RealitySpiderX = Profile.RealitySpiderX,
             Host = HostBox.Text.Trim(),
             Sni = SniBox.Text.Trim(),
             Path = PathBox.Text.Trim()
@@ -112,6 +122,11 @@ public partial class NodeEditDialog : Window
             Host = source.Host,
             Path = source.Path,
             Tls = source.Tls,
+            Flow = source.Flow,
+            RealityPublicKey = source.RealityPublicKey,
+            RealityShortId = source.RealityShortId,
+            Fingerprint = source.Fingerprint,
+            RealitySpiderX = source.RealitySpiderX,
             Sni = source.Sni,
             Remark = source.Remark
         };
