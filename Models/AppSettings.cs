@@ -24,7 +24,7 @@ public sealed class AppSettings
     public bool RunAtStartup { get; set; }
     public bool RunAtStartupSilent { get; set; }
     public bool AllowLanAccess { get; set; }
-    public bool OpenAiCodexOptimizationEnabled { get; set; }
+    public bool OpenAiCodexOptimizationEnabled { get; set; } = true;
     public OpenAiCodexOptimizationSnapshot? OpenAiCodexOptimizationSnapshot { get; set; }
     public string ThemeAccentColor { get; set; } = "#2563EB";
     public string? ThemeBackgroundImagePath { get; set; }

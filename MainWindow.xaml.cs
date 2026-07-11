@@ -89,7 +89,6 @@ public partial class MainWindow : Window
     private bool _suppressAutoDownloadNewVersionToggleEvent;
     private bool _suppressRunAtStartupSilentToggleEvent;
     private bool _suppressAllowLanAccessToggleEvent;
-    private bool _suppressOpenAiCodexOptimizationToggleEvent;
     private bool _startSilent;
     private bool _isUiReady;
     private bool _isExiting;
@@ -786,13 +785,7 @@ public partial class MainWindow : Window
         SyncRunAtStartupFromSettings();
         SyncAllowLanAccessFromSettings();
         SyncAutoDownloadUpdateFromSettings();
-        if (_settings.OpenAiCodexOptimizationEnabled &&
-            OpenAiCodexOptimizationService.EnsureRulesMerged(_settings))
-        {
-            _settingsStore.Save(_settings);
-        }
-
-        SyncOpenAiCodexOptimizationFromSettings();
+        EnsureOpenAiCodexOptimizationApplied();
         ApplyStartupSettings(save: false);
         RestoreSubscriptionAutoRefreshTimers();
         ReconcileSubscriptionTrafficExhaustedState();
@@ -1109,63 +1102,25 @@ public partial class MainWindow : Window
         _suppressAllowLanAccessToggleEvent = false;
     }
 
-    private void SyncOpenAiCodexOptimizationFromSettings()
+    private void EnsureOpenAiCodexOptimizationApplied()
     {
-        if (!_isUiReady || OpenAiCodexOptimizationToggle is null)
+        var changed = false;
+        if (!_settings.OpenAiCodexOptimizationEnabled)
         {
-            return;
+            OpenAiCodexOptimizationService.Apply(_settings);
+            changed = true;
+        }
+        else if (OpenAiCodexOptimizationService.EnsureRulesMerged(_settings))
+        {
+            changed = true;
         }
 
-        _suppressOpenAiCodexOptimizationToggleEvent = true;
-        OpenAiCodexOptimizationToggle.IsChecked = _settings.OpenAiCodexOptimizationEnabled;
-        _suppressOpenAiCodexOptimizationToggleEvent = false;
-    }
-
-    private async void OpenAiCodexOptimizationToggle_Changed(object sender, RoutedEventArgs e)
-    {
-        if (!_isUiReady || _suppressOpenAiCodexOptimizationToggleEvent)
+        if (changed)
         {
-            return;
+            _settingsStore.Save(_settings);
         }
 
-        var enabling = OpenAiCodexOptimizationToggle.IsChecked == true;
-        try
-        {
-            if (enabling)
-            {
-                OpenAiCodexOptimizationService.Apply(_settings);
-                _settingsStore.Save(_settings);
-                ApplyOpenAiCodexOptimizationUi();
-
-                if (_coreService.IsRunning)
-                {
-                    await RestartCoreAsync();
-                }
-
-                ThemedMessageDialog.Show(
-                    this,
-                    "已启用 OpenAI/Codex 优化。请先开启代理，等待数秒后再打开 Codex，可减少首次重连。");
-
-                ScheduleOpenAiCodexPreWarmIfEnabled();
-            }
-            else
-            {
-                OpenAiCodexOptimizationService.Restore(_settings);
-                _settingsStore.Save(_settings);
-                SelectRoutingCombo(_settings.RoutingMode);
-                SelectSystemProxyCombo(_settings.SystemProxyMode);
-                UpdateRoutingEditorVisibility();
-
-                if (_coreService.IsRunning)
-                {
-                    await RestartCoreAsync();
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            ShowError(ex);
-        }
+        ApplyOpenAiCodexOptimizationUi();
     }
 
     private void ApplyOpenAiCodexOptimizationUi()
@@ -7139,7 +7094,6 @@ public partial class MainWindow : Window
         SyncRunAtStartupFromSettings();
         SyncAllowLanAccessFromSettings();
         SyncAutoDownloadUpdateFromSettings();
-        SyncOpenAiCodexOptimizationFromSettings();
         SyncThemeSettingsUi(ThemeService.ParseAccentColor(_settings.ThemeAccentColor));
         ShowPage(SettingsPageScroll, SettingsNavButton);
     }
