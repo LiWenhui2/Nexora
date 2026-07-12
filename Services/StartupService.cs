@@ -8,6 +8,23 @@ public static class StartupService
     private const string RegistryPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
     private const string ValueName = "Nexora";
     public const string SilentArgument = "--silent";
+    public const string ElevatedRelaunchArgument = "--elevated-relaunch";
+
+    public static string BuildLaunchArguments(bool silent, bool elevatedRelaunch)
+    {
+        var args = new List<string>();
+        if (silent)
+        {
+            args.Add(SilentArgument);
+        }
+
+        if (elevatedRelaunch)
+        {
+            args.Add(ElevatedRelaunchArgument);
+        }
+
+        return string.Join(' ', args);
+    }
 
     public static bool IsEnabled()
     {

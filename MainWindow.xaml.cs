@@ -3608,7 +3608,7 @@ public partial class MainWindow : Window
 
         try
         {
-            TunService.Start(_settings);
+            TunService.Start(_settings, GetActiveProfile());
         }
         catch (Exception ex)
         {
@@ -3875,7 +3875,7 @@ public partial class MainWindow : Window
                     throw new InvalidOperationException("请先启用代理，TUN 会转发到本地 SOCKS 端口。");
                 }
 
-                TunService.Start(_settings);
+                TunService.Start(_settings, GetActiveProfile());
                 _settings.IsTunEnabled = true;
                 _settingsStore.Save(_settings);
             }
@@ -3911,6 +3911,7 @@ public partial class MainWindow : Window
             Process.Start(new ProcessStartInfo
             {
                 FileName = exePath,
+                Arguments = StartupService.ElevatedRelaunchArgument,
                 UseShellExecute = true,
                 Verb = "runas"
             });

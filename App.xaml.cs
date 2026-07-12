@@ -11,6 +11,7 @@ public partial class App : System.Windows.Application
 {
     private const string SingleInstanceMutexName = @"Local\Nexora.Desktop.SingleInstance";
     private Mutex? _singleInstanceMutex;
+    private bool _ownsSingleInstanceMutex;
 
     public App()
     {
@@ -21,7 +22,28 @@ public partial class App : System.Windows.Application
     protected override void OnStartup(StartupEventArgs e)
     {
         DiagnosticLogService.Startup("OnStartup begin");
+        var isElevatedRelaunch = e.Args.Any(arg => string.Equals(
+            arg,
+            StartupService.ElevatedRelaunchArgument,
+            StringComparison.OrdinalIgnoreCase));
         _singleInstanceMutex = new Mutex(initiallyOwned: true, SingleInstanceMutexName, out var isFirstInstance);
+        _ownsSingleInstanceMutex = isFirstInstance;
+        if (!isFirstInstance && isElevatedRelaunch)
+        {
+            try
+            {
+                // The non-elevated instance starts us before it can finish shutting down.
+                // Wait for that instance to release the single-instance mutex.
+                _ownsSingleInstanceMutex = _singleInstanceMutex.WaitOne(TimeSpan.FromSeconds(10));
+                isFirstInstance = _ownsSingleInstanceMutex;
+            }
+            catch (AbandonedMutexException)
+            {
+                _ownsSingleInstanceMutex = true;
+                isFirstInstance = true;
+            }
+        }
+
         if (!isFirstInstance)
         {
             DiagnosticLogService.Warning("Another Nexora instance is already running. Current process will exit.");
@@ -60,7 +82,10 @@ public partial class App : System.Windows.Application
     {
         try
         {
-            _singleInstanceMutex?.ReleaseMutex();
+            if (_ownsSingleInstanceMutex)
+            {
+                _singleInstanceMutex?.ReleaseMutex();
+            }
         }
         catch
         {
@@ -69,6 +94,7 @@ public partial class App : System.Windows.Application
         {
             _singleInstanceMutex?.Dispose();
             _singleInstanceMutex = null;
+            _ownsSingleInstanceMutex = false;
         }
 
         base.OnExit(e);
