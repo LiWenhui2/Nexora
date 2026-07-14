@@ -47,6 +47,12 @@ public sealed class VmessProfile : INotifyPropertyChanged
     public long? XpanelUsedBytes { get; set; }
     public long? XpanelRemainingBytes { get; set; }
     public DateTime? UpdatedAt { get; set; }
+    public bool? LastTcpConnectSuccess { get; set; }
+    public bool? LastProxyHandshakeSuccess { get; set; }
+    public bool? LastWebsiteAccessSuccess { get; set; }
+    public double? LastDownloadSpeedMbps { get; set; }
+    public int? LastStabilityPercent { get; set; }
+    public DateTime? LastHealthSuccessAt { get; set; }
 
     [JsonIgnore]
     public bool IsTcpLatencyTesting
@@ -236,6 +242,20 @@ public sealed class VmessProfile : INotifyPropertyChanged
     }
 
     [JsonIgnore]
+    public string HealthSummaryDisplay
+    {
+        get
+        {
+            if (LastTcpConnectSuccess is null) return "未检测";
+            var speed = LastDownloadSpeedMbps is double mbps ? $" · {mbps:0.0} Mbps" : "";
+            return $"TCP{Mark(LastTcpConnectSuccess)} 握手{Mark(LastProxyHandshakeSuccess)} 网站{Mark(LastWebsiteAccessSuccess)} · 稳定 {LastStabilityPercent ?? 0}%{speed}";
+        }
+    }
+
+    [JsonIgnore]
+    public string LastHealthSuccessDisplay => LastHealthSuccessAt?.ToLocalTime().ToString("yyyy-MM-dd HH:mm") ?? "-";
+
+    [JsonIgnore]
     public string PickerDisplay
     {
         get
@@ -391,7 +411,23 @@ public sealed class VmessProfile : INotifyPropertyChanged
         OnPropertyChanged(nameof(RemainingTrafficDisplay));
         OnPropertyChanged(nameof(UpdatedDisplay));
         OnPropertyChanged(nameof(StatusDisplay));
+        OnPropertyChanged(nameof(HealthSummaryDisplay));
+        OnPropertyChanged(nameof(LastHealthSuccessDisplay));
     }
+
+    public void ApplyHealthResult(NodeHealthResult result)
+    {
+        LastTcpConnectSuccess = result.TcpConnectSuccess;
+        LastProxyHandshakeSuccess = result.ProxyHandshakeSuccess;
+        LastWebsiteAccessSuccess = result.WebsiteAccessSuccess;
+        LastDownloadSpeedMbps = result.DownloadSpeedMbps;
+        LastStabilityPercent = result.StabilityPercent;
+        if (result.Success) LastHealthSuccessAt = DateTime.Now;
+        OnPropertyChanged(nameof(HealthSummaryDisplay));
+        OnPropertyChanged(nameof(LastHealthSuccessDisplay));
+    }
+
+    private static string Mark(bool? value) => value == true ? "✓" : "✕";
 
     private void SetLatencyTestingField(ref bool field, bool value)
     {

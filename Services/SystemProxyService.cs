@@ -11,29 +11,27 @@ public static class SystemProxyService
     private const int InternetOptionSettingsChanged = 39;
     private const int InternetOptionRefresh = 37;
 
-    public static void EnableHttpProxy(int httpPort)
+    public static void EnableHttpProxy(int httpPort, bool enableUwpOptimization)
     {
         using var key = Registry.CurrentUser.OpenSubKey(RegistryPath, writable: true)
             ?? throw new InvalidOperationException("Cannot open Windows Internet Settings registry key.");
 
         key.SetValue("ProxyEnable", 1, RegistryValueKind.DWord);
         key.SetValue("ProxyServer", $"127.0.0.1:{httpPort}", RegistryValueKind.String);
-        key.SetValue("ProxyOverride", string.Join(';', MicrosoftStoreProxyOverrideRules.Append("<local>")), RegistryValueKind.String);
+        key.SetValue("ProxyOverride", BuildProxyOverride(enableUwpOptimization), RegistryValueKind.String);
         TryDeleteValue(key, "AutoConfigURL");
-        EnsureMicrosoftStoreLoopbackExemptions();
         NotifyProxySettingsChanged();
     }
 
-    public static void EnablePacProxy(int httpPort)
+    public static void EnablePacProxy(int httpPort, bool enableUwpOptimization)
     {
-        var pacPath = WritePacFile(httpPort);
+        var pacPath = WritePacFile(httpPort, enableUwpOptimization);
         using var key = Registry.CurrentUser.OpenSubKey(RegistryPath, writable: true)
             ?? throw new InvalidOperationException("Cannot open Windows Internet Settings registry key.");
 
         key.SetValue("ProxyEnable", 0, RegistryValueKind.DWord);
         TryDeleteValue(key, "ProxyServer");
         key.SetValue("AutoConfigURL", new Uri(pacPath).AbsoluteUri, RegistryValueKind.String);
-        EnsureMicrosoftStoreLoopbackExemptions();
         NotifyProxySettingsChanged();
     }
 
@@ -84,7 +82,55 @@ public static class SystemProxyService
         };
     }
 
-    private static string WritePacFile(int httpPort)
+    public static async Task PrepareOpenAiDesktopProxyAsync(
+        int httpPort,
+        bool enableUwpOptimization,
+        CancellationToken cancellationToken = default)
+    {
+        await EnsureOpenAiLoopbackExemptionsAsync(cancellationToken);
+        RefreshHttpProxy(httpPort, enableUwpOptimization);
+        await Task.Delay(250, cancellationToken);
+        NotifyProxySettingsChanged();
+    }
+
+    public static async Task ConfigureUwpLoopbackExemptionsAsync(
+        bool enabled,
+        CancellationToken cancellationToken = default)
+    {
+        var packageFamilies = DiscoverUwpOptimizationPackageFamilyNames();
+        var failedPackages = new List<string>();
+        foreach (var packageFamilyName in packageFamilies)
+        {
+            if (!await ConfigureLoopbackExemptionAsync(packageFamilyName, enabled, cancellationToken) && enabled)
+            {
+                failedPackages.Add(packageFamilyName);
+            }
+        }
+
+        if (failedPackages.Count > 0)
+        {
+            throw new InvalidOperationException(
+                $"无法为 {failedPackages.Count} 个 UWP 应用写入本地回环权限，请确认 Nexora 已使用管理员权限运行。");
+        }
+
+        DiagnosticLogService.Info(
+            $"UWP loopback optimization {(enabled ? "enabled" : "disabled")} for {packageFamilies.Count} package families.");
+        NotifyProxySettingsChanged();
+    }
+
+    public static void RefreshHttpProxy(int httpPort, bool enableUwpOptimization)
+    {
+        using var key = Registry.CurrentUser.OpenSubKey(RegistryPath, writable: true)
+            ?? throw new InvalidOperationException("Cannot open Windows Internet Settings registry key.");
+
+        key.SetValue("ProxyEnable", 1, RegistryValueKind.DWord);
+        key.SetValue("ProxyServer", $"127.0.0.1:{httpPort}", RegistryValueKind.String);
+        key.SetValue("ProxyOverride", BuildProxyOverride(enableUwpOptimization), RegistryValueKind.String);
+        TryDeleteValue(key, "AutoConfigURL");
+        NotifyProxySettingsChanged();
+    }
+
+    private static string WritePacFile(int httpPort, bool enableUwpOptimization)
     {
         var directory = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
@@ -92,10 +138,8 @@ public static class SystemProxyService
         Directory.CreateDirectory(directory);
 
         var pacPath = Path.Combine(directory, "proxy.pac");
-        var pac = $$"""
-function FindProxyForURL(url, host) {
-  if (isPlainHostName(host) ||
-      shExpMatch(host, "*.local") ||
+        var microsoftDirectRules = enableUwpOptimization
+            ? """
       shExpMatch(host, "*.microsoft.com") ||
       shExpMatch(host, "*.windows.com") ||
       shExpMatch(host, "*.live.com") ||
@@ -104,6 +148,13 @@ function FindProxyForURL(url, host) {
       shExpMatch(host, "*.mp.microsoft.com") ||
       shExpMatch(host, "msftconnecttest.com") ||
       shExpMatch(host, "msftncsi.com") ||
+"""
+            : "";
+        var pac = $$"""
+function FindProxyForURL(url, host) {
+  if (isPlainHostName(host) ||
+      shExpMatch(host, "*.local") ||
+{{microsoftDirectRules}}
       isInNet(dnsResolve(host), "10.0.0.0", "255.0.0.0") ||
       isInNet(dnsResolve(host), "172.16.0.0", "255.240.0.0") ||
       isInNet(dnsResolve(host), "192.168.0.0", "255.255.0.0") ||
@@ -117,42 +168,143 @@ function FindProxyForURL(url, host) {
         return pacPath;
     }
 
-    private static void EnsureMicrosoftStoreLoopbackExemptions()
+    private static async Task EnsureOpenAiLoopbackExemptionsAsync(CancellationToken cancellationToken)
     {
-        foreach (var packageFamilyName in MicrosoftStorePackageFamilyNames)
+        foreach (var packageFamilyName in DiscoverOpenAiPackageFamilyNames())
         {
-            TryAddLoopbackExemption(packageFamilyName);
+            await ConfigureLoopbackExemptionAsync(packageFamilyName, true, cancellationToken);
         }
     }
 
-    private static void TryAddLoopbackExemption(string packageFamilyName)
+    private static async Task<bool> ConfigureLoopbackExemptionAsync(
+        string packageFamilyName,
+        bool enabled,
+        CancellationToken cancellationToken)
     {
         try
         {
             using var process = Process.Start(new ProcessStartInfo
             {
                 FileName = "CheckNetIsolation.exe",
-                Arguments = $"LoopbackExempt -a -n={packageFamilyName}",
+                Arguments = $"LoopbackExempt -{(enabled ? "a" : "d")} -n={packageFamilyName}",
                 CreateNoWindow = true,
                 UseShellExecute = false,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true
             });
 
-            process?.WaitForExit(3000);
+            if (process is null)
+            {
+                return false;
+            }
+
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(TimeSpan.FromSeconds(3));
+            await process.WaitForExitAsync(timeout.Token);
+            if (process.ExitCode != 0)
+            {
+                var error = await process.StandardError.ReadToEndAsync(cancellationToken);
+                var output = await process.StandardOutput.ReadToEndAsync(cancellationToken);
+                DiagnosticLogService.Warning(
+                    $"CheckNetIsolation failed for {packageFamilyName} ({process.ExitCode}): {error} {output}".Trim());
+                return false;
+            }
+
+            return true;
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            DiagnosticLogService.Warning($"Timed out updating loopback exemption for {packageFamilyName}.");
+            return false;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
         }
         catch (Exception ex)
         {
             DiagnosticLogService.Warning(
-                $"Failed to add UWP loopback exemption for {packageFamilyName}: {ex.Message}");
+                $"Failed to update UWP loopback exemption for {packageFamilyName}: {ex.Message}");
+            return false;
         }
     }
 
-    private static readonly string[] MicrosoftStorePackageFamilyNames =
+    private static IReadOnlyCollection<string> DiscoverUwpOptimizationPackageFamilyNames()
+    {
+        var packageFamilies = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        try
+        {
+            var packagesDirectory = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "Packages");
+            if (!Directory.Exists(packagesDirectory))
+            {
+                return packageFamilies;
+            }
+
+            foreach (var directory in Directory.EnumerateDirectories(packagesDirectory))
+            {
+                var familyName = Path.GetFileName(directory);
+                if (UwpOptimizationPackagePrefixes.Any(prefix =>
+                        familyName.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)))
+                {
+                    packageFamilies.Add(familyName);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            DiagnosticLogService.Warning($"Failed to discover UWP package identities: {ex.Message}");
+        }
+
+        return packageFamilies;
+    }
+
+    private static IReadOnlyCollection<string> DiscoverOpenAiPackageFamilyNames()
+    {
+        var packageFamilies = new HashSet<string>(OpenAiPackageFamilyNames, StringComparer.OrdinalIgnoreCase);
+        try
+        {
+            var packagesDirectory = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "Packages");
+            if (!Directory.Exists(packagesDirectory))
+            {
+                return packageFamilies;
+            }
+
+            foreach (var directory in Directory.EnumerateDirectories(packagesDirectory))
+            {
+                var familyName = Path.GetFileName(directory);
+                if (familyName.Contains("OpenAI", StringComparison.OrdinalIgnoreCase) ||
+                    familyName.Contains("ChatGPT", StringComparison.OrdinalIgnoreCase) ||
+                    familyName.Contains("Codex", StringComparison.OrdinalIgnoreCase))
+                {
+                    packageFamilies.Add(familyName);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            DiagnosticLogService.Warning($"Failed to discover OpenAI package identities: {ex.Message}");
+        }
+
+        return packageFamilies;
+    }
+
+    private static readonly string[] OpenAiPackageFamilyNames =
     [
-        "Microsoft.WindowsStore_8wekyb3d8bbwe",
-        "Microsoft.StorePurchaseApp_8wekyb3d8bbwe",
-        "Microsoft.DesktopAppInstaller_8wekyb3d8bbwe"
+        "OpenAI.Codex_2p2nqsd0c76g0"
+    ];
+
+    private static readonly string[] UwpOptimizationPackagePrefixes =
+    [
+        "Microsoft.WindowsStore_",
+        "Microsoft.StorePurchaseApp_",
+        "Microsoft.DesktopAppInstaller_",
+        "Microsoft.GamingApp_",
+        "Microsoft.XboxIdentityProvider_",
+        "Microsoft.XboxApp_"
     ];
 
     private static readonly string[] MicrosoftStoreProxyOverrideRules =
@@ -166,6 +318,11 @@ function FindProxyForURL(url, host) {
         "msftconnecttest.com",
         "msftncsi.com"
     ];
+
+    private static string BuildProxyOverride(bool enableUwpOptimization) =>
+        enableUwpOptimization
+            ? string.Join(';', MicrosoftStoreProxyOverrideRules.Append("<local>"))
+            : "<local>";
 
     private static void TryDeleteValue(RegistryKey key, string name)
     {

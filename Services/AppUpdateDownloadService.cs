@@ -49,7 +49,12 @@ public sealed class AppUpdateDownloadService
             await target.FlushAsync(cancellationToken);
         }
 
-        if (!string.IsNullOrWhiteSpace(release.File.Sha256))
+        if (string.IsNullOrWhiteSpace(release.File.Sha256))
+        {
+            File.Delete(targetPath);
+            throw new InvalidOperationException("更新元数据缺少 SHA-256，已拒绝安装不受校验的文件。");
+        }
+        else
         {
             var actualHash = await ComputeSha256HexAsync(targetPath, cancellationToken);
             if (!actualHash.Equals(release.File.Sha256, StringComparison.OrdinalIgnoreCase))
@@ -58,6 +63,8 @@ public sealed class AppUpdateDownloadService
                 throw new InvalidOperationException("安装包 SHA-256 校验失败，文件可能已损坏，请重新下载。");
             }
         }
+
+        UpdateSecurityService.VerifyAuthenticode(targetPath, release.File.SignatureThumbprint);
 
         return targetPath;
     }

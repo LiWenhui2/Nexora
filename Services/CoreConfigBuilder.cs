@@ -18,6 +18,7 @@ public static class CoreConfigBuilder
                 error = errorLogPath,
                 loglevel = "warning"
             },
+            dns = BuildDns(settings),
             api = new
             {
                 tag = "api",
@@ -85,6 +86,37 @@ public static class CoreConfigBuilder
         };
 
         return JsonSerializer.Serialize(config, new JsonSerializerOptions { WriteIndented = true });
+    }
+
+    private static object BuildDns(AppSettings settings)
+    {
+        var proxyDns = settings.DnsOverHttpsEnabled
+            ? BuildDohUrl(settings.ProxyDnsServer)
+            : settings.ProxyDnsServer;
+        return new
+        {
+            queryStrategy = settings.IpPreferenceMode switch
+            {
+                "IPv4Only" => "UseIPv4",
+                "PreferIPv6" => settings.Ipv6AutoFallbackEnabled ? "UseIP" : "UseIPv6",
+                _ => "UseIP"
+            },
+            servers = new object[]
+            {
+                new { address = settings.DomesticDnsServer, domains = new[] { "geosite:cn" } },
+                proxyDns
+            }
+        };
+    }
+
+    private static string BuildDohUrl(string value)
+    {
+        if (Uri.TryCreate(value, UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttps)
+        {
+            return value;
+        }
+
+        return $"https://{value.Trim().TrimEnd('/')}/dns-query";
     }
 
     private static object BuildProxyOutbound(VmessProfile profile, object streamSettings)
@@ -277,7 +309,14 @@ public static class CoreConfigBuilder
         var result = new Dictionary<string, object?>
         {
             ["network"] = network,
-            ["security"] = security
+            ["security"] = security,
+            ["sockopt"] = new
+            {
+                // Keep long-lived ChatGPT/Codex streams alive across NATs that
+                // expire idle TCP sessions before Xray's 45-second default.
+                tcpKeepAliveIdle = 15,
+                tcpKeepAliveInterval = 15
+            }
         };
 
         if (security == "tls")
@@ -381,12 +420,6 @@ public static class CoreConfigBuilder
             BuiltInMicrosoftStoreDomainRules.ToList(),
             [],
             [],
-            "direct");
-        AddCustomRule(
-            rules,
-            [],
-            [],
-            BuiltInMicrosoftStoreProcessRules.ToList(),
             "direct");
     }
 
@@ -530,13 +563,6 @@ public static class CoreConfigBuilder
         "domain:displaycatalog.mp.microsoft.com",
         "domain:purchase.mp.microsoft.com",
         "domain:licensing.mp.microsoft.com"
-    ];
-
-    private static readonly string[] BuiltInMicrosoftStoreProcessRules =
-    [
-        "WinStore.App.exe",
-        "Microsoft.WindowsStore.exe",
-        "RuntimeBroker.exe"
     ];
 
     private static string NormalizeDomainRule(string value)

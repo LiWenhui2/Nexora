@@ -3,39 +3,63 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:po="http://schemas.microsoft.com/winfx/2006/xaml/presentation/options"
         mc:Ignorable="d"
         Title="Nexora" Height="720" Width="1280" MinHeight="540" MinWidth="960"
         Background="Transparent"
         FontFamily="Segoe UI, Microsoft YaHei UI"
-        FontSize="16">
+        FontSize="16" FocusVisualStyle="{x:Null}">
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVis"/>
-        <SolidColorBrush x:Key="PanelGlassBrush" Color="#E0FFFFFF"/>
-        <SolidColorBrush x:Key="Panel2GlassBrush" Color="#D2F8FAFC"/>
-        <SolidColorBrush x:Key="Panel3GlassBrush" Color="#E6FFFFFF"/>
-        <SolidColorBrush x:Key="RowAltGlassBrush" Color="#B3FFFFFF"/>
-        <SolidColorBrush x:Key="RowHoverGlassBrush" Color="#CCF8FAFC"/>
-        <SolidColorBrush x:Key="ChatPanelGlassBrush" Color="#73FFFFFF"/>
-        <SolidColorBrush x:Key="ChatBubbleAdminBrush" Color="#99EFF6FF"/>
-        <SolidColorBrush x:Key="ChatBubbleUserBrush" Color="#B360A5FA"/>
-        <SolidColorBrush x:Key="BgBrush" Color="#F4F6FA"/>
-        <SolidColorBrush x:Key="PanelBrush" Color="#FFFFFF"/>
-        <SolidColorBrush x:Key="Panel2Brush" Color="#F8FAFC"/>
-        <SolidColorBrush x:Key="Panel3Brush" Color="#FFFFFF"/>
-        <SolidColorBrush x:Key="LineBrush" Color="#E2E8F0"/>
-        <SolidColorBrush x:Key="TextBrush" Color="#0F172A"/>
-        <SolidColorBrush x:Key="MutedBrush" Color="#64748B"/>
-        <SolidColorBrush x:Key="AccentTextBrush" Color="#334155"/>
-        <SolidColorBrush x:Key="AccentLightBrush" Color="#F1F5F9"/>
-        <SolidColorBrush x:Key="AccentMediumBrush" Color="#E2E8F0"/>
-        <SolidColorBrush x:Key="AccentStrongBrush" Color="#CBD5E1"/>
-        <SolidColorBrush x:Key="AccentSoftBorderBrush" Color="#E2E8F0"/>
-        <SolidColorBrush x:Key="AccentNavBackgroundBrush" Color="#F1F5F9"/>
-        <SolidColorBrush x:Key="AccentPrimaryBorderBrush" Color="#CBD5E1"/>
-        <SolidColorBrush x:Key="AccentActiveNodeForegroundBrush" Color="#334155"/>
+        <SolidColorBrush x:Key="PanelGlassBrush" Color="#E0FFFFFF" po:Freeze="False"/>
+        <SolidColorBrush x:Key="Panel2GlassBrush" Color="#D2F8FAFC" po:Freeze="False"/>
+        <SolidColorBrush x:Key="Panel3GlassBrush" Color="#E6FFFFFF" po:Freeze="False"/>
+        <SolidColorBrush x:Key="RowAltGlassBrush" Color="#B3FFFFFF" po:Freeze="False"/>
+        <SolidColorBrush x:Key="RowHoverGlassBrush" Color="#CCF8FAFC" po:Freeze="False"/>
+        <SolidColorBrush x:Key="ChatPanelGlassBrush" Color="#73FFFFFF" po:Freeze="False"/>
+        <SolidColorBrush x:Key="ChatBubbleAdminBrush" Color="#99EFF6FF" po:Freeze="False"/>
+        <SolidColorBrush x:Key="ChatBubbleUserBrush" Color="#B360A5FA" po:Freeze="False"/>
+        <SolidColorBrush x:Key="BgBrush" Color="#F4F6FA" po:Freeze="False"/>
+        <SolidColorBrush x:Key="PanelBrush" Color="#FFFFFF" po:Freeze="False"/>
+        <SolidColorBrush x:Key="Panel2Brush" Color="#F8FAFC" po:Freeze="False"/>
+        <SolidColorBrush x:Key="Panel3Brush" Color="#FFFFFF" po:Freeze="False"/>
+        <SolidColorBrush x:Key="LineBrush" Color="#E2E8F0" po:Freeze="False"/>
+        <SolidColorBrush x:Key="TextBrush" Color="#0F172A" po:Freeze="False"/>
+        <SolidColorBrush x:Key="MutedBrush" Color="#64748B" po:Freeze="False"/>
+        <SolidColorBrush x:Key="AccentTextBrush" Color="#334155" po:Freeze="False"/>
+        <SolidColorBrush x:Key="AccentLightBrush" Color="#F1F5F9" po:Freeze="False"/>
+        <SolidColorBrush x:Key="AccentMediumBrush" Color="#E2E8F0" po:Freeze="False"/>
+        <SolidColorBrush x:Key="AccentStrongBrush" Color="#CBD5E1" po:Freeze="False"/>
+        <SolidColorBrush x:Key="AccentSoftBorderBrush" Color="#E2E8F0" po:Freeze="False"/>
+        <SolidColorBrush x:Key="AccentNavBackgroundBrush" Color="#F1F5F9" po:Freeze="False"/>
+        <SolidColorBrush x:Key="AccentPrimaryBorderBrush" Color="#CBD5E1" po:Freeze="False"/>
+        <SolidColorBrush x:Key="AccentActiveNodeForegroundBrush" Color="#334155" po:Freeze="False"/>
+        <SolidColorBrush x:Key="DarkButtonBackgroundBrush" Color="#E6FFFFFF" po:Freeze="False"/>
+        <SolidColorBrush x:Key="NavHoverBackgroundBrush" Color="#F1F5F9" po:Freeze="False"/>
+        <SolidColorBrush x:Key="NavActiveForegroundBrush" Color="#334155" po:Freeze="False"/>
+        <SolidColorBrush x:Key="SideEmailForegroundBrush" Color="#64748B" po:Freeze="False"/>
+        <SolidColorBrush x:Key="NodePagePanelBrush" Color="#FFFFFF" po:Freeze="False"/>
+        <SolidColorBrush x:Key="NodeTableBackgroundBrush" Color="#FFFFFF" po:Freeze="False"/>
+        <SolidColorBrush x:Key="NodeFilterBackgroundBrush" Color="#FFFFFF" po:Freeze="False"/>
+        <SolidColorBrush x:Key="NodeGroupHeaderBrush" Color="#F8FAFC" po:Freeze="False"/>
+        <SolidColorBrush x:Key="NodeSelectedRowBrush" Color="#EFF6FF" po:Freeze="False"/>
+        <SolidColorBrush x:Key="NodeActiveRowBrush" Color="#DBEAFE" po:Freeze="False"/>
+        <SolidColorBrush x:Key="NodeActiveSelectedRowBrush" Color="#BFDBFE" po:Freeze="False"/>
+        <SolidColorBrush x:Key="NodeGridLineBrush" Color="#E2E8F0" po:Freeze="False"/>
+        <SolidColorBrush x:Key="NodeTableTextBrush" Color="#0F172A" po:Freeze="False"/>
         <SolidColorBrush x:Key="GreenBrush" Color="#16A34A"/>
         <SolidColorBrush x:Key="RedBrush" Color="#DC2626"/>
         <SolidColorBrush x:Key="YellowBrush" Color="#60A5FA"/>
+
+        <Style x:Key="{x:Static SystemParameters.FocusVisualStyleKey}" TargetType="Control">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Control">
+                        <Grid/>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
 
         <LinearGradientBrush x:Key="AccentGradientBrush" StartPoint="0,0" EndPoint="1,1">
             <GradientStop Color="#BFDBFE" Offset="0"/>
@@ -43,12 +67,12 @@
         </LinearGradientBrush>
 
         <Style TargetType="TextBlock">
-            <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
         </Style>
 
         <Style x:Key="CardBorderStyle" TargetType="Border">
-            <Setter Property="Background" Value="{StaticResource PanelBrush}"/>
-            <Setter Property="BorderBrush" Value="{StaticResource LineBrush}"/>
+            <Setter Property="Background" Value="{DynamicResource PanelBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource LineBrush}"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="CornerRadius" Value="10"/>
             <Setter Property="Padding" Value="16"/>
@@ -56,7 +80,7 @@
 
         <Style x:Key="FlatPanelStyle" TargetType="Border">
             <Setter Property="Background" Value="{DynamicResource PanelGlassBrush}"/>
-            <Setter Property="BorderBrush" Value="{StaticResource LineBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource LineBrush}"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="CornerRadius" Value="12"/>
             <Setter Property="Padding" Value="16"/>
@@ -67,12 +91,13 @@
         </Style>
 
         <Style x:Key="NavButtonStyle" TargetType="Button">
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
             <Setter Property="Height" Value="46"/>
             <Setter Property="FontSize" Value="18"/>
             <Setter Property="HorizontalContentAlignment" Value="Left"/>
             <Setter Property="Padding" Value="14,0"/>
             <Setter Property="Margin" Value="0,3"/>
-            <Setter Property="Foreground" Value="#475569"/>
+            <Setter Property="Foreground" Value="{DynamicResource MutedBrush}"/>
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="BorderThickness" Value="0"/>
             <Setter Property="Cursor" Value="Hand"/>
@@ -84,7 +109,7 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Root" Property="Background" Value="#F1F5F9"/>
+                                <Setter TargetName="Root" Property="Background" Value="{DynamicResource NavHoverBackgroundBrush}"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -93,7 +118,10 @@
         </Style>
 
         <Style x:Key="ActiveNavButtonStyle" TargetType="Button" BasedOn="{StaticResource NavButtonStyle}">
-            <Setter Property="Foreground" Value="{DynamicResource AccentTextBrush}"/>
+            <Setter Property="Height" Value="42"/>
+            <Setter Property="FontSize" Value="17"/>
+            <Setter Property="Padding" Value="40,0,12,0"/>
+            <Setter Property="Foreground" Value="{DynamicResource NavActiveForegroundBrush}"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
             <Setter Property="Background" Value="{DynamicResource AccentNavBackgroundBrush}"/>
         </Style>
@@ -101,12 +129,12 @@
         <Style x:Key="NavChildButtonStyle" TargetType="Button" BasedOn="{StaticResource NavButtonStyle}">
             <Setter Property="Height" Value="42"/>
             <Setter Property="FontSize" Value="17"/>
-            <Setter Property="Padding" Value="24,0,12,0"/>
-            <Setter Property="Foreground" Value="#64748B"/>
+            <Setter Property="Padding" Value="40,0,12,0"/>
+            <Setter Property="Foreground" Value="{DynamicResource MutedBrush}"/>
         </Style>
 
         <Style x:Key="NavGroupHeaderStyle" TargetType="TextBlock">
-            <Setter Property="Foreground" Value="#334155"/>
+            <Setter Property="Foreground" Value="{DynamicResource MutedBrush}"/>
             <Setter Property="FontSize" Value="16"/>
             <Setter Property="FontWeight" Value="Bold"/>
             <Setter Property="Margin" Value="6,0,0,0"/>
@@ -114,6 +142,7 @@
         </Style>
 
         <Style x:Key="NavChevronToggleStyle" TargetType="ToggleButton">
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
             <Setter Property="Width" Value="24"/>
             <Setter Property="Height" Value="24"/>
             <Setter Property="Margin" Value="8,0,0,0"/>
@@ -128,7 +157,7 @@
                     <ControlTemplate TargetType="ToggleButton">
                         <Border Background="Transparent" HorizontalAlignment="Center" VerticalAlignment="Center">
                             <Path x:Name="Chevron" Data="M6,9 L12,15 L18,9" Stretch="Uniform" Width="12" Height="12"
-                                  Stroke="#334155" StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                                  Stroke="{DynamicResource MutedBrush}" StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
                                   RenderTransformOrigin="0.5,0.5">
                                 <Path.RenderTransform>
                                     <RotateTransform Angle="0"/>
@@ -150,6 +179,7 @@
         </Style>
 
         <Style x:Key="NavGroupHeaderToggleStyle" TargetType="ToggleButton">
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
             <Setter Property="HorizontalAlignment" Value="Stretch"/>
             <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
             <Setter Property="IsChecked" Value="True"/>
@@ -349,7 +379,7 @@
             <Setter Property="Padding" Value="0"/>
             <Setter Property="Foreground" Value="#64748B"/>
             <Setter Property="Background" Value="Transparent"/>
-            <Setter Property="BorderBrush" Value="{StaticResource LineBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource LineBrush}"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="Template">
@@ -383,11 +413,12 @@
         </Style>
 
         <Style x:Key="DarkButtonStyle" TargetType="Button">
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
             <Setter Property="Height" Value="40"/>
             <Setter Property="MinWidth" Value="78"/>
             <Setter Property="Padding" Value="14,0"/>
-            <Setter Property="Foreground" Value="#334155"/>
-            <Setter Property="Background" Value="{DynamicResource Panel3GlassBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
+            <Setter Property="Background" Value="{DynamicResource DarkButtonBackgroundBrush}"/>
             <Setter Property="BorderBrush" Value="{StaticResource LineBrush}"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="Cursor" Value="Hand"/>
@@ -419,9 +450,9 @@
 
         <Style x:Key="FieldTextBoxStyle" TargetType="TextBox">
             <Setter Property="Height" Value="38"/>
-            <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
             <Setter Property="Background" Value="{DynamicResource Panel3GlassBrush}"/>
-            <Setter Property="BorderBrush" Value="{StaticResource LineBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource LineBrush}"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="Padding" Value="10,6"/>
             <Setter Property="VerticalContentAlignment" Value="Center"/>
@@ -431,6 +462,7 @@
         <Style TargetType="TextBox" BasedOn="{StaticResource FieldTextBoxStyle}"/>
 
         <Style x:Key="ToggleSwitchStyle" TargetType="CheckBox">
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="Template">
                 <Setter.Value>
@@ -453,9 +485,9 @@
 
         <Style x:Key="FieldPasswordBoxStyle" TargetType="PasswordBox">
             <Setter Property="Height" Value="38"/>
-            <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
             <Setter Property="Background" Value="{DynamicResource Panel3GlassBrush}"/>
-            <Setter Property="BorderBrush" Value="{StaticResource LineBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource LineBrush}"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="Padding" Value="10,6"/>
             <Setter Property="VerticalContentAlignment" Value="Center"/>
@@ -534,27 +566,28 @@
 
         <Style TargetType="DataGrid">
             <Setter Property="Background" Value="Transparent"/>
-            <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource NodeTableTextBrush}"/>
             <Setter Property="BorderThickness" Value="0"/>
             <Setter Property="RowBackground" Value="Transparent"/>
             <Setter Property="AlternatingRowBackground" Value="{DynamicResource RowAltGlassBrush}"/>
-            <Setter Property="HorizontalGridLinesBrush" Value="#E2E8F0"/>
-            <Setter Property="VerticalGridLinesBrush" Value="Transparent"/>
+            <Setter Property="HorizontalGridLinesBrush" Value="{DynamicResource NodeGridLineBrush}"/>
+            <Setter Property="VerticalGridLinesBrush" Value="{DynamicResource NodeGridLineBrush}"/>
             <Setter Property="HeadersVisibility" Value="Column"/>
-            <Setter Property="GridLinesVisibility" Value="Horizontal"/>
+            <Setter Property="GridLinesVisibility" Value="All"/>
         </Style>
 
         <Style TargetType="DataGridColumnHeader">
             <Setter Property="Background" Value="{DynamicResource Panel3GlassBrush}"/>
-            <Setter Property="Foreground" Value="{StaticResource MutedBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource NodeTableTextBrush}"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
             <Setter Property="Padding" Value="10,8"/>
-            <Setter Property="BorderBrush" Value="#E2E8F0"/>
-            <Setter Property="BorderThickness" Value="0,0,0,1"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource NodeGridLineBrush}"/>
+            <Setter Property="BorderThickness" Value="0,0,1,1"/>
             <Setter Property="HorizontalContentAlignment" Value="Center"/>
         </Style>
 
         <Style x:Key="DataGridCellCenterTextStyle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource NodeTableTextBrush}"/>
             <Setter Property="HorizontalAlignment" Value="Center"/>
             <Setter Property="TextAlignment" Value="Center"/>
             <Setter Property="TextWrapping" Value="NoWrap"/>
@@ -582,10 +615,10 @@
 
         <Style x:Key="DataGridProtocolCellStyle" TargetType="TextBlock" BasedOn="{StaticResource DataGridCellCenterTextStyle}">
             <Setter Property="FontWeight" Value="Bold"/>
-            <Setter Property="Foreground" Value="#C2410C"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
             <Style.Triggers>
                 <DataTrigger Binding="{Binding ProtocolDisplay}" Value="VLESS">
-                    <Setter Property="Foreground" Value="#0F172A"/>
+                    <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
                 </DataTrigger>
             </Style.Triggers>
         </Style>
@@ -603,7 +636,7 @@
                     <Setter Property="FontWeight" Value="Normal"/>
                 </DataTrigger>
                 <DataTrigger Binding="{Binding StatusDisplay}" Value="当前">
-                    <Setter Property="Foreground" Value="#475569"/>
+                    <Setter Property="Foreground" Value="{DynamicResource MutedBrush}"/>
                     <Setter Property="FontWeight" Value="Normal"/>
                 </DataTrigger>
             </Style.Triggers>
@@ -614,11 +647,79 @@
             <Setter Property="MinWidth" Value="112"/>
             <Setter Property="Margin" Value="0,0,8,8"/>
             <Setter Property="Padding" Value="10,0"/>
-            <Setter Property="Background" Value="{DynamicResource Panel3GlassBrush}"/>
-            <Setter Property="BorderBrush" Value="#D8E4F5"/>
+            <Setter Property="Background" Value="{DynamicResource NodeFilterBackgroundBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource LineBrush}"/>
             <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="Foreground" Value="#334155"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
             <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="ItemContainerStyle">
+                <Setter.Value>
+                    <Style TargetType="ComboBoxItem">
+                        <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
+                        <Setter Property="Background" Value="Transparent"/>
+                        <Setter Property="Padding" Value="10,8"/>
+                        <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="ComboBoxItem">
+                                    <Border x:Name="ItemRoot" Background="{TemplateBinding Background}" CornerRadius="6" Padding="{TemplateBinding Padding}">
+                                        <ContentPresenter/>
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsHighlighted" Value="True">
+                                            <Setter TargetName="ItemRoot" Property="Background" Value="{DynamicResource NavHoverBackgroundBrush}"/>
+                                        </Trigger>
+                                        <Trigger Property="IsSelected" Value="True">
+                                            <Setter TargetName="ItemRoot" Property="Background" Value="{DynamicResource AccentNavBackgroundBrush}"/>
+                                            <Setter Property="Foreground" Value="White"/>
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                    </Style>
+                </Setter.Value>
+            </Setter>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ComboBox">
+                        <Grid>
+                            <ToggleButton Focusable="False" ClickMode="Press" IsChecked="{Binding IsDropDownOpen, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}" Foreground="{Binding Foreground, RelativeSource={RelativeSource TemplatedParent}}" Background="Transparent" BorderThickness="0">
+                                <ToggleButton.Template>
+                                    <ControlTemplate TargetType="ToggleButton">
+                                        <Border Background="{Binding Background, RelativeSource={RelativeSource AncestorType=ComboBox}}" BorderBrush="{Binding BorderBrush, RelativeSource={RelativeSource AncestorType=ComboBox}}" BorderThickness="{Binding BorderThickness, RelativeSource={RelativeSource AncestorType=ComboBox}}" CornerRadius="8" Padding="10,0">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+                                                <ContentPresenter Content="{Binding SelectionBoxItem, RelativeSource={RelativeSource AncestorType=ComboBox}}" VerticalAlignment="Center"/>
+                                                <Path Grid.Column="1" Data="M0,0 L5,5 L10,0" Stroke="{DynamicResource MutedBrush}" StrokeThickness="1.5" Margin="10,0,0,0" VerticalAlignment="Center"/>
+                                            </Grid>
+                                        </Border>
+                                    </ControlTemplate>
+                                </ToggleButton.Template>
+                            </ToggleButton>
+                            <Popup IsOpen="{TemplateBinding IsDropDownOpen}" Placement="Bottom" AllowsTransparency="True" Focusable="False" PopupAnimation="Fade">
+                                <Border Background="{DynamicResource Panel3Brush}" BorderBrush="{DynamicResource LineBrush}" BorderThickness="1" CornerRadius="8" Padding="4" MinWidth="{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}">
+                                    <ScrollViewer MaxHeight="300">
+                                        <StackPanel IsItemsHost="True"/>
+                                    </ScrollViewer>
+                                </Border>
+                            </Popup>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="FooterComboStyle" TargetType="ComboBox" BasedOn="{StaticResource FilterComboStyle}">
+            <Setter Property="Height" Value="32"/>
+            <Setter Property="Margin" Value="0"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
         </Style>
 
         <Style x:Key="SideMenuLogoutItemStyle" TargetType="MenuItem" BasedOn="{StaticResource ChatContextMenuItemStyle}">
@@ -754,11 +855,11 @@
                     <Setter Property="Background" Value="{DynamicResource RowHoverGlassBrush}"/>
                 </DataTrigger>
                 <Trigger Property="IsSelected" Value="True">
-                    <Setter Property="Background" Value="{DynamicResource AccentLightBrush}"/>
-                    <Setter Property="Foreground" Value="#334155"/>
+                    <Setter Property="Background" Value="{DynamicResource NodeSelectedRowBrush}"/>
+                    <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
                 </Trigger>
                 <DataTrigger Binding="{Binding IsActive}" Value="True">
-                    <Setter Property="Background" Value="{DynamicResource AccentMediumBrush}"/>
+                    <Setter Property="Background" Value="{DynamicResource NodeActiveRowBrush}"/>
                     <Setter Property="Foreground" Value="{DynamicResource AccentActiveNodeForegroundBrush}"/>
                 </DataTrigger>
                 <MultiDataTrigger>
@@ -766,8 +867,8 @@
                         <Condition Binding="{Binding IsActive}" Value="True"/>
                         <Condition Binding="{Binding RelativeSource={RelativeSource AncestorType=DataGridRow}, Path=IsSelected}" Value="True"/>
                     </MultiDataTrigger.Conditions>
-                    <Setter Property="Background" Value="{DynamicResource AccentStrongBrush}"/>
-                    <Setter Property="Foreground" Value="#0F172A"/>
+                    <Setter Property="Background" Value="{DynamicResource NodeActiveSelectedRowBrush}"/>
+                    <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
                 </MultiDataTrigger>
             </Style.Triggers>
         </Style>
@@ -808,19 +909,83 @@
         </Style>
 
         <Style x:Key="SettingsToggleCardStyle" TargetType="Border">
+            <Setter Property="Width" Value="{Binding SettingsToggleCardWidth, RelativeSource={RelativeSource AncestorType=Window}}"/>
+            <Setter Property="MinWidth" Value="240"/>
+            <Setter Property="MinHeight" Value="64"/>
             <Setter Property="Padding" Value="16,14"/>
+            <Setter Property="Margin" Value="0,0,12,12"/>
             <Setter Property="CornerRadius" Value="11"/>
             <Setter Property="Background" Value="{DynamicResource Panel2GlassBrush}"/>
-            <Setter Property="BorderBrush" Value="{StaticResource LineBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource LineBrush}"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="HorizontalAlignment" Value="Stretch"/>
+        </Style>
+
+        <Style x:Key="AdvancedSettingsCardStyle" TargetType="Border" BasedOn="{StaticResource SettingsToggleCardStyle}">
+            <Setter Property="Width" Value="Auto"/>
+            <Setter Property="MinWidth" Value="0"/>
+            <Setter Property="Margin" Value="0,0,0,12"/>
+        </Style>
+
+        <Style x:Key="SettingsGlyphButtonStyle" TargetType="Button">
+            <Setter Property="Width" Value="32"/>
+            <Setter Property="Height" Value="32"/>
+            <Setter Property="MinWidth" Value="32"/>
+            <Setter Property="Padding" Value="5"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Root" Background="{TemplateBinding Background}" CornerRadius="7" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Root" Property="Background" Value="{DynamicResource AccentLightBrush}"/></Trigger>
+                            <Trigger Property="IsPressed" Value="True"><Setter TargetName="Root" Property="Opacity" Value="0.7"/></Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="ThemeModeSegmentStyle" TargetType="RadioButton">
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="MinWidth" Value="62"/>
+            <Setter Property="Height" Value="38"/>
+            <Setter Property="Foreground" Value="{DynamicResource AccentTextBrush}"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource AccentStrongBrush}"/>
+            <Setter Property="BorderThickness" Value="0,0,1,0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Border x:Name="SegmentRoot" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" Padding="12,0">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="SegmentRoot" Property="Background" Value="{DynamicResource AccentLightBrush}"/>
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="SegmentRoot" Property="Background" Value="{DynamicResource AccentTextBrush}"/>
+                                <Setter Property="Foreground" Value="White"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
 
         <Style x:Key="SettingsToggleRowGridStyle" TargetType="Grid">
             <Setter Property="VerticalAlignment" Value="Center"/>
         </Style>
 
-        <Style x:Key="InfoHintIconStyle" TargetType="Image">
+        <Style x:Key="InfoHintIconStyle" TargetType="Rectangle">
             <Setter Property="Width" Value="16"/>
             <Setter Property="Height" Value="16"/>
             <Setter Property="Margin" Value="6,0,0,0"/>
@@ -941,7 +1106,10 @@
                         <Button x:Name="VersionUpdateNavButton" Style="{StaticResource NavChildButtonStyle}" Click="VersionUpdateNavButton_Click">
                             <StackPanel Orientation="Horizontal">
                                 <Path Style="{StaticResource NavLineIconStyle}" Data="{StaticResource IconRefresh}"/>
-                                <TextBlock Text="版本更新"/>
+                                <TextBlock Text="版本更新" VerticalAlignment="Center"/>
+                                <Border x:Name="VersionUpdateNavBadge" Background="#FEF3C7" BorderBrush="#FCD34D" BorderThickness="1" CornerRadius="999" Padding="6,1" Margin="8,0,0,0" VerticalAlignment="Center" Visibility="Collapsed">
+                                    <TextBlock Text="可更新" Foreground="#B45309" FontSize="11" FontWeight="Bold"/>
+                                </Border>
                             </StackPanel>
                         </Button>
                         </StackPanel>
@@ -997,7 +1165,7 @@
                                          Style="{StaticResource ChatContextMenuStyle}"
                                          Placement="Top"
                                          VerticalOffset="-4">
-                                <MenuItem x:Name="SideMenuEditProfile" Header="修改个人信息" Style="{StaticResource ChatContextMenuItemStyle}" Click="SideEditProfileButton_Click"/>
+                                <MenuItem x:Name="SideMenuEditProfile" Header="修改个人信息" Foreground="{DynamicResource TextBrush}" Style="{StaticResource ChatContextMenuItemStyle}" Click="SideEditProfileButton_Click"/>
                                 <MenuItem x:Name="SideMenuLogout" Header="退出登录" Style="{StaticResource SideMenuLogoutItemStyle}" Click="SideLogoutButton_Click"/>
                                 <MenuItem x:Name="SideMenuLogin" Header="登录 / 注册" Style="{StaticResource ChatContextMenuItemStyle}" Click="SideLoginButton_Click"/>
                             </ContextMenu>
@@ -1016,7 +1184,7 @@
                                 </Border>
                                 <StackPanel Margin="10,0,0,0" VerticalAlignment="Center" MaxWidth="180">
                                     <TextBlock x:Name="SideAuthNicknameText" FontSize="16" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
-                                    <TextBlock x:Name="SideAuthEmailText" Foreground="{StaticResource MutedBrush}" FontSize="13" TextTrimming="CharacterEllipsis" Margin="0,2,0,0"/>
+                                    <TextBlock x:Name="SideAuthEmailText" Foreground="{DynamicResource SideEmailForegroundBrush}" FontSize="13" TextTrimming="CharacterEllipsis" Margin="0,2,0,0"/>
                                 </StackPanel>
                             </StackPanel>
                         </Grid>
@@ -1099,15 +1267,16 @@
                     <RowDefinition Height="*"/>
                     <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
-                <ScrollViewer x:Name="NodeListScroll" Grid.Row="0" VerticalScrollBarVisibility="Auto" PreviewMouseWheel="NodePageScroll_PreviewMouseWheel">
-                <StackPanel Margin="20,18,18,12">
+                <ScrollViewer x:Name="NodeListScroll" Grid.Row="0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" PreviewMouseWheel="NodePageScroll_PreviewMouseWheel">
+                <StackPanel Margin="24,20,24,16">
                     <!-- Node list module -->
-                    <Border Style="{StaticResource FlatPanelStyle}" Margin="0,0,0,0" Padding="0">
+                    <Border Style="{StaticResource FlatPanelStyle}" Background="{DynamicResource NodePagePanelBrush}" Margin="0" Padding="16">
                         <StackPanel>
                             <!-- Status bar -->
-                            <WrapPanel Margin="18,12,0,8">
+                            <WrapPanel Margin="0,0,0,12">
                                 <Button x:Name="TestCurrentLatencyButton" Content="测试选中" Style="{StaticResource DarkButtonStyle}" Margin="0,0,8,8" Click="TestCurrentLatencyButton_Click"/>
                                 <Button x:Name="TestAllLatencyButton" Content="全部测试" Style="{StaticResource DarkButtonStyle}" Margin="0,0,8,8" Click="TestAllLatencyButton_Click"/>
+                                <Button Content="健康检测" ToolTip="检测所选节点的 TCP、代理握手、网站访问、稳定性；活动节点额外测试下载速度" Style="{StaticResource DarkButtonStyle}" Margin="0,0,8,8" Click="NodeHealthCheckButton_Click"/>
                                 <Button x:Name="RemoveUnavailableButton" Content="移除不可用" Style="{StaticResource DarkButtonStyle}" Margin="0,0,8,8" Click="RemoveUnavailableButton_Click"/>
                                 <Button x:Name="RemoveDuplicateButton" Content="去除重复" Style="{StaticResource DarkButtonStyle}" Margin="0,0,8,8" Click="RemoveDuplicateButton_Click"/>
                                 <Button x:Name="SyncCloudSubscriptionsButton" ToolTip="从云端更新当前账号下的全部节点" Style="{StaticResource DarkButtonStyle}" Margin="0,0,0,8" Visibility="Collapsed" Click="SyncCloudSubscriptionsButton_Click">
@@ -1119,7 +1288,7 @@
                             </WrapPanel>
 
                             <!-- Table -->
-                            <Border Background="{DynamicResource PanelGlassBrush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" CornerRadius="12" ClipToBounds="True" Margin="18,0,18,12">
+                            <Border Background="{DynamicResource NodeTableBackgroundBrush}" BorderBrush="{DynamicResource LineBrush}" BorderThickness="1" CornerRadius="12" ClipToBounds="True" Margin="0">
                                 <Border.ContextMenu>
                                     <ContextMenu Style="{StaticResource NodeContextMenuStyle}">
                                         <MenuItem Header="新建节点" Style="{StaticResource NodeContextMenuItemStyle}" Click="CtxNewNode_Click"/>
@@ -1200,9 +1369,31 @@
                                                         <Setter Property="Template">
                                                             <Setter.Value>
                                                                 <ControlTemplate TargetType="{x:Type GroupItem}">
-                                                                    <Expander IsExpanded="True" Margin="0,4,0,0">
+                                                                    <Expander IsExpanded="True" Margin="0,4,0,0" Background="Transparent">
+                                                                        <Expander.Template>
+                                                                            <ControlTemplate TargetType="Expander">
+                                                                                <StackPanel>
+                                                                                    <ToggleButton x:Name="GroupToggle" IsChecked="{Binding IsExpanded, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}" Background="{DynamicResource NodeGroupHeaderBrush}" BorderThickness="0" HorizontalContentAlignment="Stretch" FocusVisualStyle="{x:Null}">
+                                                                                        <ToggleButton.Template>
+                                                                                            <ControlTemplate TargetType="ToggleButton">
+                                                                                                <Border Background="{TemplateBinding Background}" CornerRadius="8" Padding="10,8">
+                                                                                                    <ContentPresenter HorizontalAlignment="Stretch" VerticalAlignment="Center"/>
+                                                                                                </Border>
+                                                                                            </ControlTemplate>
+                                                                                        </ToggleButton.Template>
+                                                                                        <ContentPresenter ContentSource="Header"/>
+                                                                                    </ToggleButton>
+                                                                                    <ContentPresenter x:Name="ExpandSite" ContentSource="Content"/>
+                                                                                </StackPanel>
+                                                                                <ControlTemplate.Triggers>
+                                                                                    <Trigger Property="IsExpanded" Value="False">
+                                                                                        <Setter TargetName="ExpandSite" Property="Visibility" Value="Collapsed"/>
+                                                                                    </Trigger>
+                                                                                </ControlTemplate.Triggers>
+                                                                            </ControlTemplate>
+                                                                        </Expander.Template>
                                                                         <Expander.Header>
-                                                                            <StackPanel Orientation="Horizontal" Tag="{Binding Name}">
+                                                                            <StackPanel Orientation="Horizontal" Tag="{Binding Name}" Background="Transparent">
                                                                                 <StackPanel.ContextMenu>
                                                                                     <ContextMenu Style="{StaticResource NodeContextMenuStyle}" Opened="SubscriptionContextMenu_Opened">
                                                                                         <MenuItem Header="刷新订阅" Style="{StaticResource NodeContextMenuItemStyle}" Click="SubscriptionRefreshMenu_Click"/>
@@ -1218,7 +1409,7 @@
                                                                                         </MenuItem>
                                                                                     </ContextMenu>
                                                                                 </StackPanel.ContextMenu>
-                                                                                <TextBlock Text="{Binding Name}" FontWeight="SemiBold" Foreground="#334155" Margin="8,0,12,0" VerticalAlignment="Center"/>
+                                                                                <TextBlock Text="{Binding Name}" FontWeight="SemiBold" Foreground="{DynamicResource TextBrush}" Margin="8,0,12,0" VerticalAlignment="Center"/>
                                                                                 <TextBlock Text="{Binding ItemCount, StringFormat=({0} 个节点)}" Foreground="{StaticResource MutedBrush}"/>
                                                                                 <Button Content="刷新" Tag="{Binding Name}"
                                                                                         Click="SubscriptionGroupRefreshButton_Click">
@@ -1284,6 +1475,7 @@
                                                 <DataGridTemplateColumn.CellTemplate>
                                                     <DataTemplate>
                                                         <TextBlock Text="{Binding DisplayName}" VerticalAlignment="Center"
+                                                                   Foreground="{DynamicResource NodeTableTextBrush}"
                                                                    TextAlignment="Center" HorizontalAlignment="Stretch"
                                                                    TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"
                                                                    ToolTip="{Binding DisplayName}"/>
@@ -1349,8 +1541,8 @@
 
                 <!-- Fixed bottom controls -->
                 <Border x:Name="NodeControlsFooter" Grid.Row="1"
-                        Background="{DynamicResource PanelGlassBrush}"
-                        BorderBrush="#E2E8F0" BorderThickness="0,1,0,0"
+                        Background="{DynamicResource NodePagePanelBrush}"
+                        BorderBrush="{DynamicResource LineBrush}" BorderThickness="0,1,0,0"
                         Padding="24,14,24,18">
                     <WrapPanel Margin="14,0,0,0">
                         <Border Style="{StaticResource ControlFieldBorderStyle}" MinWidth="250" Margin="0,0,12,10">
@@ -1359,8 +1551,9 @@
                                     <ColumnDefinition Width="Auto"/>
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
-                                <TextBlock Text="系统代理" Foreground="{StaticResource MutedBrush}" FontSize="16" VerticalAlignment="Center" Margin="0,0,10,0"/>
-                                <ComboBox Grid.Column="1" x:Name="SystemProxyCombo" Height="32" BorderThickness="0" Background="Transparent"
+                                <TextBlock Text="系统代理" Foreground="{DynamicResource MutedBrush}" FontSize="16" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                <ComboBox Grid.Column="1" x:Name="SystemProxyCombo" Style="{StaticResource FooterComboStyle}"
+                                          Foreground="{DynamicResource TextBrush}"
                                           MinWidth="156"
                                           HorizontalContentAlignment="Left" VerticalContentAlignment="Center"
                                           SelectionChanged="SystemProxyCombo_SelectionChanged">
@@ -1377,7 +1570,7 @@
                                     <ColumnDefinition Width="Auto"/>
                                     <ColumnDefinition Width="48"/>
                                 </Grid.ColumnDefinitions>
-                                <TextBlock Text="启用 Tun" Foreground="{StaticResource MutedBrush}" FontSize="16" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                <TextBlock Text="启用 Tun" Foreground="{DynamicResource MutedBrush}" FontSize="16" VerticalAlignment="Center" Margin="0,0,10,0"/>
                                 <CheckBox Grid.Column="1" x:Name="TunToggle" Style="{StaticResource ToggleSwitchStyle}" VerticalAlignment="Center" Checked="TunToggle_Changed" Unchecked="TunToggle_Changed"/>
                             </Grid>
                         </Border>
@@ -1387,8 +1580,9 @@
                                     <ColumnDefinition Width="Auto"/>
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
-                                <TextBlock Text="路由规则" Foreground="{StaticResource MutedBrush}" FontSize="16" VerticalAlignment="Center" Margin="0,0,10,0"/>
-                                <ComboBox Grid.Column="1" x:Name="RoutingCombo" Height="32" BorderThickness="0" Background="Transparent"
+                                <TextBlock Text="路由规则" Foreground="{DynamicResource MutedBrush}" FontSize="16" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                <ComboBox Grid.Column="1" x:Name="RoutingCombo" Style="{StaticResource FooterComboStyle}"
+                                          Foreground="{DynamicResource TextBrush}"
                                           MinWidth="120"
                                           HorizontalContentAlignment="Left" VerticalContentAlignment="Center"
                                           SelectionChanged="RoutingCombo_SelectionChanged">
@@ -1754,7 +1948,7 @@
                                                         <Image Source="{Binding LogoPath}" Width="28" Height="28" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                                     </Border>
                                                     <StackPanel Grid.Column="1" Margin="12,0,8,0" VerticalAlignment="Center">
-                                                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="17"/>
+                                                        <TextBlock Text="{Binding Name}" Foreground="{DynamicResource TextBrush}" FontWeight="SemiBold" FontSize="17"/>
                                                         <TextBlock Text="{Binding Url}" Foreground="{StaticResource MutedBrush}" FontSize="14" TextTrimming="CharacterEllipsis"/>
                                                     </StackPanel>
                                                     <TextBlock Grid.Column="2" Text="{Binding StatusDisplay}" VerticalAlignment="Center">
@@ -1788,22 +1982,13 @@
                 </StackPanel>
             </ScrollViewer>
 
-            <ScrollViewer x:Name="SettingsPageScroll" Grid.Row="1" VerticalScrollBarVisibility="Auto" Visibility="Collapsed">
+            <ScrollViewer x:Name="SettingsPageScroll" Grid.Row="1" VerticalScrollBarVisibility="Auto" Visibility="Collapsed" SizeChanged="SettingsPageScroll_SizeChanged">
                 <StackPanel Margin="24,22,24,28">
-                    <Border Style="{StaticResource CardBorderStyle}">
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="16"/>
-                                <ColumnDefinition Width="*"/>
-                            </Grid.ColumnDefinitions>
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="16"/>
-                                <RowDefinition Height="Auto"/>
-                            </Grid.RowDefinitions>
-
-                            <Border Grid.Row="0" Grid.Column="0" Style="{StaticResource SettingsToggleCardStyle}">
+                    <Border Style="{StaticResource CardBorderStyle}" Padding="16,16,4,4">
+                        <StackPanel>
+                            <TextBlock Text="常规设置" FontSize="18" FontWeight="Bold" Margin="0,0,0,14"/>
+                            <WrapPanel x:Name="SettingsToggleWrapPanel" SizeChanged="SettingsToggleWrapPanel_SizeChanged">
+                            <Border Style="{StaticResource SettingsToggleCardStyle}">
                                 <Grid Style="{StaticResource SettingsToggleRowGridStyle}">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*"/>
@@ -1813,59 +1998,157 @@
                                     <CheckBox Grid.Column="1" x:Name="RunAtStartupToggle" Style="{StaticResource ToggleSwitchStyle}" VerticalAlignment="Center" Checked="RunAtStartupToggle_Changed" Unchecked="RunAtStartupToggle_Changed"/>
                                 </Grid>
                             </Border>
-                            <Border Grid.Row="0" Grid.Column="2" Style="{StaticResource SettingsToggleCardStyle}">
+                            <Border Style="{StaticResource SettingsToggleCardStyle}">
                                 <Grid Style="{StaticResource SettingsToggleRowGridStyle}">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*"/>
                                         <ColumnDefinition Width="Auto"/>
                                     </Grid.ColumnDefinitions>
                                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,12,0">
-                                        <TextBlock Text="开机静默启动" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center"/>
-                                        <Image x:Name="RunAtStartupSilentInfoIcon" Style="{StaticResource InfoHintIconStyle}"
+                                        <TextBlock Text="开机静默启动" Foreground="{DynamicResource TextBrush}" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                        <Rectangle x:Name="RunAtStartupSilentInfoIcon" Style="{StaticResource InfoHintIconStyle}"
                                                ToolTipService.ToolTip="开机后自动启动 Nexora 并最小化到系统托盘，不显示主窗口。开启后将同时启用开机自启。"/>
                                     </StackPanel>
                                     <CheckBox Grid.Column="1" x:Name="RunAtStartupSilentToggle" Style="{StaticResource ToggleSwitchStyle}" VerticalAlignment="Center" Checked="RunAtStartupSilentToggle_Changed" Unchecked="RunAtStartupSilentToggle_Changed"/>
                                 </Grid>
                             </Border>
-                            <Border Grid.Row="2" Grid.Column="0" Style="{StaticResource SettingsToggleCardStyle}">
+                            <Border Style="{StaticResource SettingsToggleCardStyle}">
                                 <Grid Style="{StaticResource SettingsToggleRowGridStyle}">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*"/>
                                         <ColumnDefinition Width="Auto"/>
                                     </Grid.ColumnDefinitions>
                                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,12,0">
-                                        <TextBlock Text="允许局域网访问" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center"/>
-                                        <Image x:Name="AllowLanAccessInfoIcon" Style="{StaticResource InfoHintIconStyle}"
+                                        <TextBlock Text="允许局域网访问" Foreground="{DynamicResource TextBrush}" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                        <Rectangle x:Name="AllowLanAccessInfoIcon" Style="{StaticResource InfoHintIconStyle}"
                                                ToolTipService.ToolTip="开启后 HTTP/SOCKS 入站监听局域网地址，虚拟机可通过主机 IP 和代理端口访问。请确保防火墙已放行对应端口。"/>
                                     </StackPanel>
                                     <CheckBox Grid.Column="1" x:Name="AllowLanAccessToggle" Style="{StaticResource ToggleSwitchStyle}" VerticalAlignment="Center" Checked="AllowLanAccessToggle_Changed" Unchecked="AllowLanAccessToggle_Changed"/>
                                 </Grid>
                             </Border>
-                            <Border Grid.Row="2" Grid.Column="2" Style="{StaticResource SettingsToggleCardStyle}">
+                            <Border Style="{StaticResource SettingsToggleCardStyle}">
                                 <Grid Style="{StaticResource SettingsToggleRowGridStyle}">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*"/>
                                         <ColumnDefinition Width="Auto"/>
                                     </Grid.ColumnDefinitions>
                                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,12,0">
-                                        <TextBlock Text="自动下载新版本" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center"/>
-                                        <Image x:Name="AutoDownloadUpdateInfoIcon" Style="{StaticResource InfoHintIconStyle}"
+                                        <TextBlock Text="自动下载新版本" Foreground="{DynamicResource TextBrush}" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                        <Rectangle x:Name="AutoDownloadUpdateInfoIcon" Style="{StaticResource InfoHintIconStyle}"
                                                ToolTipService.ToolTip="开启后，检测到新版本时将自动在后台下载安装包；下载完成后会提示你点击安装。关闭后需手动下载。"/>
                                     </StackPanel>
-                                    <CheckBox Grid.Column="1" x:Name="AutoDownloadNewVersionToggle" Style="{StaticResource ToggleSwitchStyle}" VerticalAlignment="Center" IsChecked="True" Checked="AutoDownloadNewVersionToggle_Changed" Unchecked="AutoDownloadNewVersionToggle_Changed"/>
+                                    <CheckBox Grid.Column="1" x:Name="AutoDownloadNewVersionToggle" Style="{StaticResource ToggleSwitchStyle}" VerticalAlignment="Center" Checked="AutoDownloadNewVersionToggle_Changed" Unchecked="AutoDownloadNewVersionToggle_Changed"/>
                                 </Grid>
                             </Border>
-                        </Grid>
+                            <Border Style="{StaticResource SettingsToggleCardStyle}">
+                                <Grid Style="{StaticResource SettingsToggleRowGridStyle}">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,12,0">
+                                        <TextBlock Text="自动恢复" Foreground="{DynamicResource TextBrush}" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                        <Rectangle x:Name="AutoRecoveryInfoIcon" Style="{StaticResource InfoHintIconStyle}"
+                                                   ToolTipService.ToolTip="核心、端口、系统代理或网络层异常时自动恢复，连续失败时采用退避重试。"/>
+                                    </StackPanel>
+                                    <CheckBox Grid.Column="1" x:Name="AutoRecoveryToggle" Style="{StaticResource ToggleSwitchStyle}" VerticalAlignment="Center"
+                                              Checked="AutoRecoveryToggle_Changed" Unchecked="AutoRecoveryToggle_Changed"/>
+                                </Grid>
+                            </Border>
+                            <Border Style="{StaticResource SettingsToggleCardStyle}">
+                                <Grid Style="{StaticResource SettingsToggleRowGridStyle}">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,12,0">
+                                        <TextBlock Text="节点自动切换" Foreground="{DynamicResource TextBrush}" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                        <Rectangle x:Name="AutoFailoverInfoIcon" Style="{StaticResource InfoHintIconStyle}"
+                                                   ToolTipService.ToolTip="当前节点连续检测失败后，优先切换到同订阅内延迟最低的可用节点。"/>
+                                    </StackPanel>
+                                    <CheckBox Grid.Column="1" x:Name="AutoFailoverToggle" Style="{StaticResource ToggleSwitchStyle}" VerticalAlignment="Center"
+                                              Checked="AutoFailoverToggle_Changed" Unchecked="AutoFailoverToggle_Changed"/>
+                                </Grid>
+                            </Border>
+                            </WrapPanel>
+                        </StackPanel>
+                    </Border>
+                    <TextBlock x:Name="OpenAiCodexOptimizationStatusText" Visibility="Collapsed"/>
+                    <Border Style="{StaticResource CardBorderStyle}" Padding="16,16,4,4" Margin="0,16,0,0">
+                        <StackPanel>
+                            <TextBlock Text="应用优化" FontSize="18" FontWeight="Bold" Margin="0,0,0,14"/>
+                            <WrapPanel Orientation="Horizontal">
+                                <Border Style="{StaticResource SettingsToggleCardStyle}">
+                                    <Grid Style="{StaticResource SettingsToggleRowGridStyle}">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,12,0">
+                                            <TextBlock Text="ChatGPT Codex 优化" Foreground="{DynamicResource TextBrush}" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                            <Rectangle x:Name="OpenAiCodexOptimizationInfoIcon" Style="{StaticResource InfoHintIconStyle}"
+                                                       ToolTipService.ToolTip="优化 ChatGPT Codex 首次连接和重连问题。"/>
+                                        </StackPanel>
+                                        <CheckBox Grid.Column="1" x:Name="OpenAiCodexOptimizationToggle"
+                                                  Style="{StaticResource ToggleSwitchStyle}" VerticalAlignment="Center"
+                                                  Checked="OpenAiCodexOptimizationToggle_Changed"
+                                                  Unchecked="OpenAiCodexOptimizationToggle_Changed"/>
+                                    </Grid>
+                                </Border>
+                                <Border Style="{StaticResource SettingsToggleCardStyle}">
+                                    <Grid Style="{StaticResource SettingsToggleRowGridStyle}">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,12,0">
+                                            <TextBlock Text="UWP 应用优化" Foreground="{DynamicResource TextBrush}" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                            <Rectangle x:Name="UwpOptimizationInfoIcon" Style="{StaticResource InfoHintIconStyle}"
+                                                       ToolTipService.ToolTip="为微软商店、应用安装程序和 Xbox 等常见 AppContainer 应用添加本地回环豁免，使其能够访问 127.0.0.1 上的代理服务。"/>
+                                        </StackPanel>
+                                        <CheckBox Grid.Column="1" x:Name="UwpOptimizationToggle" Style="{StaticResource ToggleSwitchStyle}" VerticalAlignment="Center"
+                                                  Checked="UwpOptimizationToggle_Changed" Unchecked="UwpOptimizationToggle_Changed"/>
+                                    </Grid>
+                                </Border>
+                            </WrapPanel>
+                        </StackPanel>
                     </Border>
                     <Border Style="{StaticResource CardBorderStyle}" Margin="0,16,0,0">
                         <StackPanel>
                             <TextBlock Text="外观" FontSize="18" FontWeight="Bold" Margin="0,0,0,14"/>
-                            <WrapPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                <TextBlock Text="主题色" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,12,8"/>
-                                <Border x:Name="ThemeAccentPreview" Width="36" Height="36" CornerRadius="8" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" Margin="0,0,12,8"/>
-                                <TextBlock x:Name="ThemeAccentHexText" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}" Margin="0,0,12,8"/>
-                                <Button Content="选择颜色" Style="{StaticResource DarkButtonStyle}" Margin="0,0,8,8" Click="ThemeColorPickButton_Click"/>
-                                <Button Content="恢复默认" Style="{StaticResource DarkButtonStyle}" Margin="0,0,0,8" Click="ThemeColorResetButton_Click"/>
+                            <WrapPanel Orientation="Horizontal">
+                                <Border Style="{StaticResource SettingsToggleCardStyle}" Width="440">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="主题模式" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,16,0"/>
+                                        <Border Grid.Column="1" CornerRadius="6" BorderBrush="{DynamicResource AccentStrongBrush}" BorderThickness="1" ClipToBounds="True">
+                                            <StackPanel Orientation="Horizontal">
+                                                <RadioButton x:Name="ThemeLightRadio" GroupName="ThemeMode" Tag="Light" Content="浅色" Style="{StaticResource ThemeModeSegmentStyle}" Checked="ThemeModeRadio_Checked"/>
+                                                <RadioButton x:Name="ThemeDarkRadio" GroupName="ThemeMode" Tag="Dark" Content="深色" Style="{StaticResource ThemeModeSegmentStyle}" Checked="ThemeModeRadio_Checked"/>
+                                                <RadioButton x:Name="ThemeSystemRadio" GroupName="ThemeMode" Tag="System" Content="系统" Style="{StaticResource ThemeModeSegmentStyle}" BorderThickness="0" Checked="ThemeModeRadio_Checked"/>
+                                            </StackPanel>
+                                        </Border>
+                                    </Grid>
+                                </Border>
+                                <Border Style="{StaticResource SettingsToggleCardStyle}" Width="440">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="主题色" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                                        <Border Grid.Column="1" x:Name="ThemeAccentPreview" Width="36" Height="36" CornerRadius="8" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" Margin="0,0,12,0"/>
+                                        <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right">
+                                            <TextBlock x:Name="ThemeAccentHexText" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}" Margin="0,0,12,0"/>
+                                            <Button Content="选择颜色" Style="{StaticResource DarkButtonStyle}" Margin="0,0,8,0" Click="ThemeColorPickButton_Click"/>
+                                            <Button Content="恢复默认" Style="{StaticResource DarkButtonStyle}" Click="ThemeColorResetButton_Click"/>
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
                             </WrapPanel>
                             <Border Background="{DynamicResource Panel2GlassBrush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" CornerRadius="12" Padding="14" Margin="0,8,0,0">
                                 <StackPanel>
@@ -1885,20 +2168,71 @@
                             </Border>
                         </StackPanel>
                     </Border>
+                    <Border Style="{StaticResource CardBorderStyle}" Margin="0,16,0,0">
+                        <StackPanel>
+                            <TextBlock Text="高级设置" FontSize="18" FontWeight="Bold" Margin="0,0,0,14"/>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="12"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="12"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <Border Grid.Column="0" Style="{StaticResource AdvancedSettingsCardStyle}">
+                                    <Grid Style="{StaticResource SettingsToggleRowGridStyle}">
+                                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                        <StackPanel Orientation="Horizontal" Margin="0,0,10,0" VerticalAlignment="Center">
+                                            <TextBlock Text="运行诊断" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                            <Rectangle x:Name="RuntimeDiagnosticsInfoIcon" Style="{StaticResource InfoHintIconStyle}" ToolTipService.ToolTip="当前状态：等待检查。代理启动后将自动检查运行状态。"/>
+                                            <TextBlock x:Name="RuntimeHealthStatusText" Text="等待检查" Visibility="Collapsed"/>
+                                        </StackPanel>
+                                        <Button Grid.Column="1" x:Name="RunDiagnosticsButton" Content="一键诊断" Style="{StaticResource PrimaryButtonStyle}" Padding="12,0" Click="RunDiagnosticsButton_Click"/>
+                                    </Grid>
+                                </Border>
+                                <Border Grid.Column="2" Style="{StaticResource AdvancedSettingsCardStyle}">
+                                    <Grid Style="{StaticResource SettingsToggleRowGridStyle}">
+                                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                        <StackPanel Orientation="Horizontal" Margin="0,0,10,0" VerticalAlignment="Center">
+                                            <TextBlock Text="配置备份与恢复" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                            <Rectangle x:Name="ConfigurationBackupInfoIcon" Style="{StaticResource InfoHintIconStyle}" ToolTipService.ToolTip="备份节点、订阅、路由规则和应用设置，并保留最近 5 个自动备份。"/>
+                                            <TextBlock x:Name="ConfigurationBackupStatusText" Text="保留最近 5 个备份" Visibility="Collapsed"/>
+                                        </StackPanel>
+                                        <Button Grid.Column="1" Style="{StaticResource SettingsGlyphButtonStyle}" ToolTip="打开配置备份与恢复设置" Click="ConfigurationBackupSettingsButton_Click">
+                                            <Path Width="20" Height="20" Margin="0" Stretch="Uniform" Style="{StaticResource NavLineIconStyle}" Data="{StaticResource IconSettings}"/>
+                                        </Button>
+                                    </Grid>
+                                </Border>
+                                <Border Grid.Column="4" Style="{StaticResource AdvancedSettingsCardStyle}">
+                                    <Grid Style="{StaticResource SettingsToggleRowGridStyle}">
+                                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                        <StackPanel Orientation="Horizontal" Margin="0,0,10,0" VerticalAlignment="Center">
+                                            <TextBlock Text="DNS 与 IPv6" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                            <Rectangle x:Name="DnsSettingsInfoIcon" Style="{StaticResource InfoHintIconStyle}" ToolTipService.ToolTip="设置国内 DNS、代理 DNS、DoH、IP 优先级、IPv6 回退并运行 DNS 泄漏测试。"/>
+                                            <TextBlock x:Name="DnsSettingsSummaryText" Text="IPv4 优先 · IPv6 自动回退" Visibility="Collapsed"/>
+                                        </StackPanel>
+                                        <Button Grid.Column="1" Style="{StaticResource SettingsGlyphButtonStyle}" ToolTip="打开 DNS 与 IPv6 设置" Click="DnsSettingsButton_Click">
+                                            <Path Width="20" Height="20" Margin="0" Stretch="Uniform" Style="{StaticResource NavLineIconStyle}" Data="{StaticResource IconSettings}"/>
+                                        </Button>
+                                    </Grid>
+                                </Border>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
                 </StackPanel>
             </ScrollViewer>
 
-            <ScrollViewer x:Name="VersionUpdatePageScroll" Grid.Row="1" VerticalScrollBarVisibility="Auto" Visibility="Collapsed">
+            <ScrollViewer x:Name="VersionUpdatePageScroll" Grid.Row="1" VerticalScrollBarVisibility="Disabled" Visibility="Collapsed">
                 <StackPanel Margin="24,22,24,28">
                     <Border Style="{StaticResource CardBorderStyle}">
-                        <Grid MinHeight="640">
+                        <Grid MinHeight="480">
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto"/>
                                 <RowDefinition Height="Auto"/>
                                 <RowDefinition Height="*"/>
                             </Grid.RowDefinitions>
 
-                            <Grid Grid.Row="0" Margin="0,0,0,16">
+                            <Grid x:Name="VersionUpdateHeaderPanel" Grid.Row="0" Margin="0,0,0,16">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="Auto"/>
@@ -1920,7 +2254,7 @@
                                 </Button>
                             </Grid>
 
-                            <Border Grid.Row="1" Background="{DynamicResource Panel2GlassBrush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" CornerRadius="12" Padding="14,10" Margin="0,0,0,14">
+                            <Border x:Name="VersionUpdateStatusPanel" Grid.Row="1" Background="{DynamicResource Panel2GlassBrush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" CornerRadius="12" Padding="14,10" Margin="0,0,0,14">
                                 <Grid>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*"/>
@@ -1989,6 +2323,14 @@
                                                 </Grid.ColumnDefinitions>
                                                 <TextBlock Text="SHA-256" Foreground="{StaticResource MutedBrush}" VerticalAlignment="Top"/>
                                                 <TextBlock x:Name="VersionUpdateSha256Text" Grid.Column="1" FontFamily="Consolas, Cascadia Mono, Microsoft YaHei UI" FontSize="12" TextWrapping="Wrap"/>
+                                            </Grid>
+                                            <Grid Margin="0,0,0,8">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="108"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="数字签名" Foreground="{StaticResource MutedBrush}"/>
+                                                <TextBlock x:Name="VersionUpdateSignatureText" Grid.Column="1" TextWrapping="Wrap"/>
                                             </Grid>
                                             <Grid>
                                                 <Grid.ColumnDefinitions>
@@ -2176,7 +2518,7 @@
                                             <Border x:Name="ChatPendingAttachmentImageHost" Width="72" Height="72" CornerRadius="10" ClipToBounds="True" Margin="0,0,10,0" Visibility="Collapsed" Background="#E2E8F0">
                                                 <Image x:Name="ChatPendingAttachmentImage" Stretch="UniformToFill"/>
                                             </Border>
-                                            <TextBlock x:Name="ChatPendingAttachmentText" Grid.Column="1" Foreground="#334155" FontSize="13" TextWrapping="Wrap" VerticalAlignment="Center"/>
+                                            <TextBlock x:Name="ChatPendingAttachmentText" Grid.Column="1" Foreground="{DynamicResource TextBrush}" FontSize="13" TextWrapping="Wrap" VerticalAlignment="Center"/>
                                             <Button x:Name="ClearChatAttachmentButton" Grid.Column="2" Content="移除" Style="{StaticResource DarkButtonStyle}" MinWidth="64" Height="32" Margin="10,0,0,0" Click="ClearChatAttachmentButton_Click"/>
                                         </Grid>
                                     </Border>
@@ -2407,6 +2749,38 @@
                 <TranslateTransform x:Name="ChatToastTransform" X="-380"/>
             </Border.RenderTransform>
         </Border>
+
+        <Grid x:Name="BusyOperationOverlay" Grid.Column="0" Grid.ColumnSpan="2" Panel.ZIndex="200" Background="#990F172A" Visibility="Collapsed" IsHitTestVisible="True">
+            <Border x:Name="BusyOperationCard" Width="420" MaxWidth="520" Padding="28" CornerRadius="18" Background="{DynamicResource PanelGlassBrush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" HorizontalAlignment="Center" VerticalAlignment="Center" RenderTransformOrigin="0.5,0.5">
+                <Border.Effect>
+                    <DropShadowEffect Color="#000000" BlurRadius="30" ShadowDepth="8" Opacity="0.28"/>
+                </Border.Effect>
+                <Border.RenderTransform>
+                    <ScaleTransform x:Name="BusyOperationCardScale" ScaleX="1" ScaleY="1"/>
+                </Border.RenderTransform>
+                <StackPanel>
+                    <Grid Width="38" Height="38" HorizontalAlignment="Center" Margin="0,0,0,18">
+                        <Ellipse Stroke="{DynamicResource AccentLightBrush}" StrokeThickness="4"/>
+                        <Path Data="M19,3 A16,16 0 0 1 35,19" Stroke="{DynamicResource AccentTextBrush}" StrokeThickness="4" StrokeStartLineCap="Round" StrokeEndLineCap="Round" RenderTransformOrigin="0.5,0.5">
+                            <Path.RenderTransform>
+                                <RotateTransform/>
+                            </Path.RenderTransform>
+                            <Path.Triggers>
+                                <EventTrigger RoutedEvent="Loaded">
+                                    <BeginStoryboard>
+                                        <Storyboard RepeatBehavior="Forever">
+                                            <DoubleAnimation Storyboard.TargetProperty="RenderTransform.Angle" From="0" To="360" Duration="0:0:0.85"/>
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </EventTrigger>
+                            </Path.Triggers>
+                        </Path>
+                    </Grid>
+                    <TextBlock x:Name="BusyOperationTitleText" Text="正在处理" FontSize="22" FontWeight="Bold" HorizontalAlignment="Center"/>
+                    <TextBlock x:Name="BusyOperationDetailText" Text="请稍候，操作完成前暂时无法使用软件。" Foreground="{StaticResource MutedBrush}" FontSize="14" TextWrapping="Wrap" TextAlignment="Center" Margin="0,10,0,0"/>
+                </StackPanel>
+            </Border>
+        </Grid>
         </Grid>
     </Grid>
 </Window>

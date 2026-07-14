@@ -2,6 +2,8 @@ namespace NaiwaProxy.Models;
 
 public sealed class AppSettings
 {
+    public const int CurrentConfigurationVersion = 2;
+    public int ConfigurationVersion { get; set; } = CurrentConfigurationVersion;
     public int SocksPort { get; set; } = 10808;
     public int HttpPort { get; set; } = 10809;
     public int ApiPort { get; set; } = 10810;
@@ -24,12 +26,21 @@ public sealed class AppSettings
     public bool RunAtStartup { get; set; }
     public bool RunAtStartupSilent { get; set; }
     public bool AllowLanAccess { get; set; }
+    public bool UwpOptimizationEnabled { get; set; } = true;
     public bool OpenAiCodexOptimizationEnabled { get; set; } = true;
     public OpenAiCodexOptimizationSnapshot? OpenAiCodexOptimizationSnapshot { get; set; }
     public string ThemeAccentColor { get; set; } = "#2563EB";
+    public string ThemeMode { get; set; } = "System";
     public string? ThemeBackgroundImagePath { get; set; }
     public string ThemeBackgroundSource { get; set; } = "default";
-    public bool AutoDownloadNewVersion { get; set; } = true;
+    public bool AutoDownloadNewVersion { get; set; }
+    public bool AutoRecoveryEnabled { get; set; } = true;
+    public bool AutoFailoverEnabled { get; set; } = true;
+    public string IpPreferenceMode { get; set; } = "PreferIPv4";
+    public string DomesticDnsServer { get; set; } = "223.5.5.5";
+    public string ProxyDnsServer { get; set; } = "1.1.1.1";
+    public bool DnsOverHttpsEnabled { get; set; }
+    public bool Ipv6AutoFallbackEnabled { get; set; } = true;
     public int? DownloadedUpdateReleaseId { get; set; }
     public string? DownloadedUpdateFilePath { get; set; }
     public Dictionary<string, SubscriptionSource> SubscriptionSources { get; set; } = new(StringComparer.OrdinalIgnoreCase);
@@ -40,6 +51,7 @@ public sealed class OpenAiCodexOptimizationSnapshot
     public string RoutingMode { get; set; } = "BypassChina";
     public string SystemProxyMode { get; set; } = "Auto";
     public CustomRoutingSettings CustomRouting { get; set; } = new();
+    public Dictionary<string, string?> ProxyEnvironmentVariables { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 }
 
 public sealed class CustomRoutingSettings

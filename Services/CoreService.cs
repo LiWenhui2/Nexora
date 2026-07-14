@@ -35,19 +35,23 @@ public sealed class CoreService
 
     public async Task StartAsync(AppSettings settings, VmessProfile profile)
     {
-        Stop(settings);
-        _httpPort = settings.HttpPort;
-        _currentAccessLogPath = DiagnosticLogService.CreateCoreAccessLogPath();
-        File.WriteAllText(ConfigPath, CoreConfigBuilder.Build(
-            settings,
-            profile,
-            _currentAccessLogPath,
-            DiagnosticLogService.CoreErrorLogPath));
+        var process = await Task.Run(() =>
+        {
+            Stop(settings);
+            _httpPort = settings.HttpPort;
+            _currentAccessLogPath = DiagnosticLogService.CreateCoreAccessLogPath();
+            File.WriteAllText(ConfigPath, CoreConfigBuilder.Build(
+                settings,
+                profile,
+                _currentAccessLogPath,
+                DiagnosticLogService.CoreErrorLogPath));
 
-        var process = CoreRunner.Start(settings.CoreExecutable, ConfigPath);
-        process.EnableRaisingEvents = true;
-        process.Exited += OnProcessExited;
-        _process = process;
+            var startedProcess = CoreRunner.Start(settings.CoreExecutable, ConfigPath);
+            startedProcess.EnableRaisingEvents = true;
+            startedProcess.Exited += OnProcessExited;
+            _process = startedProcess;
+            return startedProcess;
+        });
 
         try
         {

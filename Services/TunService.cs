@@ -180,21 +180,7 @@ public static class TunService
             {
                 level = "warn"
             },
-            dns = new
-            {
-                servers = new object[]
-                {
-                    new
-                    {
-                        type = "udp",
-                        tag = "local-dns",
-                        server = "223.5.5.5",
-                        server_port = 53
-                    }
-                },
-                final = "local-dns",
-                strategy = "prefer_ipv4"
-            },
+            dns = BuildDnsConfig(settings),
             inbounds = new object[]
             {
                 new
@@ -229,7 +215,7 @@ public static class TunService
             route = new
             {
                 auto_detect_interface = true,
-                default_domain_resolver = "local-dns",
+                default_domain_resolver = "domestic-dns",
                 final = "proxy",
                 rules = new object[]
                 {
@@ -259,6 +245,51 @@ public static class TunService
         };
 
         return JsonSerializer.Serialize(config, new JsonSerializerOptions { WriteIndented = true });
+    }
+
+    private static object BuildDnsConfig(AppSettings settings)
+    {
+        var domestic = new Dictionary<string, object>
+        {
+            ["type"] = "udp", ["tag"] = "domestic-dns",
+            ["server"] = settings.DomesticDnsServer, ["server_port"] = 53,
+            ["detour"] = "direct"
+        };
+        var proxy = new Dictionary<string, object>
+        {
+            ["tag"] = "proxy-dns", ["detour"] = "proxy"
+        };
+        if (settings.DnsOverHttpsEnabled)
+        {
+            proxy["type"] = "https";
+            proxy["server"] = settings.ProxyDnsServer;
+            proxy["path"] = "/dns-query";
+            proxy["tls"] = new Dictionary<string, object>
+            {
+                ["enabled"] = true,
+                ["server_name"] = settings.ProxyDnsServer == "1.1.1.1" ? "cloudflare-dns.com" : settings.ProxyDnsServer
+            };
+        }
+        else
+        {
+            proxy["type"] = "udp";
+            proxy["server"] = settings.ProxyDnsServer;
+            proxy["server_port"] = 53;
+        }
+
+        return new
+        {
+            servers = new object[] { domestic, proxy },
+            rules = new object[] { new { domain_suffix = new[] { ".cn" }, server = "domestic-dns" } },
+            final = "proxy-dns",
+            strategy = settings.IpPreferenceMode switch
+            {
+                "IPv4Only" => "ipv4_only",
+                "PreferIPv6" => settings.Ipv6AutoFallbackEnabled ? "prefer_ipv6" : "ipv6_only",
+                "Auto" => "prefer_ipv4",
+                _ => "prefer_ipv4"
+            }
+        };
     }
 
     private static string[] BuildRouteExclusions(string nodeAddress)

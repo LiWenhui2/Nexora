@@ -7,6 +7,7 @@ public sealed class AppUpdateFile
     public long FileSize { get; set; }
     public string Sha256 { get; set; } = "";
     public string DownloadUrl { get; set; } = "";
+    public string SignatureThumbprint { get; set; } = "";
 }
 
 public sealed class AppUpdateRelease

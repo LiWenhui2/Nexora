@@ -33,8 +33,18 @@ public sealed class SettingsStore
                 throw new JsonException("Settings file is empty or starts with an invalid value.");
             }
 
+            using var document = JsonDocument.Parse(json);
+            var sourceVersion = document.RootElement.TryGetProperty(nameof(AppSettings.ConfigurationVersion), out var versionElement) &&
+                                versionElement.TryGetInt32(out var parsedVersion)
+                ? parsedVersion
+                : 1;
             var settings = JsonSerializer.Deserialize<AppSettings>(json, JsonOptions()) ?? new AppSettings();
+            settings.ConfigurationVersion = sourceVersion;
             var beforeMigration = JsonSerializer.Serialize(settings, JsonOptions());
+            if (sourceVersion < AppSettings.CurrentConfigurationVersion)
+            {
+                ConfigurationBackupService.Create(settings, "before-migration");
+            }
             var migrated = MigrateSettings(settings);
             var afterMigration = JsonSerializer.Serialize(migrated, JsonOptions());
             if (!string.Equals(beforeMigration, afterMigration, StringComparison.Ordinal))
@@ -50,6 +60,14 @@ public sealed class SettingsStore
             DiagnosticLogService.Warning(
                 $"Settings file could not be loaded and was reset. Backup: {backupPath ?? "unavailable"}");
             DiagnosticLogService.Error("Failed to load settings.", ex);
+
+            var recovered = ConfigurationBackupService.TryRestoreLatest();
+            if (recovered is not null)
+            {
+                recovered = MigrateSettings(recovered);
+                Save(recovered);
+                return recovered;
+            }
 
             var settings = new AppSettings();
             Save(settings);
@@ -97,6 +115,7 @@ public sealed class SettingsStore
 
     private static AppSettings MigrateSettings(AppSettings settings)
     {
+        settings.ConfigurationVersion = AppSettings.CurrentConfigurationVersion;
         var normalizedApi = ApiDefaults.NormalizeAuthApiBaseUrl(settings.AuthApiBaseUrl);
         if (!string.Equals(settings.AuthApiBaseUrl, normalizedApi, StringComparison.Ordinal))
         {
@@ -124,7 +143,10 @@ public sealed class SettingsStore
     {
         settings.CustomRouting ??= new CustomRoutingSettings();
         settings.CustomRouting.DirectDomains.RemoveAll(IsBuiltInMicrosoftStoreDomainRule);
+        settings.CustomRouting.ProxyProcesses.RemoveAll(IsBuiltInMicrosoftStoreProcessRule);
         settings.CustomRouting.DirectProcesses.RemoveAll(IsBuiltInMicrosoftStoreProcessRule);
+        settings.CustomRouting.BypassChinaProcesses.RemoveAll(IsBuiltInMicrosoftStoreProcessRule);
+        settings.CustomRouting.BlockProcesses.RemoveAll(IsBuiltInMicrosoftStoreProcessRule);
     }
 
     private static bool IsBuiltInMicrosoftStoreDomainRule(string value) =>

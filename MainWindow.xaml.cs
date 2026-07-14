@@ -5,6 +5,7 @@ using System.Globalization;
 using System.IO;
 using System.Net;
 using System.Net.Http;
+using System.Net.NetworkInformation;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -44,19 +45,35 @@ public partial class MainWindow : Window
             typeof(MainWindow),
             new PropertyMetadata(300d));
 
+    public static readonly DependencyProperty SettingsToggleCardWidthProperty =
+        DependencyProperty.Register(
+            nameof(SettingsToggleCardWidth),
+            typeof(double),
+            typeof(MainWindow),
+            new PropertyMetadata(240d));
+
     public double WebsiteTestCardWidth
     {
         get => (double)GetValue(WebsiteTestCardWidthProperty);
         set => SetValue(WebsiteTestCardWidthProperty, value);
     }
 
+    public double SettingsToggleCardWidth
+    {
+        get => (double)GetValue(SettingsToggleCardWidthProperty);
+        set => SetValue(SettingsToggleCardWidthProperty, value);
+    }
+
     private const double AboutTwoColumnBreakpoint = 980;
     private const double WebsiteTestCardMinWidth = 220;
     private const double WebsiteTestCardGap = 12;
     private const double WebsiteTestCardAbsoluteMinWidth = 180;
+    private const double SettingsToggleCardMinWidth = 240;
+    private const double SettingsToggleCardGap = 12;
     private static readonly DateTime AppStartTime = DateTime.Now;
     private const string ProjectUrl = "https://github.com/LiWenhui2/NaiwaProxy";
     private const string DefaultChatBackgroundResource = "assets/chat/chat-bg-default.png";
+    private const string DarkChatBackgroundResource = "assets/chat/chat-bg-dark.png";
     private readonly SettingsStore _settingsStore = new();
     private readonly CoreService _coreService = new();
     private readonly AuthService _authService = new();
@@ -75,6 +92,7 @@ public partial class MainWindow : Window
     private ICollectionView? _profilesView;
     private AppSettings _settings = new();
     private CancellationTokenSource? _latencyTestCancellation;
+    private readonly SemaphoreSlim _protocolLatencyProbeGate = new(2, 2);
     private TrafficSnapshot? _lastTrafficSnapshot;
     private DateTime _lastTrafficSampleAt;
     private bool _isRefreshingTraffic;
@@ -89,6 +107,12 @@ public partial class MainWindow : Window
     private bool _suppressAutoDownloadNewVersionToggleEvent;
     private bool _suppressRunAtStartupSilentToggleEvent;
     private bool _suppressAllowLanAccessToggleEvent;
+    private bool _suppressOpenAiCodexOptimizationToggleEvent;
+    private bool _suppressUwpOptimizationToggleEvent;
+    private bool _suppressAutoRecoveryToggleEvent;
+    private bool _suppressAutoFailoverToggleEvent;
+    private bool _suppressThemeModeSelectionEvent;
+    private int _busyOperationDepth;
     private bool _startSilent;
     private bool _isUiReady;
     private bool _isExiting;
@@ -99,6 +123,29 @@ public partial class MainWindow : Window
     private CancellationTokenSource? _regionEnrichmentCancellation;
     private CancellationTokenSource? _websiteTestCancellation;
     private CancellationTokenSource? _openAiCodexPreWarmCts;
+    private readonly DispatcherTimer _openAiDesktopMonitorTimer = new() { Interval = TimeSpan.FromSeconds(1) };
+    private readonly HashSet<int> _knownChatGptProcessIds = [];
+    private CancellationTokenSource? _openAiDesktopRecoveryCts;
+    private bool _chatGptWindowWasVisible;
+    private bool _chatGptWindowWasForeground;
+    private DateTime _chatGptLastForegroundAtUtc = DateTime.MinValue;
+    private bool _openAiDesktopRecoveryInProgress;
+    private DateTime _lastOpenAiDesktopRecoveryAtUtc = DateTime.MinValue;
+    private readonly DispatcherTimer _runtimeHealthTimer = new() { Interval = TimeSpan.FromSeconds(15) };
+    private readonly DispatcherTimer _runtimeRecoveryTimer = new() { Interval = TimeSpan.FromSeconds(3) };
+    private bool _proxyDesiredRunning;
+    private bool _runtimeHealthCheckInProgress;
+    private bool _runtimeRecoveryInProgress;
+    private int _consecutiveRuntimeFailures;
+    private int _runtimeRecoveryAttempts;
+    private int _consecutiveNodeFailures;
+    private DateTime _nextRuntimeRecoveryAtUtc = DateTime.MinValue;
+    private DateTime _lastNodeHealthCheckAtUtc = DateTime.MinValue;
+    private DateTime _ignoreNetworkChangesUntilUtc = DateTime.MinValue;
+    private string _pendingRecoveryReason = "";
+    private RuntimeHealthSnapshot? _lastRuntimeHealth;
+    private DiagnosticResult? _lastDiagnosticResult;
+    private CancellationTokenSource? _diagnosticCancellation;
     private readonly DispatcherTimer _registerCodeCooldownTimer = new() { Interval = TimeSpan.FromSeconds(1) };
     private readonly DispatcherTimer _forgotPasswordCodeCooldownTimer = new() { Interval = TimeSpan.FromSeconds(1) };
     private readonly DispatcherTimer _authRefreshTimer = new() { Interval = TimeSpan.FromMinutes(30) };
@@ -144,6 +191,7 @@ public partial class MainWindow : Window
                 : _authService.ApiBaseUrl);
         DiagnosticLogService.Startup("MainWindow constructor begin");
         InitializeComponent();
+        SourceInitialized += MainWindow_SourceInitialized;
         ApplyInitialWindowBounds();
         RefreshLogView();
         LoadBrandIcon();
@@ -172,6 +220,9 @@ public partial class MainWindow : Window
         _authRefreshTimer.Tick += AuthRefreshTimer_Tick;
         _aboutRuntimeTimer.Tick += AboutRuntimeTimer_Tick;
         _subscriptionGlobalRefreshTimer.Tick += SubscriptionGlobalRefreshTimer_Tick;
+        _openAiDesktopMonitorTimer.Tick += OpenAiDesktopMonitorTimer_Tick;
+        _runtimeHealthTimer.Tick += RuntimeHealthTimer_Tick;
+        _runtimeRecoveryTimer.Tick += RuntimeRecoveryTimer_Tick;
         _profilesView = CollectionViewSource.GetDefaultView(_profiles);
         _profilesView.Filter = FilterProfile;
         _profilesView.GroupDescriptions.Add(new PropertyGroupDescription(nameof(VmessProfile.SubscriptionDisplay)));
@@ -185,8 +236,14 @@ public partial class MainWindow : Window
         DiagnosticLogService.EntryAdded += DiagnosticLogService_EntryAdded;
         DiagnosticLogService.Startup("MainWindow constructor complete");
         Closing += MainWindow_Closing;
+        SystemEvents.UserPreferenceChanged += SystemEvents_UserPreferenceChanged;
+        SystemEvents.PowerModeChanged += SystemEvents_PowerModeChanged;
+        NetworkChange.NetworkAddressChanged += NetworkChange_NetworkAddressChanged;
         Closed += (_, _) =>
         {
+            SystemEvents.UserPreferenceChanged -= SystemEvents_UserPreferenceChanged;
+            SystemEvents.PowerModeChanged -= SystemEvents_PowerModeChanged;
+            NetworkChange.NetworkAddressChanged -= NetworkChange_NetworkAddressChanged;
             DiagnosticLogService.EntryAdded -= DiagnosticLogService_EntryAdded;
             _authService.AuthStateChanged -= AuthService_AuthStateChanged;
             _backendWebSocket.ChatMessageReceived -= BackendWebSocket_ChatMessageReceived;
@@ -221,6 +278,14 @@ public partial class MainWindow : Window
             _aboutRuntimeTimer.Tick -= AboutRuntimeTimer_Tick;
             _subscriptionGlobalRefreshTimer.Stop();
             _subscriptionGlobalRefreshTimer.Tick -= SubscriptionGlobalRefreshTimer_Tick;
+            StopOpenAiDesktopMonitor();
+            _openAiDesktopMonitorTimer.Tick -= OpenAiDesktopMonitorTimer_Tick;
+            _runtimeHealthTimer.Stop();
+            _runtimeHealthTimer.Tick -= RuntimeHealthTimer_Tick;
+            _runtimeRecoveryTimer.Stop();
+            _runtimeRecoveryTimer.Tick -= RuntimeRecoveryTimer_Tick;
+            _diagnosticCancellation?.Cancel();
+            _diagnosticCancellation?.Dispose();
             foreach (var timer in _subscriptionRefreshTimers.Values)
             {
                 timer.Stop();
@@ -236,6 +301,7 @@ public partial class MainWindow : Window
             _websiteTestCancellation?.Dispose();
             _trafficTimer.Stop();
             _settingsStore.Save(_settings);
+            OpenAiNetworkLayerService.Stop();
             TunService.Stop();
             _coreService.Stop(_settings);
             ApplySystemProxyMode("Clear", save: false);
@@ -300,9 +366,48 @@ public partial class MainWindow : Window
             return;
         }
 
-        RunAtStartupSilentInfoIcon.Source = bitmap;
-        AllowLanAccessInfoIcon.Source = bitmap;
-        AutoDownloadUpdateInfoIcon.Source = bitmap;
+        foreach (var icon in new[]
+                 {
+                     RunAtStartupSilentInfoIcon,
+                     AllowLanAccessInfoIcon,
+                     AutoDownloadUpdateInfoIcon,
+                     OpenAiCodexOptimizationInfoIcon,
+                     AutoRecoveryInfoIcon,
+                     AutoFailoverInfoIcon,
+                     UwpOptimizationInfoIcon,
+                     RuntimeDiagnosticsInfoIcon,
+                     ConfigurationBackupInfoIcon,
+                     DnsSettingsInfoIcon
+                 })
+        {
+            icon.OpacityMask = new ImageBrush(bitmap) { Stretch = Stretch.Uniform };
+        }
+    }
+
+    private void SettingsPageScroll_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(() =>
+            UpdateSettingsToggleCardWidth(SettingsToggleWrapPanel.ActualWidth)));
+    }
+
+    private void SettingsToggleWrapPanel_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        UpdateSettingsToggleCardWidth(e.NewSize.Width);
+    }
+
+    private void UpdateSettingsToggleCardWidth(double availableWidth)
+    {
+        if (availableWidth <= 0)
+        {
+            return;
+        }
+
+        var columns = Math.Min(3, Math.Max(1, (int)Math.Floor(
+            (availableWidth + SettingsToggleCardGap) /
+            (SettingsToggleCardMinWidth + SettingsToggleCardGap))));
+        SettingsToggleCardWidth = Math.Max(
+            SettingsToggleCardMinWidth,
+            (availableWidth - SettingsToggleCardGap * columns) / columns);
     }
 
     private void LoadWindowIcon()
@@ -650,62 +755,110 @@ public partial class MainWindow : Window
     private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
     {
         Loaded -= MainWindow_Loaded;
-
-        ClearStaleLocalSystemProxyIfNeeded();
-
-        if (await _authService.TryRestoreSessionAsync())
+        if ((_settings.OpenAiCodexOptimizationEnabled || _settings.UwpOptimizationEnabled) &&
+            !TunService.IsAdministrator() &&
+            TryRelaunchForNetworkOptimization())
         {
+            return;
+        }
+
+        var hasCachedProfiles = _profiles.Count > 0;
+        var showStartupBusy = hasCachedProfiles || _authService.HasPersistedSession;
+        if (showStartupBusy)
+        {
+            ShowBusyOperation(
+                "正在启动 Nexora",
+                hasCachedProfiles ? "正在加载本地节点并自动打开代理。" : "正在恢复登录状态并获取节点，请稍候。");
+            await Dispatcher.Yield(DispatcherPriority.Render);
+        }
+
+        try
+        {
+            ClearStaleLocalSystemProxyIfNeeded();
+            StartSubscriptionGlobalAutoRefresh();
+
+            if (hasCachedProfiles)
+            {
+                ApplyActiveProfileSelection(autoSelectIfMissing: true, save: true);
+                RefreshProfilesView();
+                if (!_coreService.IsRunning)
+                {
+                    UpdateBusyOperation("正在启动 Nexora", "本地节点已准备完成，正在自动打开代理。");
+                    await StartProxyAsync();
+                    SyncProxyToggleFromCoreState();
+                }
+            }
+            else
+            {
+                await CompleteStartupOnlineSyncAsync(startProxyWhenReady: true);
+            }
+
+            if (_startSilent)
+            {
+                Hide();
+                ShowInTaskbar = false;
+                UpdateTrayStatus();
+            }
+        }
+        catch (Exception ex)
+        {
+            ShowError(ex);
+        }
+        finally
+        {
+            if (showStartupBusy)
+            {
+                HideBusyOperation();
+            }
+        }
+
+        if (hasCachedProfiles)
+        {
+            _ = CompleteStartupOnlineSyncAsync(startProxyWhenReady: false);
+        }
+    }
+
+    private async Task CompleteStartupOnlineSyncAsync(bool startProxyWhenReady)
+    {
+        try
+        {
+            if (!await _authService.TryRestoreSessionAsync())
+            {
+                return;
+            }
+
             StartAuthRefreshTimer();
             await _authService.RefreshProfileFromServerAsync();
             UpdateAuthSidebar();
             await SyncBackendWebSocketAsync();
             await CheckAppUpdateOnStartupAsync();
-            try
+            if (startProxyWhenReady)
             {
-                await ReloadCloudSubscriptionsAsync(manualRefresh: false);
-                RefreshProfilesView();
+                UpdateBusyOperation("正在启动 Nexora", "正在同步账号节点并检测可用性。");
             }
-            catch (Exception ex)
+
+            await ReloadCloudSubscriptionsAsync(manualRefresh: false);
+            RefreshProfilesView();
+
+            if (_profiles.Count == 0)
             {
-                DiagnosticLogService.Warning($"Startup cloud subscription sync failed: {ex.Message}");
-                ShowCloudSubscriptionFailureMessage($"云端自动更新失败：{ex.Message}");
+                return;
             }
-        }
 
-        StartSubscriptionGlobalAutoRefresh();
-
-        if (_profiles.Count > 0)
-        {
             await RunStartupLatencyTestsAsync();
             ApplyActiveProfileSelection(autoSelectIfMissing: true, save: true);
             RefreshProfilesView();
-        }
 
-        if (_startSilent)
-        {
-            Hide();
-            ShowInTaskbar = false;
-            UpdateTrayStatus();
-        }
-
-        if (_profiles.Count == 0)
-        {
-            return;
-        }
-
-        try
-        {
-            await Dispatcher.InvokeAsync(() => { }, System.Windows.Threading.DispatcherPriority.ContextIdle);
-
-            if (!_coreService.IsRunning)
+            if (startProxyWhenReady && !_coreService.IsRunning)
             {
+                UpdateBusyOperation("正在启动 Nexora", "节点已准备完成，正在自动打开代理。");
                 await StartProxyAsync();
                 SyncProxyToggleFromCoreState();
             }
         }
         catch (Exception ex)
         {
-            ShowError(ex);
+            DiagnosticLogService.Warning($"Startup online synchronization failed: {ex.Message}");
         }
     }
 
@@ -785,12 +938,17 @@ public partial class MainWindow : Window
         SyncRunAtStartupFromSettings();
         SyncAllowLanAccessFromSettings();
         SyncAutoDownloadUpdateFromSettings();
+        SyncReliabilitySettingsUi();
+        SyncUwpOptimizationUi();
+        SyncAdvancedSettingsUi();
         EnsureOpenAiCodexOptimizationApplied();
         ApplyStartupSettings(save: false);
         RestoreSubscriptionAutoRefreshTimers();
         ReconcileSubscriptionTrafficExhaustedState();
         ClearStaleLocalSystemProxyIfNeeded();
         RestoreDownloadedUpdateState();
+        try { ConfigurationBackupService.EnsureDailyBackup(_settings); }
+        catch (Exception ex) { DiagnosticLogService.Warning($"Failed to create daily configuration backup: {ex.Message}"); }
     }
 
     private void ClearStaleLocalSystemProxyIfNeeded()
@@ -802,6 +960,14 @@ public partial class MainWindow : Window
 
         if (!SystemProxyService.IsHttpProxyEnabled(_settings.HttpPort))
         {
+            return;
+        }
+
+        if (_settings.OpenAiCodexOptimizationEnabled &&
+            _settings.SystemProxyMode == "Auto" &&
+            _profiles.Count > 0)
+        {
+            DiagnosticLogService.Info("Kept the startup system proxy in place until the cached proxy core is ready.");
             return;
         }
 
@@ -1105,12 +1271,9 @@ public partial class MainWindow : Window
     private void EnsureOpenAiCodexOptimizationApplied()
     {
         var changed = false;
-        if (!_settings.OpenAiCodexOptimizationEnabled)
-        {
-            OpenAiCodexOptimizationService.Apply(_settings);
-            changed = true;
-        }
-        else if (OpenAiCodexOptimizationService.EnsureRulesMerged(_settings))
+        if (_settings.OpenAiCodexOptimizationEnabled &&
+            (OpenAiCodexOptimizationService.EnsureRulesMerged(_settings) |
+             OpenAiCodexOptimizationService.EnsureProxyEnvironment(_settings)))
         {
             changed = true;
         }
@@ -1125,12 +1288,69 @@ public partial class MainWindow : Window
 
     private void ApplyOpenAiCodexOptimizationUi()
     {
+        if (OpenAiCodexOptimizationToggle is not null)
+        {
+            _suppressOpenAiCodexOptimizationToggleEvent = true;
+            OpenAiCodexOptimizationToggle.IsChecked = _settings.OpenAiCodexOptimizationEnabled;
+            _suppressOpenAiCodexOptimizationToggleEvent = false;
+        }
+
+        if (OpenAiCodexOptimizationStatusText is not null)
+        {
+            OpenAiCodexOptimizationStatusText.Text = _settings.OpenAiCodexOptimizationEnabled
+                ? "已启用：Codex/ChatGPT 使用专用网络层优化"
+                : "已关闭：Codex/ChatGPT 跟随当前系统代理与路由设置";
+        }
+
         SelectRoutingCombo(_settings.RoutingMode);
         SelectSystemProxyCombo(_settings.SystemProxyMode);
         UpdateRoutingEditorVisibility();
     }
 
-    private void ScheduleOpenAiCodexPreWarmIfEnabled()
+    private async void OpenAiCodexOptimizationToggle_Changed(object sender, RoutedEventArgs e)
+    {
+        if (!_isUiReady || _suppressOpenAiCodexOptimizationToggleEvent)
+        {
+            return;
+        }
+
+        ShowBusyOperation("正在应用设置", "正在更新 ChatGPT Codex 优化配置并重启代理核心，请稍候。");
+        await Dispatcher.Yield(DispatcherPriority.Render);
+        try
+        {
+            var enableOptimization = OpenAiCodexOptimizationToggle.IsChecked == true;
+            await Task.Run(() =>
+            {
+                if (enableOptimization)
+                {
+                    OpenAiCodexOptimizationService.Apply(_settings);
+                }
+                else
+                {
+                    OpenAiCodexOptimizationService.Restore(_settings);
+                }
+
+                _settingsStore.Save(_settings);
+            });
+            ApplyOpenAiCodexOptimizationUi();
+
+            if (_coreService.IsRunning)
+            {
+                await RestartCoreAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            ApplyOpenAiCodexOptimizationUi();
+            ShowError(ex);
+        }
+        finally
+        {
+            HideBusyOperation();
+        }
+    }
+
+    private async Task CompleteOpenAiCodexOptimizationIfEnabledAsync()
     {
         if (!_settings.OpenAiCodexOptimizationEnabled || !_coreService.IsRunning)
         {
@@ -1143,20 +1363,183 @@ public partial class MainWindow : Window
         var token = _openAiCodexPreWarmCts.Token;
         var httpPort = _settings.HttpPort;
 
-        _ = Task.Run(async () =>
+        try
         {
-            try
+            await OpenAiCodexOptimizationService.CompleteProxyReadinessAsync(_settings, token);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex)
+        {
+            DiagnosticLogService.Warning($"ChatGPT/Codex proxy readiness failed: {ex.Message}");
+            if (_coreService.IsRunning && _settings.SystemProxyMode == "Auto")
             {
-                await OpenAiCodexOptimizationService.PreWarmAsync(httpPort, token);
+                SystemProxyService.RefreshHttpProxy(httpPort, _settings.UwpOptimizationEnabled);
             }
-            catch (OperationCanceledException)
+        }
+    }
+
+    private void StartOpenAiDesktopMonitor()
+    {
+        StopOpenAiDesktopMonitor();
+        if (!_settings.OpenAiCodexOptimizationEnabled || !_coreService.IsRunning)
+        {
+            return;
+        }
+
+        var state = CaptureChatGptProcessState();
+        _knownChatGptProcessIds.UnionWith(state.ProcessIds);
+        _chatGptWindowWasVisible = state.HasVisibleWindow;
+        _chatGptWindowWasForeground = state.HasForegroundWindow;
+        if (state.HasForegroundWindow)
+        {
+            _chatGptLastForegroundAtUtc = DateTime.UtcNow;
+        }
+        _openAiDesktopMonitorTimer.Start();
+        DiagnosticLogService.Info("ChatGPT desktop launch monitor started for Codex optimization.");
+    }
+
+    private void StopOpenAiDesktopMonitor()
+    {
+        _openAiDesktopMonitorTimer.Stop();
+        _openAiDesktopRecoveryCts?.Cancel();
+        _openAiDesktopRecoveryCts?.Dispose();
+        _openAiDesktopRecoveryCts = null;
+        _openAiCodexPreWarmCts?.Cancel();
+        _knownChatGptProcessIds.Clear();
+        _chatGptWindowWasVisible = false;
+        _chatGptWindowWasForeground = false;
+        _chatGptLastForegroundAtUtc = DateTime.MinValue;
+        _openAiDesktopRecoveryInProgress = false;
+    }
+
+    private void OpenAiDesktopMonitorTimer_Tick(object? sender, EventArgs e)
+    {
+        if (!_settings.OpenAiCodexOptimizationEnabled || !_coreService.IsRunning)
+        {
+            StopOpenAiDesktopMonitor();
+            return;
+        }
+
+        var state = CaptureChatGptProcessState();
+        var hasNewProcess = state.ProcessIds.Any(id => !_knownChatGptProcessIds.Contains(id));
+        var becameVisible = state.HasVisibleWindow && !_chatGptWindowWasVisible;
+        var becameForeground = state.HasForegroundWindow && !_chatGptWindowWasForeground;
+        var resumedAfterDormancy = becameForeground &&
+            DateTime.UtcNow - _chatGptLastForegroundAtUtc >= TimeSpan.FromSeconds(20);
+
+        _knownChatGptProcessIds.Clear();
+        _knownChatGptProcessIds.UnionWith(state.ProcessIds);
+        _chatGptWindowWasVisible = state.HasVisibleWindow;
+        _chatGptWindowWasForeground = state.HasForegroundWindow;
+        if (state.HasForegroundWindow)
+        {
+            _chatGptLastForegroundAtUtc = DateTime.UtcNow;
+        }
+
+        if ((!hasNewProcess && !becameVisible && !resumedAfterDormancy) || _openAiDesktopRecoveryInProgress)
+        {
+            return;
+        }
+
+        if (DateTime.UtcNow - _lastOpenAiDesktopRecoveryAtUtc < TimeSpan.FromSeconds(10))
+        {
+            return;
+        }
+
+        _lastOpenAiDesktopRecoveryAtUtc = DateTime.UtcNow;
+        _openAiDesktopRecoveryInProgress = true;
+        _openAiDesktopRecoveryCts?.Cancel();
+        _openAiDesktopRecoveryCts?.Dispose();
+        _openAiDesktopRecoveryCts = new CancellationTokenSource();
+        _ = RecoverOpenAiDesktopConnectionAsync(
+            coldStart: hasNewProcess,
+            _openAiDesktopRecoveryCts.Token);
+    }
+
+    private async Task RecoverOpenAiDesktopConnectionAsync(
+        bool coldStart,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            // The packaged desktop client creates its Chromium network service
+            // several seconds after the first ChatGPT process/window appears.
+            // Refreshing WinINET before that service exists is ignored and can
+            // also invalidate the bootstrap connections which are still being
+            // created.  The access log shows the first real ChatGPT requests
+            // consistently arriving about 7-8 seconds after process detection,
+            // so refresh only after that boundary.
+            await Task.Delay(
+                coldStart ? TimeSpan.FromSeconds(8) : TimeSpan.FromMilliseconds(350),
+                cancellationToken);
+            if (!_settings.OpenAiCodexOptimizationEnabled || !_coreService.IsRunning)
             {
+                return;
             }
-            catch (Exception ex)
+
+            await CoreRunner.WaitForPortAsync(_settings.HttpPort, 3000, cancellationToken);
+            await CoreRunner.WaitForPortAsync(_settings.SocksPort, 3000, cancellationToken);
+
+            // Startup already performed loopback exemption and endpoint
+            // prewarming. Repeating that full sequence here creates extra
+            // CONNECT tunnels while Chromium is bootstrapping. A single late
+            // proxy notification reproduces the useful network-state refresh
+            // without restarting the core or enabling full TUN mode.
+            SystemProxyService.RefreshHttpProxy(_settings.HttpPort, _settings.UwpOptimizationEnabled);
+            DiagnosticLogService.Info(
+                coldStart
+                    ? "ChatGPT desktop network service is ready; refreshed optimized proxy connectivity."
+                    : "ChatGPT desktop window returned to the foreground; refreshed optimized proxy connectivity immediately.");
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex)
+        {
+            DiagnosticLogService.Warning($"ChatGPT desktop connection recovery failed: {ex.Message}");
+            if (_coreService.IsRunning && _settings.SystemProxyMode == "Auto")
             {
-                DiagnosticLogService.Warning($"OpenAI/Codex prewarm task failed: {ex.Message}");
+                SystemProxyService.RefreshHttpProxy(_settings.HttpPort, _settings.UwpOptimizationEnabled);
             }
-        }, token);
+        }
+        finally
+        {
+            _openAiDesktopRecoveryInProgress = false;
+        }
+    }
+
+    private static (HashSet<int> ProcessIds, bool HasVisibleWindow, bool HasForegroundWindow) CaptureChatGptProcessState()
+    {
+        var processIds = new HashSet<int>();
+        var hasVisibleWindow = false;
+        foreach (var process in Process.GetProcessesByName("ChatGPT"))
+        {
+            using (process)
+            {
+                try
+                {
+                    processIds.Add(process.Id);
+                    var window = process.MainWindowHandle;
+                    hasVisibleWindow |= window != IntPtr.Zero && IsWindowVisible(window);
+                }
+                catch
+                {
+                    // A short-lived Chromium child can exit while it is sampled.
+                }
+            }
+        }
+
+        var foregroundWindow = GetForegroundWindow();
+        var hasForegroundWindow = false;
+        if (foregroundWindow != IntPtr.Zero)
+        {
+            _ = GetWindowThreadProcessId(foregroundWindow, out var foregroundProcessId);
+            hasForegroundWindow = processIds.Contains(unchecked((int)foregroundProcessId));
+        }
+
+        return (processIds, hasVisibleWindow, hasForegroundWindow);
     }
 
     private async void AllowLanAccessToggle_Changed(object sender, RoutedEventArgs e)
@@ -1166,19 +1549,25 @@ public partial class MainWindow : Window
             return;
         }
 
-        _settings.AllowLanAccess = AllowLanAccessToggle.IsChecked == true;
-        _settingsStore.Save(_settings);
-
-        if (_coreService.IsRunning)
+        ShowBusyOperation("正在应用设置", "正在更新局域网访问配置，请稍候。");
+        await Dispatcher.Yield(DispatcherPriority.Render);
+        try
         {
-            try
+            _settings.AllowLanAccess = AllowLanAccessToggle.IsChecked == true;
+            _settingsStore.Save(_settings);
+
+            if (_coreService.IsRunning)
             {
                 await RestartCoreAsync();
             }
-            catch (Exception ex)
-            {
-                ShowError(ex);
-            }
+        }
+        catch (Exception ex)
+        {
+            ShowError(ex);
+        }
+        finally
+        {
+            HideBusyOperation();
         }
     }
 
@@ -1717,10 +2106,124 @@ public partial class MainWindow : Window
 
     private void ApplyTheme()
     {
+        SystemThemeService.SetAppThemeMode(_settings.ThemeMode);
+        ApplyThemeModeResources(SystemThemeService.UseLightChrome);
         var accent = ThemeService.ParseAccentColor(_settings.ThemeAccentColor);
         ThemeService.Apply(accent);
         ThemeService.ApplyToResources(Resources, accent);
+        ApplyThemeAccentModeResources(accent, SystemThemeService.UseLightChrome);
         SyncThemeSettingsUi(accent);
+        ApplyGlassPanelResources();
+        ApplyGlassChrome();
+        ApplyThemeSurfaceMode();
+        ApplyInfoHintIconTheme(SystemThemeService.UseLightChrome);
+        ApplyWindowCaptionTheme();
+    }
+
+    private void ApplyThemeModeResources(bool light)
+    {
+        SetResourceBrushColor("BgBrush", light ? "#F4F6FA" : "#171923");
+        SetResourceBrushColor("PanelBrush", light ? "#FFFFFF" : "#282A36");
+        SetResourceBrushColor("Panel2Brush", light ? "#F8FAFC" : "#2A2D3B");
+        SetResourceBrushColor("Panel3Brush", light ? "#FFFFFF" : "#303342");
+        SetResourceBrushColor("LineBrush", light ? "#E2E8F0" : "#3B3F50");
+        SetResourceBrushColor("TextBrush", light ? "#0F172A" : "#F1F5F9");
+        SetResourceBrushColor("MutedBrush", light ? "#64748B" : "#94A3B8");
+        SetResourceBrushColor("AccentTextBrush", light ? "#334155" : "#DBEAFE");
+        SetResourceBrushColor("AccentLightBrush", light ? "#F1F5F9" : "#1E3A5F");
+        SetResourceBrushColor("AccentMediumBrush", light ? "#E2E8F0" : "#27476D");
+        SetResourceBrushColor("AccentStrongBrush", light ? "#CBD5E1" : "#315A87");
+        SetResourceBrushColor("AccentSoftBorderBrush", light ? "#E2E8F0" : "#334155");
+        SetResourceBrushColor("AccentNavBackgroundBrush", light ? "#F1F5F9" : "#1E293B");
+        SetResourceBrushColor("AccentPrimaryBorderBrush", light ? "#CBD5E1" : "#475569");
+        SetResourceBrushColor("AccentActiveNodeForegroundBrush", light ? "#334155" : "#DBEAFE");
+        SetResourceBrushColor("SideEmailForegroundBrush", light ? "#64748B" : "#FFFFFF");
+        SetResourceBrushColor("NodePagePanelBrush", light ? "#FFFFFF" : "#F2282A36");
+        SetResourceBrushColor("NodeTableBackgroundBrush", light ? "#FFFFFF" : "#E61F212B");
+        SetResourceBrushColor("NodeFilterBackgroundBrush", light ? "#FFFFFF" : "#343746");
+        SetResourceBrushColor("NodeGroupHeaderBrush", light ? "#F8FAFC" : "#30323E");
+        SetResourceBrushColor("NodeGridLineBrush", light ? "#E2E8F0" : "#3E404C");
+        SetResourceBrushColor("NodeTableTextBrush", light ? "#0F172A" : "#FFFFFF");
+    }
+
+    private void ApplyThemeAccentModeResources(Color accent, bool light)
+    {
+        if (light)
+        {
+            Resources["DarkButtonBackgroundBrush"] = new SolidColorBrush(Color.FromArgb(0xE6, 0xFF, 0xFF, 0xFF));
+            Resources["NavHoverBackgroundBrush"] = new SolidColorBrush(Color.FromRgb(0xF1, 0xF5, 0xF9));
+            Resources["NavActiveForegroundBrush"] = new SolidColorBrush(accent);
+            Resources["NodeSelectedRowBrush"] = new SolidColorBrush(Color.FromRgb(0xEF, 0xF6, 0xFF));
+            Resources["NodeActiveRowBrush"] = new SolidColorBrush(Color.FromRgb(0xDB, 0xEA, 0xFE));
+            Resources["NodeActiveSelectedRowBrush"] = new SolidColorBrush(Color.FromRgb(0xBF, 0xDB, 0xFE));
+            return;
+        }
+
+        Resources["DarkButtonBackgroundBrush"] = new SolidColorBrush(accent);
+        Resources["AccentGradientBrush"] = new SolidColorBrush(accent);
+        Resources["NavHoverBackgroundBrush"] = new SolidColorBrush(Color.FromRgb(0x3E, 0x40, 0x4C));
+        Resources["AccentNavBackgroundBrush"] = new SolidColorBrush(Color.FromArgb(0xB3, accent.R, accent.G, accent.B));
+        Resources["NavActiveForegroundBrush"] = new SolidColorBrush(Colors.White);
+        Resources["NodeSelectedRowBrush"] = new SolidColorBrush(Color.FromArgb(0x24, accent.R, accent.G, accent.B));
+        Resources["NodeActiveRowBrush"] = new SolidColorBrush(Color.FromArgb(0x38, accent.R, accent.G, accent.B));
+        Resources["NodeActiveSelectedRowBrush"] = new SolidColorBrush(Color.FromArgb(0x52, accent.R, accent.G, accent.B));
+    }
+
+    private void ApplyInfoHintIconTheme(bool light)
+    {
+        var fill = new SolidColorBrush(light ? Color.FromRgb(0x64, 0x74, 0x8B) : Colors.White);
+        foreach (var icon in new[]
+                 {
+                     RunAtStartupSilentInfoIcon,
+                     AllowLanAccessInfoIcon,
+                     AutoDownloadUpdateInfoIcon,
+                     OpenAiCodexOptimizationInfoIcon,
+                     AutoRecoveryInfoIcon,
+                     AutoFailoverInfoIcon,
+                     UwpOptimizationInfoIcon,
+                     RuntimeDiagnosticsInfoIcon,
+                     ConfigurationBackupInfoIcon,
+                     DnsSettingsInfoIcon
+                 })
+        {
+            if (icon is not null)
+            {
+                icon.Fill = fill;
+            }
+        }
+    }
+
+    private void MainWindow_SourceInitialized(object? sender, EventArgs e) => ApplyWindowCaptionTheme();
+
+    private void ApplyWindowCaptionTheme()
+    {
+        var hwnd = new WindowInteropHelper(this).Handle;
+        if (hwnd == IntPtr.Zero)
+        {
+            return;
+        }
+
+        var dark = !SystemThemeService.UseLightChrome;
+        var darkMode = dark ? 1 : 0;
+        _ = DwmSetWindowAttribute(hwnd, 20, ref darkMode, sizeof(int));
+
+        uint captionColor = dark ? 0x00000000u : 0xFFFFFFFFu;
+        uint textColor = dark ? 0x00FFFFFFu : 0xFFFFFFFFu;
+        _ = DwmSetWindowAttribute(hwnd, 35, ref captionColor, sizeof(uint));
+        _ = DwmSetWindowAttribute(hwnd, 36, ref textColor, sizeof(uint));
+    }
+
+    private void SetResourceBrushColor(string key, string color)
+    {
+        var parsed = (Color)System.Windows.Media.ColorConverter.ConvertFromString(color);
+        if (Resources[key] is SolidColorBrush brush && !brush.IsFrozen)
+        {
+            brush.Color = parsed;
+        }
+        else
+        {
+            Resources[key] = new SolidColorBrush(parsed);
+        }
     }
 
     private void SyncThemeSettingsUi(Color accent)
@@ -1732,6 +2235,54 @@ public partial class MainWindow : Window
 
         ThemeAccentPreview.Background = new SolidColorBrush(accent);
         ThemeAccentHexText.Text = ThemeService.FormatHex(accent);
+        if (ThemeLightRadio is not null)
+        {
+            _suppressThemeModeSelectionEvent = true;
+            ThemeLightRadio.IsChecked = string.Equals(_settings.ThemeMode, "Light", StringComparison.OrdinalIgnoreCase);
+            ThemeDarkRadio.IsChecked = string.Equals(_settings.ThemeMode, "Dark", StringComparison.OrdinalIgnoreCase);
+            ThemeSystemRadio.IsChecked = !ThemeLightRadio.IsChecked.Value && !ThemeDarkRadio.IsChecked.Value;
+            _suppressThemeModeSelectionEvent = false;
+        }
+    }
+
+    private void ThemeModeRadio_Checked(object sender, RoutedEventArgs e)
+    {
+        if (!_isUiReady || _suppressThemeModeSelectionEvent || sender is not System.Windows.Controls.RadioButton item)
+        {
+            return;
+        }
+
+        _settings.ThemeMode = item.Tag?.ToString() is "Light" or "Dark" ? item.Tag.ToString()! : "System";
+        _settingsStore.Save(_settings);
+        ApplyTheme();
+        ApplyThemeBackground();
+    }
+
+    private void ApplyThemeSurfaceMode()
+    {
+        if (AppThemeBackgroundImage is not null)
+        {
+            AppThemeBackgroundImage.Visibility = Visibility.Visible;
+        }
+
+        if (AppContentRoot is not null)
+        {
+            AppContentRoot.Background = System.Windows.Media.Brushes.Transparent;
+        }
+    }
+
+    private void SystemEvents_UserPreferenceChanged(object sender, UserPreferenceChangedEventArgs e)
+    {
+        if (!string.Equals(_settings.ThemeMode, "System", StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() =>
+        {
+            ApplyTheme();
+            ApplyThemeBackground();
+        }));
     }
 
     private void ThemeColorPickButton_Click(object sender, RoutedEventArgs e)
@@ -1783,7 +2334,10 @@ public partial class MainWindow : Window
             }
         }
 
-        bitmap ??= TryLoadAppBitmap(DefaultChatBackgroundResource);
+        var defaultBackgroundResource = SystemThemeService.UseLightChrome
+            ? DefaultChatBackgroundResource
+            : DarkChatBackgroundResource;
+        bitmap ??= TryLoadAppBitmap(defaultBackgroundResource);
 
         if (AppThemeBackgroundImage is not null)
         {
@@ -1798,6 +2352,7 @@ public partial class MainWindow : Window
 
         ApplyGlassPanelResources();
         ApplyGlassChrome();
+        ApplyThemeSurfaceMode();
         SyncThemeBackgroundSettingsUi(bitmap, isCustom);
     }
 
@@ -1819,7 +2374,7 @@ public partial class MainWindow : Window
 
     private void ApplyGlassChrome()
     {
-        var light = SystemThemeService.IsLightMode();
+        var light = SystemThemeService.UseLightChrome;
         if (SidebarBorder is not null)
         {
             SidebarBorder.Background = CreateSemiTransparentSidebarBrush(light);
@@ -1828,7 +2383,12 @@ public partial class MainWindow : Window
         if (MainHeaderBorder is not null)
         {
             MainHeaderBorder.Background = CreateFrozenBrush(
-                light ? Color.FromArgb(0xE0, 0xFF, 0xFF, 0xFF) : Color.FromArgb(0xE0, 0x25, 0x25, 0x26));
+                light ? Color.FromArgb(0xE0, 0xFF, 0xFF, 0xFF) : Color.FromRgb(0x20, 0x21, 0x2A));
+        }
+
+        if (SidebarBorder is not null)
+        {
+            SidebarBorder.BorderBrush = CreateFrozenBrush(light ? Color.FromRgb(0xE2, 0xE8, 0xF0) : Color.FromRgb(0x3B, 0x3F, 0x50));
         }
     }
 
@@ -1837,19 +2397,19 @@ public partial class MainWindow : Window
 
     private void ApplyGlassPanelResources()
     {
-        var light = SystemThemeService.IsLightMode();
+        var light = SystemThemeService.UseLightChrome;
         Resources["PanelGlassBrush"] = CreateFrozenBrush(
-            light ? Color.FromArgb(0xE0, 0xFF, 0xFF, 0xFF) : Color.FromArgb(0xE0, 0x25, 0x25, 0x26));
+            light ? Color.FromArgb(0xE0, 0xFF, 0xFF, 0xFF) : Color.FromRgb(0x24, 0x27, 0x35));
         Resources["Panel2GlassBrush"] = CreateFrozenBrush(
-            light ? Color.FromArgb(0xD2, 0xF8, 0xFA, 0xFC) : Color.FromArgb(0xD2, 0x2D, 0x2D, 0x30));
+            light ? Color.FromArgb(0xD2, 0xF8, 0xFA, 0xFC) : Color.FromRgb(0x2A, 0x2D, 0x3B));
         Resources["Panel3GlassBrush"] = CreateFrozenBrush(
-            light ? Color.FromArgb(0xE6, 0xFF, 0xFF, 0xFF) : Color.FromArgb(0xE6, 0x30, 0x30, 0x32));
+            light ? Color.FromArgb(0xE6, 0xFF, 0xFF, 0xFF) : Color.FromRgb(0x30, 0x33, 0x42));
         Resources["RowAltGlassBrush"] = CreateFrozenBrush(
-            light ? Color.FromArgb(0xB3, 0xFF, 0xFF, 0xFF) : Color.FromArgb(0xB3, 0x25, 0x25, 0x26));
+            light ? Color.FromArgb(0xB3, 0xFF, 0xFF, 0xFF) : Color.FromRgb(0x27, 0x2A, 0x38));
         Resources["RowHoverGlassBrush"] = CreateFrozenBrush(
-            light ? Color.FromArgb(0xCC, 0xF8, 0xFA, 0xFC) : Color.FromArgb(0xCC, 0x3A, 0x3A, 0x3C));
+            light ? Color.FromArgb(0xCC, 0xF8, 0xFA, 0xFC) : Color.FromRgb(0x35, 0x39, 0x49));
         Resources["ChatPanelGlassBrush"] = CreateFrozenBrush(
-            light ? Color.FromArgb(0x73, 0xFF, 0xFF, 0xFF) : Color.FromArgb(0x73, 0x25, 0x25, 0x28));
+            light ? Color.FromArgb(0x73, 0xFF, 0xFF, 0xFF) : Color.FromRgb(0x24, 0x27, 0x35));
         Resources["ChatBubbleAdminBrush"] = CreateFrozenBrush(
             light ? Color.FromArgb(0x99, 0xEF, 0xF6, 0xFF) : Color.FromArgb(0x99, 0x1E, 0x3A, 0x5F));
         Resources["ChatBubbleUserBrush"] = CreateFrozenBrush(
@@ -1870,8 +2430,8 @@ public partial class MainWindow : Window
         }
         else
         {
-            brush.GradientStops.Add(new GradientStop(Color.FromArgb(0xBF, 0x25, 0x25, 0x26), 0));
-            brush.GradientStops.Add(new GradientStop(Color.FromArgb(0xBF, 0x2D, 0x2D, 0x30), 1));
+            brush.GradientStops.Add(new GradientStop(Color.FromRgb(0x2A, 0x2D, 0x3B), 0));
+            brush.GradientStops.Add(new GradientStop(Color.FromRgb(0x26, 0x29, 0x37), 1));
         }
 
         brush.Freeze();
@@ -2723,13 +3283,23 @@ public partial class MainWindow : Window
             LoginPasswordBox.Clear();
             ShowAuthMessage(LoginMessageText, result.Message, isSuccess: true);
             CloseAuthDialog();
-            if (await ReloadCloudSubscriptionsAsync(manualRefresh: false))
+            ShowBusyOperation("正在初始化代理", "正在获取账号节点并进行测速，请不要关闭软件。");
+            await Dispatcher.Yield(DispatcherPriority.Render);
+            try
             {
-                await TryAutoStartProxyAfterLoginAsync();
-            }
+                if (await ReloadCloudSubscriptionsAsync(manualRefresh: false))
+                {
+                    UpdateBusyOperation("正在初始化代理", "节点已获取，正在选择可用节点并自动打开代理。");
+                    await TryAutoStartProxyAfterLoginAsync();
+                }
 
-            await CheckAppUpdateOnStartupAsync();
-            ShowNodePage();
+                await CheckAppUpdateOnStartupAsync();
+                ShowNodePage();
+            }
+            finally
+            {
+                HideBusyOperation();
+            }
         }
         finally
         {
@@ -3577,13 +4147,498 @@ public partial class MainWindow : Window
     {
         Dispatcher.Invoke(() =>
         {
+            OpenAiNetworkLayerService.Stop();
+            TunService.Stop();
             StopTrafficMonitor();
-            _suppressProxyToggleEvent = true;
-            ProxyToggle.IsChecked = false;
-            _suppressProxyToggleEvent = false;
+            if (!_proxyDesiredRunning || !_settings.AutoRecoveryEnabled)
+            {
+                _suppressProxyToggleEvent = true;
+                ProxyToggle.IsChecked = false;
+                _suppressProxyToggleEvent = false;
+            }
             UpdateSidebarStatus();
             DiagnosticLogService.Warning("Core process exited unexpectedly.");
+            ScheduleRuntimeRecovery("代理核心异常退出", TimeSpan.FromSeconds(2));
         });
+    }
+
+    private void SyncReliabilitySettingsUi()
+    {
+        if (AutoRecoveryToggle is null || AutoFailoverToggle is null)
+        {
+            return;
+        }
+
+        _suppressAutoRecoveryToggleEvent = true;
+        _suppressAutoFailoverToggleEvent = true;
+        AutoRecoveryToggle.IsChecked = _settings.AutoRecoveryEnabled;
+        AutoFailoverToggle.IsChecked = _settings.AutoFailoverEnabled;
+        _suppressAutoRecoveryToggleEvent = false;
+        _suppressAutoFailoverToggleEvent = false;
+    }
+
+    private void SyncUwpOptimizationUi()
+    {
+        if (UwpOptimizationToggle is null)
+        {
+            return;
+        }
+
+        _suppressUwpOptimizationToggleEvent = true;
+        UwpOptimizationToggle.IsChecked = _settings.UwpOptimizationEnabled;
+        _suppressUwpOptimizationToggleEvent = false;
+    }
+
+    private async void UwpOptimizationToggle_Changed(object sender, RoutedEventArgs e)
+    {
+        if (!_isUiReady || _suppressUwpOptimizationToggleEvent)
+        {
+            return;
+        }
+
+        var enabled = UwpOptimizationToggle.IsChecked == true;
+        ShowBusyOperation(
+            enabled ? "正在启用 UWP 应用优化" : "正在关闭 UWP 应用优化",
+            "正在更新常见微软 AppContainer 应用的本地回环权限，请稍候。");
+        await Dispatcher.Yield(DispatcherPriority.Render);
+        try
+        {
+            await SystemProxyService.ConfigureUwpLoopbackExemptionsAsync(enabled);
+            _settings.UwpOptimizationEnabled = enabled;
+            _settingsStore.Save(_settings);
+            ApplySystemProxyMode(_settings.SystemProxyMode, save: false);
+        }
+        catch (Exception ex)
+        {
+            DiagnosticLogService.Error("Failed to update UWP loopback optimization.", ex);
+            SyncUwpOptimizationUi();
+            ShowError(ex);
+        }
+        finally
+        {
+            HideBusyOperation();
+        }
+    }
+
+    private void SyncAdvancedSettingsUi()
+    {
+        var backups = ConfigurationBackupService.ListBackups();
+        ConfigurationBackupStatusText.Text = backups.Count == 0
+            ? "暂无备份；自动保留最近 5 个"
+            : $"已有 {backups.Count} 个备份 · 最近 {File.GetLastWriteTime(backups[0]):yyyy-MM-dd HH:mm}";
+        ConfigurationBackupInfoIcon.ToolTip = backups.Count == 0
+            ? "暂无备份。可手动备份节点、订阅、路由规则和应用设置，自动备份最多保留最近 5 个。"
+            : $"{ConfigurationBackupStatusText.Text}。备份包含节点、订阅、路由规则和应用设置。";
+        var mode = _settings.IpPreferenceMode switch
+        {
+            "Auto" => "自动",
+            "IPv4Only" => "仅 IPv4",
+            "PreferIPv6" => "IPv6 优先",
+            _ => "IPv4 优先"
+        };
+        DnsSettingsSummaryText.Text = $"{mode} · DoH{(_settings.DnsOverHttpsEnabled ? "开启" : "关闭")}";
+        DnsSettingsInfoIcon.ToolTip = $"当前设置：{DnsSettingsSummaryText.Text}，IPv6 自动回退{(_settings.Ipv6AutoFallbackEnabled ? "开启" : "关闭")}。点击右侧设置按钮可调整并运行 DNS 泄漏测试。";
+    }
+
+    private void ConfigurationBackupSettingsButton_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new ConfigurationBackupDialog(this, _settings, _settingsStore, () => _isExiting = true);
+        dialog.ShowDialog();
+        SyncAdvancedSettingsUi();
+    }
+
+    private async void DnsSettingsButton_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new DnsSettingsDialog(this, _settings, _settingsStore);
+        if (dialog.ShowDialog() == true)
+        {
+            SyncAdvancedSettingsUi();
+            if (_coreService.IsRunning)
+            {
+                try { await RestartCoreAsync(); }
+                catch (Exception ex) { ShowError(ex); }
+            }
+        }
+    }
+
+    private void AutoRecoveryToggle_Changed(object sender, RoutedEventArgs e)
+    {
+        if (!_isUiReady || _suppressAutoRecoveryToggleEvent)
+        {
+            return;
+        }
+
+        _settings.AutoRecoveryEnabled = AutoRecoveryToggle.IsChecked == true;
+        if (_settings.AutoRecoveryEnabled)
+        {
+            _runtimeRecoveryAttempts = 0;
+            _consecutiveRuntimeFailures = 0;
+        }
+        _settingsStore.Save(_settings);
+        if (_settings.AutoRecoveryEnabled && _proxyDesiredRunning)
+        {
+            _runtimeHealthTimer.Start();
+        }
+        else
+        {
+            _runtimeRecoveryTimer.Stop();
+        }
+    }
+
+    private void AutoFailoverToggle_Changed(object sender, RoutedEventArgs e)
+    {
+        if (!_isUiReady || _suppressAutoFailoverToggleEvent)
+        {
+            return;
+        }
+
+        _settings.AutoFailoverEnabled = AutoFailoverToggle.IsChecked == true;
+        _settingsStore.Save(_settings);
+        _consecutiveNodeFailures = 0;
+    }
+
+    private async void RuntimeHealthTimer_Tick(object? sender, EventArgs e)
+    {
+        if (_runtimeHealthCheckInProgress || _runtimeRecoveryInProgress || !_proxyDesiredRunning)
+        {
+            return;
+        }
+
+        _runtimeHealthCheckInProgress = true;
+        try
+        {
+            var snapshot = await RuntimeHealthService.CheckAsync(
+                _settings,
+                _coreService.IsRunning,
+                _proxyDesiredRunning);
+            _lastRuntimeHealth = snapshot;
+            UpdateRuntimeHealthUi(snapshot);
+
+            if (snapshot.IsHealthy)
+            {
+                _consecutiveRuntimeFailures = 0;
+                _runtimeRecoveryAttempts = 0;
+            }
+            else
+            {
+                _consecutiveRuntimeFailures++;
+                DiagnosticLogService.Warning(
+                    $"Runtime health check failed ({_consecutiveRuntimeFailures}/2): {snapshot.Summary}");
+                if (_consecutiveRuntimeFailures >= 2)
+                {
+                    ScheduleRuntimeRecovery(snapshot.Summary, TimeSpan.FromSeconds(2));
+                }
+            }
+
+            if (snapshot.CoreRunning && snapshot.PortsReady && snapshot.NetworkAvailable &&
+                _settings.AutoFailoverEnabled &&
+                DateTime.UtcNow - _lastNodeHealthCheckAtUtc >= TimeSpan.FromMinutes(1))
+            {
+                _lastNodeHealthCheckAtUtc = DateTime.UtcNow;
+                await CheckActiveNodeForFailoverAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            DiagnosticLogService.Warning($"Runtime health check error: {ex.Message}");
+        }
+        finally
+        {
+            _runtimeHealthCheckInProgress = false;
+        }
+    }
+
+    private void ScheduleRuntimeRecovery(string reason, TimeSpan delay)
+    {
+        if (!_proxyDesiredRunning || !_settings.AutoRecoveryEnabled || _isExiting)
+        {
+            return;
+        }
+
+        _pendingRecoveryReason = reason;
+        var now = DateTime.UtcNow;
+        var due = now + delay;
+        if (_nextRuntimeRecoveryAtUtc > now && _nextRuntimeRecoveryAtUtc <= due && _runtimeRecoveryTimer.IsEnabled)
+        {
+            return;
+        }
+
+        _nextRuntimeRecoveryAtUtc = due;
+        _runtimeRecoveryTimer.Stop();
+        _runtimeRecoveryTimer.Interval = delay < TimeSpan.FromMilliseconds(250)
+            ? TimeSpan.FromMilliseconds(250)
+            : delay;
+        _runtimeRecoveryTimer.Start();
+        DiagnosticLogService.Info($"Runtime recovery scheduled in {_runtimeRecoveryTimer.Interval.TotalSeconds:0.#}s: {reason}");
+    }
+
+    private async void RuntimeRecoveryTimer_Tick(object? sender, EventArgs e)
+    {
+        _runtimeRecoveryTimer.Stop();
+        if (_runtimeRecoveryInProgress || !_proxyDesiredRunning || !_settings.AutoRecoveryEnabled)
+        {
+            return;
+        }
+
+        if (!NetworkInterface.GetIsNetworkAvailable())
+        {
+            ScheduleRuntimeRecovery("等待系统网络恢复", TimeSpan.FromSeconds(10));
+            return;
+        }
+
+        if (_runtimeRecoveryAttempts >= 5)
+        {
+            _runtimeHealthTimer.Stop();
+            DiagnosticLogService.Error("Runtime recovery stopped after five consecutive failures.");
+            UpdateRuntimeHealthMessage("自动恢复已停止：连续失败 5 次，请运行一键诊断。", false);
+            ShowTrayBalloon("Nexora 自动恢复失败", "连续恢复 5 次仍未成功，请打开设置运行一键诊断。", Forms.ToolTipIcon.Error);
+            return;
+        }
+
+        _runtimeRecoveryInProgress = true;
+        _runtimeRecoveryAttempts++;
+        try
+        {
+            DiagnosticLogService.Info(
+                $"Runtime recovery attempt {_runtimeRecoveryAttempts}/5 started: {_pendingRecoveryReason}");
+            _ignoreNetworkChangesUntilUtc = DateTime.UtcNow.AddSeconds(12);
+            StopOpenAiDesktopMonitor();
+            await Task.Run(OpenAiNetworkLayerService.Stop);
+            await Task.Run(TunService.Stop);
+            _coreService.Stop(_settings);
+            await StartProxyAsync(showError: false);
+
+            var snapshot = await RuntimeHealthService.CheckAsync(
+                _settings,
+                _coreService.IsRunning,
+                _proxyDesiredRunning);
+            _lastRuntimeHealth = snapshot;
+            UpdateRuntimeHealthUi(snapshot);
+            if (snapshot.IsHealthy)
+            {
+                _runtimeRecoveryAttempts = 0;
+                _consecutiveRuntimeFailures = 0;
+                DiagnosticLogService.Info("Runtime recovery completed successfully.");
+                ShowTrayBalloon("Nexora 已恢复", "代理核心与网络配置已经自动恢复。", Forms.ToolTipIcon.Info);
+            }
+            else
+            {
+                throw new InvalidOperationException(snapshot.Summary);
+            }
+        }
+        catch (Exception ex)
+        {
+            DiagnosticLogService.Error("Runtime recovery attempt failed.", ex);
+            var delays = new[] { 5, 15, 30, 60, 120 };
+            var seconds = delays[Math.Min(_runtimeRecoveryAttempts - 1, delays.Length - 1)];
+            ScheduleRuntimeRecovery($"第 {_runtimeRecoveryAttempts} 次恢复失败：{ex.Message}", TimeSpan.FromSeconds(seconds));
+        }
+        finally
+        {
+            _runtimeRecoveryInProgress = false;
+        }
+    }
+
+    private async Task CheckActiveNodeForFailoverAsync()
+    {
+        var result = await WebsiteConnectivityTestService.TestAsync(
+            "https://www.gstatic.com/generate_204",
+            _settings.HttpPort,
+            timeoutMs: 8000);
+        if (result.Success)
+        {
+            _consecutiveNodeFailures = 0;
+            return;
+        }
+
+        _consecutiveNodeFailures++;
+        DiagnosticLogService.Warning(
+            $"Active node health check failed ({_consecutiveNodeFailures}/3): {result.ErrorMessage}");
+        if (_consecutiveNodeFailures >= 3)
+        {
+            await TryAutoFailoverAsync();
+        }
+    }
+
+    private async Task TryAutoFailoverAsync()
+    {
+        if (_runtimeRecoveryInProgress || !_settings.AutoFailoverEnabled || _profiles.Count < 2)
+        {
+            return;
+        }
+
+        var current = GetCurrentProfileOrNull();
+        var candidates = _profiles
+            .Where(profile => profile.Id != current?.Id && !profile.IsExpired)
+            .OrderByDescending(profile =>
+                current is not null &&
+                string.Equals(profile.SubscriptionDisplay, current.SubscriptionDisplay, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        if (candidates.Count == 0)
+        {
+            return;
+        }
+
+        var measurements = await Task.WhenAll(candidates.Select(async profile => new
+        {
+            Profile = profile,
+            Latency = await LatencyTestService.MeasureTcpAsync(profile.Address, profile.Port, 4000)
+        }));
+        var replacement = measurements
+            .Where(item => item.Latency is not null)
+            .OrderByDescending(item =>
+                current is not null &&
+                string.Equals(item.Profile.SubscriptionDisplay, current.SubscriptionDisplay, StringComparison.OrdinalIgnoreCase))
+            .ThenBy(item => item.Latency)
+            .FirstOrDefault();
+        if (replacement is null)
+        {
+            DiagnosticLogService.Warning("Automatic failover found no reachable replacement node.");
+            return;
+        }
+
+        _runtimeRecoveryInProgress = true;
+        try
+        {
+            replacement.Profile.TryApplyLatencyResult(replacement.Latency);
+            SaveProfiles(replacement.Profile.Id);
+            NodePickerCombo.SelectedItem = replacement.Profile;
+            ProfilesGrid.SelectedItem = replacement.Profile;
+            UpdateNodeStatusBar(replacement.Profile);
+            await RestartCoreAsync();
+            _consecutiveNodeFailures = 0;
+            DiagnosticLogService.Info(
+                $"Automatic failover switched from {current?.DisplayName ?? "unknown"} to {replacement.Profile.DisplayName} ({replacement.Latency} ms).");
+            ShowTrayBalloon(
+                "Nexora 已自动切换节点",
+                $"当前节点已切换为 {replacement.Profile.DisplayName}（{replacement.Latency} ms）。",
+                Forms.ToolTipIcon.Info);
+        }
+        catch (Exception ex)
+        {
+            DiagnosticLogService.Error("Automatic node failover failed.", ex);
+            ScheduleRuntimeRecovery("自动切换节点失败", TimeSpan.FromSeconds(5));
+        }
+        finally
+        {
+            _runtimeRecoveryInProgress = false;
+        }
+    }
+
+    private void NetworkChange_NetworkAddressChanged(object? sender, EventArgs e)
+    {
+        Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() =>
+        {
+            if (DateTime.UtcNow < _ignoreNetworkChangesUntilUtc || !_proxyDesiredRunning)
+            {
+                return;
+            }
+
+            DiagnosticLogService.Info("Windows network address changed; scheduling proxy recovery.");
+            ScheduleRuntimeRecovery("检测到网络连接变化", TimeSpan.FromSeconds(5));
+        }));
+    }
+
+    private void SystemEvents_PowerModeChanged(object sender, PowerModeChangedEventArgs e)
+    {
+        if (e.Mode != PowerModes.Resume)
+        {
+            return;
+        }
+
+        Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() =>
+        {
+            DiagnosticLogService.Info("Windows resumed from sleep; scheduling proxy recovery.");
+            ScheduleRuntimeRecovery("电脑已从休眠恢复", TimeSpan.FromSeconds(5));
+        }));
+    }
+
+    private void UpdateRuntimeHealthUi(RuntimeHealthSnapshot snapshot)
+    {
+        UpdateRuntimeHealthMessage(snapshot.Summary, snapshot.IsHealthy);
+    }
+
+    private void UpdateRuntimeHealthMessage(string message, bool success)
+    {
+        if (RuntimeHealthStatusText is null)
+        {
+            return;
+        }
+
+        RuntimeHealthStatusText.Text = success ? "运行正常" : "需要处理";
+        RuntimeHealthStatusText.Foreground = success
+            ? (System.Windows.Media.Brush)FindResource("GreenBrush")
+            : (System.Windows.Media.Brush)FindResource("RedBrush");
+        RuntimeHealthStatusText.ToolTip = message;
+        RuntimeDiagnosticsInfoIcon.ToolTip = message;
+    }
+
+    private static bool IsChatGptProcessRunning()
+    {
+        var processes = Process.GetProcessesByName("ChatGPT");
+        try
+        {
+            return processes.Length > 0;
+        }
+        finally
+        {
+            foreach (var process in processes)
+            {
+                process.Dispose();
+            }
+        }
+    }
+
+    private void ShowTrayBalloon(string title, string message, Forms.ToolTipIcon icon)
+    {
+        if (_trayIcon is null)
+        {
+            return;
+        }
+
+        _trayIcon.BalloonTipTitle = title;
+        _trayIcon.BalloonTipText = message;
+        _trayIcon.BalloonTipIcon = icon;
+        _trayIcon.ShowBalloonTip(5000);
+    }
+
+    private async void RunDiagnosticsButton_Click(object sender, RoutedEventArgs e)
+    {
+        ShowBusyOperation("正在运行诊断", "正在检查代理核心、端口、DNS、节点和 ChatGPT 网络层，请稍候。");
+        await Dispatcher.Yield(DispatcherPriority.Render);
+        _diagnosticCancellation?.Cancel();
+        _diagnosticCancellation?.Dispose();
+        _diagnosticCancellation = new CancellationTokenSource();
+        try
+        {
+            _lastDiagnosticResult = await DiagnosticReportService.RunAsync(
+                _settings,
+                GetCurrentProfileOrNull(),
+                _coreService.IsRunning,
+                _proxyDesiredRunning,
+                _diagnosticCancellation.Token);
+            _lastRuntimeHealth = _lastDiagnosticResult.Runtime;
+            UpdateRuntimeHealthUi(_lastDiagnosticResult.Runtime);
+            HideBusyOperation();
+            new DiagnosticResultDialog(
+                this,
+                _lastDiagnosticResult,
+                _settings,
+                GetCurrentProfileOrNull()).ShowDialog();
+            return;
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex)
+        {
+            DiagnosticLogService.Error("One-click diagnostics failed.", ex);
+            ShowError(ex);
+        }
+        finally
+        {
+            HideBusyOperation();
+        }
     }
 
     private void SyncProxyToggleFromCoreState()
@@ -3600,14 +4655,36 @@ public partial class MainWindow : Window
 
     private void StartTunIfEnabled()
     {
+        _ignoreNetworkChangesUntilUtc = DateTime.UtcNow.AddSeconds(12);
         if (!_settings.IsTunEnabled)
         {
+            TunService.Stop();
+            if (_settings.OpenAiCodexOptimizationEnabled)
+            {
+                try
+                {
+                    OpenAiNetworkLayerService.Start(_settings, GetActiveProfile());
+                }
+                catch (Exception ex)
+                {
+                    OpenAiNetworkLayerService.RecordFailure(ex);
+                    DiagnosticLogService.Error(
+                        "ChatGPT Codex dedicated network layer failed to start; HTTP proxy fallback remains active.",
+                        ex);
+                }
+            }
+            else
+            {
+                OpenAiNetworkLayerService.Stop();
+            }
+
             SyncTunToggleFromSettings();
             return;
         }
 
         try
         {
+            OpenAiNetworkLayerService.Stop();
             TunService.Start(_settings, GetActiveProfile());
         }
         catch (Exception ex)
@@ -3840,26 +4917,41 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (ProxyToggle.IsChecked == true)
+        ShowBusyOperation(
+            ProxyToggle.IsChecked == true ? "正在打开代理" : "正在关闭代理",
+            "正在应用网络配置，请稍候。");
+        await Dispatcher.Yield(DispatcherPriority.Render);
+        try
         {
-            await StartProxyAsync();
+            if (ProxyToggle.IsChecked == true)
+            {
+                await StartProxyAsync();
+            }
+            else
+            {
+                StopProxy();
+            }
         }
-        else
+        finally
         {
-            StopProxy();
+            HideBusyOperation();
         }
     }
 
-    private void TunToggle_Changed(object sender, RoutedEventArgs e)
+    private async void TunToggle_Changed(object sender, RoutedEventArgs e)
     {
         if (!_isUiReady || _suppressTunToggleEvent)
         {
             return;
         }
 
-        if (TunToggle.IsChecked == true)
+        ShowBusyOperation(
+            TunToggle.IsChecked == true ? "正在打开 TUN 模式" : "正在关闭 TUN 模式",
+            "正在配置虚拟网卡、DNS 与系统路由，完成前暂时无法操作。");
+        await Dispatcher.Yield(DispatcherPriority.Render);
+        try
         {
-            try
+            if (TunToggle.IsChecked == true)
             {
                 if (!TunService.IsAdministrator())
                 {
@@ -3875,27 +4967,37 @@ public partial class MainWindow : Window
                     throw new InvalidOperationException("请先启用代理，TUN 会转发到本地 SOCKS 端口。");
                 }
 
-                TunService.Start(_settings, GetActiveProfile());
+                var activeProfile = GetActiveProfile();
+                await Task.Run(OpenAiNetworkLayerService.Stop);
+                await Task.Run(() => TunService.Start(_settings, activeProfile));
                 _settings.IsTunEnabled = true;
                 _settingsStore.Save(_settings);
             }
-            catch (Exception ex)
+            else
             {
+                await Task.Run(TunService.Stop);
                 _settings.IsTunEnabled = false;
-                _suppressTunToggleEvent = true;
-                TunToggle.IsChecked = false;
-                _suppressTunToggleEvent = false;
-                ShowError(ex);
+                _settingsStore.Save(_settings);
+                if (_settings.OpenAiCodexOptimizationEnabled)
+                {
+                    var activeProfile = GetActiveProfile();
+                    await Task.Run(() => OpenAiNetworkLayerService.Start(_settings, activeProfile));
+                }
             }
         }
-        else
+        catch (Exception ex)
         {
-            TunService.Stop();
             _settings.IsTunEnabled = false;
-            _settingsStore.Save(_settings);
+            _suppressTunToggleEvent = true;
+            TunToggle.IsChecked = false;
+            _suppressTunToggleEvent = false;
+            ShowError(ex);
         }
-
-        SyncTunToggleFromSettings();
+        finally
+        {
+            SyncTunToggleFromSettings();
+            HideBusyOperation();
+        }
     }
 
     private void RelaunchAsAdministrator()
@@ -3926,8 +5028,70 @@ public partial class MainWindow : Window
         }
     }
 
-    private async Task StartProxyAsync()
+    private bool TryRelaunchForNetworkOptimization()
     {
+        var exePath = Environment.ProcessPath;
+        if (string.IsNullOrWhiteSpace(exePath))
+        {
+            DiagnosticLogService.Warning(
+                "Cannot locate the current executable for network optimization elevation.");
+            return false;
+        }
+
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = exePath,
+                Arguments = StartupService.ElevatedRelaunchArgument,
+                UseShellExecute = true,
+                Verb = "runas"
+            });
+            _isExiting = true;
+            Application.Current.Shutdown();
+            return true;
+        }
+        catch (Win32Exception)
+        {
+            DiagnosticLogService.Warning(
+                "Network optimization elevation was canceled; continuing without AppContainer changes.");
+            return false;
+        }
+    }
+
+    private void ShowBusyOperation(string title, string detail)
+    {
+        _busyOperationDepth++;
+        UpdateBusyOperation(title, detail);
+        BusyOperationOverlay.Visibility = Visibility.Visible;
+        BusyOperationOverlay.BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(180)));
+        var easing = new CubicEase { EasingMode = EasingMode.EaseOut };
+        BusyOperationCardScale.BeginAnimation(
+            ScaleTransform.ScaleXProperty,
+            new DoubleAnimation(0.94, 1, TimeSpan.FromMilliseconds(220)) { EasingFunction = easing });
+        BusyOperationCardScale.BeginAnimation(
+            ScaleTransform.ScaleYProperty,
+            new DoubleAnimation(0.94, 1, TimeSpan.FromMilliseconds(220)) { EasingFunction = easing });
+    }
+
+    private void UpdateBusyOperation(string title, string detail)
+    {
+        BusyOperationTitleText.Text = title;
+        BusyOperationDetailText.Text = detail;
+    }
+
+    private void HideBusyOperation()
+    {
+        _busyOperationDepth = Math.Max(0, _busyOperationDepth - 1);
+        if (_busyOperationDepth == 0)
+        {
+            BusyOperationOverlay.Visibility = Visibility.Collapsed;
+        }
+    }
+
+    private async Task StartProxyAsync(bool showError = true)
+    {
+        _proxyDesiredRunning = true;
         try
         {
             var profile = GetActiveProfile();
@@ -3935,26 +5099,63 @@ public partial class MainWindow : Window
             SaveProfiles(profile.Id);
             EnsureSystemProxyForRunningCore();
             ApplySystemProxyMode(_settings.SystemProxyMode, save: true);
+            if (_settings.UwpOptimizationEnabled)
+            {
+                await SystemProxyService.ConfigureUwpLoopbackExemptionsAsync(true);
+            }
             StartTunIfEnabled();
             StartTrafficMonitor();
             SyncProxyToggleFromCoreState();
-            ScheduleOpenAiCodexPreWarmIfEnabled();
+            await CompleteOpenAiCodexOptimizationIfEnabledAsync();
+            StartOpenAiDesktopMonitor();
+            _runtimeHealthTimer.Start();
+            _consecutiveRuntimeFailures = 0;
+            RuntimeHealthTimer_Tick(null, EventArgs.Empty);
         }
         catch (Exception ex)
         {
+            OpenAiNetworkLayerService.Stop();
             _coreService.Stop(_settings);
+            if (SystemProxyService.IsHttpProxyEnabled(_settings.HttpPort))
+            {
+                SystemProxyService.DisableProxy();
+            }
             StopTrafficMonitor();
-            _suppressProxyToggleEvent = true;
-            ProxyToggle.IsChecked = false;
-            _suppressProxyToggleEvent = false;
+            if (!_settings.AutoRecoveryEnabled)
+            {
+                _proxyDesiredRunning = false;
+                _suppressProxyToggleEvent = true;
+                ProxyToggle.IsChecked = false;
+                _suppressProxyToggleEvent = false;
+            }
+            else
+            {
+                _runtimeHealthTimer.Start();
+                ScheduleRuntimeRecovery("代理启动失败", TimeSpan.FromSeconds(5));
+            }
             UpdateSidebarStatus();
-            ShowError(ex);
+            if (showError)
+            {
+                ShowError(ex);
+            }
+            else
+            {
+                DiagnosticLogService.Error("Background proxy start failed.", ex);
+            }
         }
 
     }
 
     private void StopProxy()
     {
+        _proxyDesiredRunning = false;
+        _runtimeHealthTimer.Stop();
+        _runtimeRecoveryTimer.Stop();
+        _runtimeRecoveryAttempts = 0;
+        _consecutiveRuntimeFailures = 0;
+        _consecutiveNodeFailures = 0;
+        StopOpenAiDesktopMonitor();
+        OpenAiNetworkLayerService.Stop();
         _coreService.Stop(_settings);
         TunService.Stop();
         _settingsStore.Save(_settings);
@@ -3966,6 +5167,7 @@ public partial class MainWindow : Window
 
         UpdateSidebarStatus();
         SyncProxyToggleFromCoreState();
+        UpdateRuntimeHealthMessage("代理已停止", true);
     }
 
     private async Task RestartCoreAsync()
@@ -3976,14 +5178,17 @@ public partial class MainWindow : Window
         }
 
         var profile = GetActiveProfile();
-        TunService.Stop();
+        _ignoreNetworkChangesUntilUtc = DateTime.UtcNow.AddSeconds(12);
+        await Task.Run(OpenAiNetworkLayerService.Stop);
+        await Task.Run(TunService.Stop);
         await _coreService.StartAsync(_settings, profile);
         EnsureSystemProxyForRunningCore();
         ApplySystemProxyMode(_settings.SystemProxyMode, save: true);
         StartTunIfEnabled();
         StartTrafficMonitor();
         UpdateSidebarStatus();
-        ScheduleOpenAiCodexPreWarmIfEnabled();
+        await CompleteOpenAiCodexOptimizationIfEnabledAsync();
+        StartOpenAiDesktopMonitor();
     }
 
     private void SystemProxyCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -4064,7 +5269,7 @@ public partial class MainWindow : Window
                 case "Auto":
                     if (_coreService.IsRunning)
                     {
-                        SystemProxyService.EnableHttpProxy(_settings.HttpPort);
+                        SystemProxyService.EnableHttpProxy(_settings.HttpPort, _settings.UwpOptimizationEnabled);
                     }
                     else
                     {
@@ -4076,7 +5281,7 @@ public partial class MainWindow : Window
                 case "Pac":
                     if (_coreService.IsRunning)
                     {
-                        SystemProxyService.EnablePacProxy(_settings.HttpPort);
+                        SystemProxyService.EnablePacProxy(_settings.HttpPort, _settings.UwpOptimizationEnabled);
                     }
                     else
                     {
@@ -4384,7 +5589,7 @@ public partial class MainWindow : Window
         var selected = GetSelectedProfiles();
         if (selected.Count > 0)
         {
-            _ = RunTcpLatencyTestsAsync(selected, parallel: true);
+            _ = RunTcpLatencyTestsAsync(selected, parallel: true, endToEnd: true);
         }
     }
 
@@ -4652,7 +5857,7 @@ public partial class MainWindow : Window
             }
             else if (triggerAutoDownload && _cachedLatestRelease is not null && IsAppUpdateAvailable(_cachedLatestRelease))
             {
-                await TryAutoDownloadVersionUpdateAsync(_cachedLatestRelease, promptWhenReady: true);
+                await TryAutoDownloadVersionUpdateAsync(_cachedLatestRelease, promptWhenReady: false);
             }
         }
         catch (Exception ex)
@@ -4671,10 +5876,14 @@ public partial class MainWindow : Window
         var currentVersion = AppVersionHelper.GetCurrentVersionName();
         if (_cachedLatestRelease is null || _cachedLatestRelease.File is null)
         {
+            var authenticated = _authService.IsAuthenticated;
+            VersionUpdateHeaderPanel.Visibility = authenticated ? Visibility.Collapsed : Visibility.Visible;
+            VersionUpdateStatusPanel.Visibility = authenticated ? Visibility.Collapsed : Visibility.Visible;
             VersionUpdateGuestPanel.Visibility = _authService.IsAuthenticated ? Visibility.Collapsed : Visibility.Visible;
             VersionUpdateUpToDatePanel.Visibility = _authService.IsAuthenticated ? Visibility.Visible : Visibility.Collapsed;
             VersionUpdateAvailableScroll.Visibility = Visibility.Collapsed;
             VersionUpdateBadge.Visibility = Visibility.Collapsed;
+            VersionUpdateNavBadge.Visibility = Visibility.Collapsed;
             VersionUpdateCurrentOnlyText.Text = $"当前版本 v{currentVersion}";
             SetVersionUpdateStatus("当前已是最新版本");
             ResetVersionUpdateDownloadUi();
@@ -4683,20 +5892,26 @@ public partial class MainWindow : Window
 
         if (!IsAppUpdateAvailable(_cachedLatestRelease))
         {
+            VersionUpdateHeaderPanel.Visibility = Visibility.Collapsed;
+            VersionUpdateStatusPanel.Visibility = Visibility.Collapsed;
             VersionUpdateGuestPanel.Visibility = Visibility.Collapsed;
             VersionUpdateUpToDatePanel.Visibility = Visibility.Visible;
             VersionUpdateAvailableScroll.Visibility = Visibility.Collapsed;
             VersionUpdateBadge.Visibility = Visibility.Collapsed;
+            VersionUpdateNavBadge.Visibility = Visibility.Collapsed;
             VersionUpdateCurrentOnlyText.Text = $"当前版本 v{currentVersion}";
             SetVersionUpdateStatus("当前已是最新版本");
             ResetVersionUpdateDownloadUi();
             return;
         }
 
+        VersionUpdateHeaderPanel.Visibility = Visibility.Visible;
+        VersionUpdateStatusPanel.Visibility = Visibility.Visible;
         VersionUpdateGuestPanel.Visibility = Visibility.Collapsed;
         VersionUpdateUpToDatePanel.Visibility = Visibility.Collapsed;
         VersionUpdateAvailableScroll.Visibility = Visibility.Visible;
         VersionUpdateBadge.Visibility = Visibility.Visible;
+        VersionUpdateNavBadge.Visibility = Visibility.Visible;
         VersionUpdateBadgeText.Text = $"可更新至 v{_cachedLatestRelease.VersionName}";
         VersionUpdateTitleText.Text = _cachedLatestRelease.Title;
         VersionUpdateVersionLineText.Text = $"v{currentVersion} → v{_cachedLatestRelease.VersionName}（Build {_cachedLatestRelease.VersionCode}）";
@@ -4707,6 +5922,9 @@ public partial class MainWindow : Window
         VersionUpdateFileNameText.Text = _cachedLatestRelease.File.Filename;
         VersionUpdateFileSizeText.Text = FormatBytes(_cachedLatestRelease.File.FileSize);
         VersionUpdateSha256Text.Text = _cachedLatestRelease.File.Sha256;
+        VersionUpdateSignatureText.Text = string.IsNullOrWhiteSpace(_cachedLatestRelease.File.SignatureThumbprint)
+            ? "发布端未提供签名指纹（仅执行 SHA-256 校验）"
+            : $"Authenticode 指纹：{_cachedLatestRelease.File.SignatureThumbprint}";
         VersionUpdateDownloadLink.NavigateUri = string.IsNullOrWhiteSpace(_cachedLatestRelease.File.DownloadUrl)
             ? null
             : new Uri(_cachedLatestRelease.File.DownloadUrl);
@@ -4936,6 +6154,18 @@ public partial class MainWindow : Window
             return;
         }
 
+        try
+        {
+            ConfigurationBackupService.Create(_settings, "before-update");
+            UpdateSecurityService.PrepareRollbackSnapshot();
+        }
+        catch (Exception ex)
+        {
+            SetVersionUpdateStatus($"更新前备份失败：{ex.Message}", isError: true);
+            DiagnosticLogService.Error("Failed to prepare update backup and rollback snapshot.", ex);
+            return;
+        }
+
         LaunchInstallerAndExit(_downloadedUpdatePath);
     }
 
@@ -4954,12 +6184,7 @@ public partial class MainWindow : Window
 
         try
         {
-            Process.Start(new ProcessStartInfo
-            {
-                FileName = installerPath,
-                Arguments = "/CLOSEAPPLICATIONS",
-                UseShellExecute = true
-            });
+            Process.Start(UpdateSecurityService.CreateInstallerGuardStartInfo(installerPath));
         }
         catch (Exception ex)
         {
@@ -5510,6 +6735,22 @@ public partial class MainWindow : Window
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool FlashWindowEx(ref FlashWindowInfo pwfi);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool IsWindowVisible(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetForegroundWindow();
+
+    [DllImport("user32.dll")]
+    private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
+
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int value, int size);
+
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref uint value, int size);
 
     private const uint FlashwTray = 0x00000002;
     private const uint FlashwTimerNoFg = 0x0000000C;
@@ -7095,6 +8336,13 @@ public partial class MainWindow : Window
         SyncRunAtStartupFromSettings();
         SyncAllowLanAccessFromSettings();
         SyncAutoDownloadUpdateFromSettings();
+        SyncReliabilitySettingsUi();
+        SyncUwpOptimizationUi();
+        SyncAdvancedSettingsUi();
+        if (_lastRuntimeHealth is not null)
+        {
+            UpdateRuntimeHealthUi(_lastRuntimeHealth);
+        }
         SyncThemeSettingsUi(ThemeService.ParseAccentColor(_settings.ThemeAccentColor));
         ShowPage(SettingsPageScroll, SettingsNavButton);
     }
@@ -8356,7 +9604,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        _ = RunTcpLatencyTestsAsync(_profiles.ToList(), parallel: true);
+        _ = RunTcpLatencyTestsAsync(_profiles.ToList(), parallel: true, endToEnd: true);
     }
 
     private async void TestCurrentLatencyButton_Click(object sender, RoutedEventArgs e)
@@ -8368,7 +9616,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        await RunTcpLatencyTestsAsync(selected, parallel: true);
+        await RunTcpLatencyTestsAsync(selected, parallel: true, endToEnd: true);
     }
 
     private void TestAllLatencyButton_Click(object sender, RoutedEventArgs e)
@@ -8378,10 +9626,53 @@ public partial class MainWindow : Window
             return;
         }
 
-        _ = RunTcpLatencyTestsAsync(_profiles.ToList(), parallel: true);
+        _ = RunTcpLatencyTestsAsync(_profiles.ToList(), parallel: true, endToEnd: true);
     }
 
-    private async Task RunTcpLatencyTestsAsync(IReadOnlyList<VmessProfile> profiles, bool parallel)
+    private async void NodeHealthCheckButton_Click(object sender, RoutedEventArgs e)
+    {
+        var selected = GetSelectedProfiles();
+        if (selected.Count == 0)
+        {
+            ThemedMessageDialog.Show(this, "请先选择一个节点。");
+            return;
+        }
+
+        var profile = selected[0];
+        ShowBusyOperation("正在检测节点健康", "正在检查 TCP、代理握手、网站访问、稳定性和下载速度。");
+        await Dispatcher.Yield(DispatcherPriority.Render);
+        try
+        {
+            var result = await NodeHealthCheckService.CheckAsync(
+                _settings,
+                profile,
+                profile.Id == _settings.SelectedProfileId && _coreService.IsRunning);
+            profile.ApplyHealthResult(result);
+            if (result.LatencyMs is int latency) profile.TryApplyLatencyResult(latency);
+            SaveProfiles(_settings.SelectedProfileId);
+            ProfilesGrid.Items.Refresh();
+            var details = new List<string>
+            {
+                $"TCP 可连接：{(result.TcpConnectSuccess ? "正常" : "失败")}",
+                $"代理握手：{(result.ProxyHandshakeSuccess ? "成功" : "失败")}",
+                $"网站访问：{(result.WebsiteAccessSuccess ? "成功" : "失败")}",
+                $"连续请求稳定性：{result.StabilityPercent}%",
+                $"下载速度：{(result.DownloadSpeedMbps is double speed ? $"{speed:0.0} Mbps" : "仅活动节点测试")}",
+                $"最近成功：{profile.LastHealthSuccessDisplay}"
+            };
+            ThemedMessageDialog.Show(this,
+                result.Success ? "节点健康状态正常" : "节点健康状态异常",
+                details,
+                result.Success ? ThemedMessageKind.Information : ThemedMessageKind.Warning);
+        }
+        catch (Exception ex) { ShowError(ex); }
+        finally { HideBusyOperation(); }
+    }
+
+    private async Task RunTcpLatencyTestsAsync(
+        IReadOnlyList<VmessProfile> profiles,
+        bool parallel,
+        bool endToEnd = true)
     {
         _latencyTestCancellation?.Cancel();
         _latencyTestCancellation?.Dispose();
@@ -8397,7 +9688,19 @@ public partial class MainWindow : Window
             IReadOnlyList<(VmessProfile Profile, int? Latency)> results;
             if (parallel)
             {
-                var tasks = profiles.Select(profile => MeasureProfileLatencyAsync(profile, cancellationToken));
+                using var concurrency = new SemaphoreSlim(endToEnd ? 12 : Math.Max(1, profiles.Count));
+                var tasks = profiles.Select(async profile =>
+                {
+                    await concurrency.WaitAsync(cancellationToken);
+                    try
+                    {
+                        return await MeasureProfileLatencyAsync(profile, endToEnd, cancellationToken);
+                    }
+                    finally
+                    {
+                        concurrency.Release();
+                    }
+                });
                 results = await Task.WhenAll(tasks);
             }
             else
@@ -8406,7 +9709,7 @@ public partial class MainWindow : Window
                 foreach (var profile in profiles)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-                    sequentialResults.Add(await MeasureProfileLatencyAsync(profile, cancellationToken));
+                    sequentialResults.Add(await MeasureProfileLatencyAsync(profile, endToEnd, cancellationToken));
                 }
 
                 results = sequentialResults;
@@ -8436,8 +9739,9 @@ public partial class MainWindow : Window
         }
     }
 
-    private static async Task<(VmessProfile Profile, int? Latency)> MeasureProfileLatencyAsync(
+    private async Task<(VmessProfile Profile, int? Latency)> MeasureProfileLatencyAsync(
         VmessProfile profile,
+        bool endToEnd,
         CancellationToken cancellationToken)
     {
         if (profile.IsExpired)
@@ -8445,10 +9749,26 @@ public partial class MainWindow : Window
             return (profile, null);
         }
 
-        var latency = await LatencyTestService.MeasureTcpAsync(
+        var tcpLatency = await LatencyTestService.MeasureTcpAsync(
             profile.Address,
             profile.Port,
             cancellationToken: cancellationToken);
+        if (!endToEnd || tcpLatency is null || tcpLatency >= 100)
+        {
+            return (profile, cancellationToken.IsCancellationRequested ? null : tcpLatency);
+        }
+
+        await _protocolLatencyProbeGate.WaitAsync(cancellationToken);
+        int? latency;
+        try
+        {
+            latency = await NodeLatencyTestService.MeasureAsync(_settings, profile, cancellationToken)
+                ?? tcpLatency;
+        }
+        finally
+        {
+            _protocolLatencyProbeGate.Release();
+        }
         return (profile, cancellationToken.IsCancellationRequested ? null : latency);
     }
 
